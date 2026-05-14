@@ -1,4 +1,4 @@
-# Product Requirements Document: WorshipSync
+# Product Requirements Document: LyriCue
 
 **Version:** 1.0 DRAFT
 **Phase:** BMAD Phase 2 — Planning
@@ -10,7 +10,9 @@
 
 ## 1. Purpose & Scope
 
-This document defines the functional and non-functional requirements for WorshipSync — an AI-powered lyric synchronization extension for FreeShow that automates worship lyric advancement with word-level karaoke-style highlighting.
+This document defines the functional and non-functional requirements for LyriCue — an AI-powered live lyric synchronization tool that delivers word-by-word karaoke-style highlighting for live performance. LyriCue is built on top of FreeShow (https://freeshow.app/), an open-source generic presentation framework, and supports two deployment modes: a FreeShow fork build (max rendering fidelity) and a standalone sister-service build that drives FreeShow via its existing public APIs (lower maintenance, cleaner separation). See architecture.md ADR-16.
+
+**Positioning note:** LyriCue is a **domain-neutral** live-lyric-sync tool. Its primary launch validation market is **worship in multi-campus churches**, but the same capability serves karaoke venues, theater productions, touring live music, language-learning content, and any other context where lyrics must follow a lead vocalist in real time. Throughout this document, worship-context examples appear because they are the concrete, motivated, near-term deployment scenario — but every functional requirement here is written to apply equally to other performance contexts. Where requirements use a worship example for illustration, the underlying capability is generic.
 
 **In scope (MVP):** Song learning pipeline, karaoke renderer, live tempo sync, STT position correction, manual override & graceful degradation.
 
@@ -20,22 +22,24 @@ This document defines the functional and non-functional requirements for Worship
 
 ## 2. User Personas
 
-### P1: Thabo — Volunteer Tech Operator
+These personas are drawn from the **primary launch market (worship in a multi-campus church)** because that's the most motivated and best-understood early customer. The roles they represent — operator, lead performer, technical lead — generalize cleanly to other domains: a karaoke host, a stage manager, an A/V director, a theater technical director, etc. Each persona below carries an annotation showing the cross-domain analogue.
+
+### P1: Thabo — Volunteer Tech Operator *(generic analogue: Karaoke host, stage manager, school AV volunteer)*
 - **Context:** Runs lyrics at a 200-person church in Pretoria every Sunday. Not a developer. Uses FreeShow on a Windows laptop connected to a projector.
 - **Pain:** Misses cues when the worship leader deviates from the printed order. Gets blamed when slides are late.
 - **Goal:** A system that handles slide timing so he can focus on other AV tasks (sound, livestream).
 - **Tech comfort:** Can install software, follow setup guides, but won't touch config files or terminal commands.
 
-### P2: Nomsa — Worship Leader
+### P2: Nomsa — Worship Leader *(generic analogue: Lead vocalist, headlining karaoke singer, lead actor in a musical)*
 - **Context:** Leads worship at a multilingual church in Johannesburg. Sometimes repeats choruses, extends bridges for prayer, or changes the setlist moments before service.
 - **Pain:** Feels constrained by the slide operator's ability to keep up. Avoids spontaneity because she knows the slides will fall behind.
 - **Goal:** Lead worship freely, trusting that the lyrics will follow her.
-- **Tech comfort:** Uses her phone and basic apps. Will not interact with the sync system directly during worship.
+- **Tech comfort:** Uses her phone and basic apps. Will not interact with the sync system directly during performance.
 
-### P3: Sipho — Church IT / AV Lead
+### P3: Sipho — Church IT / AV Lead *(generic analogue: Venue technical director, school IT coordinator, multi-site production manager)*
 - **Context:** Oversees all technology at a mid-size church. Evaluates tools, manages the volunteer tech team.
 - **Pain:** Hard to find and retain skilled slide operators. Training new volunteers takes weeks.
-- **Goal:** A reliable system that reduces the skill floor for operating lyrics during worship.
+- **Goal:** A reliable system that reduces the skill floor for operating lyrics during live performance.
 - **Tech comfort:** Comfortable with technical setup, config, troubleshooting. Will manage song learning and system configuration.
 
 ---
@@ -113,7 +117,7 @@ This document defines the functional and non-functional requirements for Worship
 **Actor:** Sipho (AV Lead)
 **Trigger:** Initial setup or adjusting for congregation feedback.
 
-1. Sipho opens WorshipSync settings.
+1. Sipho opens LyriCue settings.
 2. He configures the **display mode**: Full Karaoke (word-by-word), Section Advance (slide-by-slide auto-advance, no word highlighting), or Traditional (manual only).
 3. He sets the **lead time** — how many seconds before a section change the next slide appears (default: 2 seconds).
 4. He customizes **highlight style**: color, animation type (sweep, glow, bold), font size.
@@ -148,7 +152,7 @@ This document defines the functional and non-functional requirements for Worship
 3. He reviews, adjusts, saves, and proceeds to learn the song.
 
 **Acceptance Criteria:**
-- AC5.1: FreeShow's existing lyrics web search is accessible from within the WorshipSync song learning workflow.
+- AC5.1: FreeShow's existing lyrics web search is accessible from within the LyriCue song learning workflow.
 - AC5.2: Pasted plain text is auto-split into sections using bracket markers, blank lines, or common patterns.
 - AC5.3: Imported .txt, .docx, or .pdf files with lyrics are parsed and section markers detected.
 - AC5.4: The operator can edit section labels and text before proceeding to song learning.
@@ -160,7 +164,7 @@ This document defines the functional and non-functional requirements for Worship
 **Trigger:** Sunday service worship set has 4 songs in sequence.
 
 1. Sipho (AV Lead) created the Sunday Project in FreeShow during the week, ordering 4 songs: "Way Maker" → "Good Good Father" → "Build My Life" → "Great Are You Lord". All 4 have been learned with timing maps.
-2. Thabo opens the Project. The WorshipSync control panel shows the setlist with sync status icons (all green — learned).
+2. Thabo opens the Project. The LyriCue control panel shows the setlist with sync status icons (all green — learned).
 3. He connects the audio input and clicks **Start Sync** on the first song, "Way Maker".
 4. The worship leader begins singing. Word-level highlighting engages on "Way Maker".
 5. "Way Maker" reaches its final chorus. The operator's screen shows **"Next: Good Good Father"**.
@@ -184,7 +188,7 @@ This document defines the functional and non-functional requirements for Worship
 **Trigger:** Thursday night rehearsal — the worship team is running through Sunday's setlist.
 
 1. Sipho opens the Sunday Project in FreeShow. The setlist has 4 songs, all with lyrics entered but none yet learned.
-2. He clicks **"Rehearsal Mode"** in the WorshipSync panel. The system prompts him to select the audio input (sound desk line-in).
+2. He clicks **"Rehearsal Mode"** in the LyriCue panel. The system prompts him to select the audio input (sound desk line-in).
 3. He clicks **"Start Rehearsal"**. The system begins listening and shows a recording indicator.
 4. The worship team plays through "Way Maker". Sipho doesn't need to press anything — the system records continuously.
 5. They finish "Way Maker", chat for 30 seconds, then start "Good Good Father". The system is still recording.
@@ -208,7 +212,7 @@ This document defines the functional and non-functional requirements for Worship
 **Actor:** Nomsa (Worship Leader) via Sipho (AV Lead)
 **Trigger:** Nomsa tells Sipho: "For 'Way Maker' on Sunday, we're doing Verse 1, Chorus, Verse 2, Chorus, Chorus, Bridge, Bridge, Chorus, Outro."
 
-1. Sipho opens "Way Maker" in FreeShow and navigates to the WorshipSync **Arrangement Builder**.
+1. Sipho opens "Way Maker" in FreeShow and navigates to the LyriCue **Arrangement Builder**.
 2. The builder shows the available sections as draggable blocks: `Verse 1`, `Verse 2`, `Chorus`, `Bridge`, `Outro`.
 3. He drags them into the order Nomsa specified: `V1 → C → V2 → C → C → Br → Br → C → Outro`.
 4. The duplicated sections (Chorus ×3, Bridge ×2) each reference the same timing data — no re-learning needed.
@@ -306,7 +310,7 @@ This document defines the functional and non-functional requirements for Worship
 
 ### FR6: Lyrics Sourcing & Import
 
-*FreeShow already provides a "Web Search for Lyrics" feature and a "Quick Lyrics" paste mode when creating a new show. WorshipSync extends this by integrating lyrics sourcing directly into the song learning workflow.*
+*FreeShow already provides a "Web Search for Lyrics" feature and a "Quick Lyrics" paste mode when creating a new show. LyriCue extends this by integrating lyrics sourcing directly into the song learning workflow.*
 
 | ID | Requirement | Priority |
 |---|---|---|
@@ -316,23 +320,23 @@ This document defines the functional and non-functional requirements for Worship
 | FR6.4 | Auto-detect section markers in imported/pasted text — lines like `[Verse]`, `[Chorus]`, `[Bridge]`, or common patterns (blank line separators, numbered verses) — and map them to FreeShow slide groups | Must |
 | FR6.5 | When lyrics are sourced from any method, present a review screen where the operator can verify sections are correctly split before proceeding to audio learning | Must |
 | FR6.6 | Support a "Search & Learn" shortcut workflow: search lyrics online → review/edit → attach reference audio → learn timing → ready to use, all from one wizard-style flow | Should |
-| FR6.7 | Preserve any existing FreeShow import pathways (ProPresenter, EasyWorship, OpenLP, Planning Center) — WorshipSync must not break these; imported songs simply gain a "Learn Song" option | Must |
+| FR6.7 | Preserve any existing FreeShow import pathways (ProPresenter, EasyWorship, OpenLP, Planning Center) — LyriCue must not break these; imported songs simply gain a "Learn Song" option | Must |
 
 ### FR7: Service Setlist & Continuous Playback
 
-*FreeShow's "Projects" already function as ordered setlists, and spacebar at the end of a show advances to the next item. WorshipSync extends this with auto-sync-aware transitions between songs.*
+*FreeShow's "Projects" already function as ordered setlists, and spacebar at the end of a show advances to the next item. LyriCue extends this with auto-sync-aware transitions between songs.*
 
 | ID | Requirement | Priority |
 |---|---|---|
 | FR7.1 | Read the current FreeShow Project as the service setlist — the ordered list of shows is the song sequence | Must |
-| FR7.2 | Display the full setlist in the operator's WorshipSync control panel, showing: song name, sync status (learned/not learned), current position indicator | Must |
+| FR7.2 | Display the full setlist in the operator's LyriCue control panel, showing: song name, sync status (learned/not learned), current position indicator | Must |
 | FR7.3 | When the current song ends (final section completed or operator manually advances), automatically load the next song's timing map and enter a "waiting for start" state | Must |
 | FR7.4 | In the "waiting for start" state, display the first section of the next song on the output (so the congregation can see what's coming) but do not begin word highlighting until singing is detected or the operator triggers Start Sync | Must |
 | FR7.5 | Detect the transition between songs: when the sync engine detects silence or non-singing for a configurable duration after the final section, auto-advance to the next song | Should |
 | FR7.6 | Support songs in the setlist that do NOT have timing maps (e.g., scripture readings, announcements) — these pass through to FreeShow's normal manual slide control | Must |
 | FR7.7 | Allow the operator to jump to any song in the setlist at any time (click in setlist panel or keyboard shortcut) | Must |
 | FR7.8 | Show a "next up" indicator on the operator screen during the current song's final section (e.g., "Next: How Great Is Our God") | Should |
-| FR7.9 | Support re-ordering the setlist from the WorshipSync control panel without leaving the live view (drag-and-drop or move up/down buttons) — syncs back to FreeShow's Project order | Should |
+| FR7.9 | Support re-ordering the setlist from the LyriCue control panel without leaving the live view (drag-and-drop or move up/down buttons) — syncs back to FreeShow's Project order | Should |
 
 ### FR8: Rehearsal Learning Mode
 
@@ -362,7 +366,7 @@ This document defines the functional and non-functional requirements for Worship
 | FR9.4 | Sections can be duplicated (e.g., Chorus appears 3 times) — each instance uses the same timing data | Must |
 | FR9.5 | Sections can be removed from the arrangement (e.g., skip Verse 3) without deleting the underlying timing data | Must |
 | FR9.6 | The arrangement is saved as part of the song's timing map, linked to a FreeShow Layout — multiple arrangements per song are supported (e.g., "Sunday Morning" vs. "Evening Service") | Should |
-| FR9.7 | The arrangement maps directly to FreeShow's existing Layout concept — reordering sections in WorshipSync updates the corresponding Layout's slide order | Must |
+| FR9.7 | The arrangement maps directly to FreeShow's existing Layout concept — reordering sections in LyriCue updates the corresponding Layout's slide order | Must |
 | FR9.8 | The live sync engine follows the defined arrangement sequence, not the default section order from the reference recording | Must |
 | FR9.9 | Provide a "quick arrangement" mode: a simple text-based shorthand (e.g., "V1 C V2 C C B C") that the worship leader can type or send via message, which the system parses into the arrangement | Should |
 
@@ -377,7 +381,7 @@ This document defines the functional and non-functional requirements for Worship
 | FR10.3 | The karaoke renderer displays the primary language lyrics with word-level highlighting AND the translation below (or above, configurable) at reduced size | Must |
 | FR10.4 | The translation text advances section-by-section in sync with the primary lyrics but does NOT have word-level highlighting (word counts differ between languages) | Must |
 | FR10.5 | Support configuring which language is primary and which is secondary — the operator can swap them per service (e.g., Zulu primary with English secondary for a Zulu-language service) | Should |
-| FR10.6 | FreeShow already supports per-textbox `language` fields — WorshipSync should use this mechanism to store translations, maintaining compatibility | Must |
+| FR10.6 | FreeShow already supports per-textbox `language` fields — LyriCue should use this mechanism to store translations, maintaining compatibility | Must |
 | FR10.7 | The translation display is toggleable — can be turned on/off per service without modifying the song data | Must |
 | FR10.8 | Support displaying up to 2 parallel translations simultaneously (e.g., English + Zulu + Sotho) without overcrowding the screen — font sizes auto-adjust based on number of languages shown | Should |
 
@@ -411,7 +415,7 @@ This document defines the functional and non-functional requirements for Worship
 | NFR1.4 | Beat detection latency | ≤200ms from beat occurrence to detection |
 | NFR1.5 | STT recognition latency | ≤1 second from utterance to recognized text |
 | NFR1.6 | Manual override response time | ≤200ms from keypress to display change |
-| NFR1.7 | Application startup time (with WorshipSync loaded) | ≤10 seconds additional over base FreeShow |
+| NFR1.7 | Application startup time (with LyriCue loaded) | ≤10 seconds additional over base FreeShow |
 | NFR1.8 | Memory usage during live sync | ≤500MB additional over base FreeShow |
 
 ### NFR2: Reliability
@@ -469,7 +473,7 @@ This document defines the functional and non-functional requirements for Worship
 
 ```json
 {
-  "$schema": "worshipsync-timing-v1",
+  "$schema": "lyricue-timing-v1",
   "songId": "string — links to FreeShow song entry",
   "learnedFrom": {
     "filename": "good_good_father_hillsong.mp3",
@@ -550,9 +554,9 @@ This document defines the functional and non-functional requirements for Worship
 |---|---|---|
 | Song Library | Data extension | Add `timingMap` field to FreeShow's song data model. Songs with timing maps gain sync capability. |
 | Slide Output | Renderer extension | New "Karaoke" output renderer alongside FreeShow's existing slide renderer. Selected per-song or globally. |
-| Setlist / Show | Workflow integration | WorshipSync reads the current setlist order, pre-loads timing maps, and transitions between songs. |
-| Settings | UI extension | New "WorshipSync" settings panel within FreeShow's settings UI. |
-| Audio Input | New subsystem | FreeShow currently has no audio input. WorshipSync adds audio capture for beat detection and STT. |
+| Setlist / Show | Workflow integration | LyriCue reads the current setlist order, pre-loads timing maps, and transitions between songs. |
+| Settings | UI extension | New "LyriCue" settings panel within FreeShow's settings UI. |
+| Audio Input | New subsystem | FreeShow currently has no audio input. LyriCue adds audio capture for beat detection and STT. |
 | Keyboard Shortcuts | Extension | Additional shortcuts for sync controls, registered alongside FreeShow's existing shortcut system. |
 | Python Sidecar | New subsystem | A bundled Python process for ML workloads (song learning). Communicates with the Electron app via IPC (stdin/stdout JSON or local HTTP). |
 
@@ -635,8 +639,8 @@ The `.show` format structure:
 
 **Decision:** Store the timing map as a **sidecar file** (`<show_id>.timing.json`) in a `TimingMaps/` subdirectory alongside the Show files, rather than embedding in the `meta` field. Rationale:
 - The timing map is large (word-level timestamps for every word in a song) and would bloat the `.show` file
-- Keeps `.show` format backwards-compatible — FreeShow will not break if WorshipSync is removed
-- The `meta` field can hold a lightweight pointer: `"worshipsync": { "hasTimingMap": true, "version": "1.0" }`
+- Keeps `.show` format backwards-compatible — FreeShow will not break if LyriCue is removed
+- The `meta` field can hold a lightweight pointer: `"lyricue": { "hasTimingMap": true, "version": "1.0" }`
 - FreeShow's existing `layouts` concept (reorderable slide sequences) maps naturally to our arrangement builder (post-MVP)
 
 **Impact on Architecture:** Timing maps are a parallel data layer, linked to shows by ID. The song's `slides[].group` values ("Verse", "Chorus", "Bridge") provide the section labels that map to timing map sections.
@@ -700,19 +704,19 @@ The `.show` format structure:
 
 **Decision:** All core dependencies are MIT/BSD — fully compatible with FreeShow's GPL-3.0 license. The only concern is the **non-English wav2vec2 alignment models** which are CC-BY-NC. For MVP (English-focused), this is not an issue. For multilingual support (post-MVP F8), we must source MIT/Apache-licensed alignment models for non-English languages — several community-contributed alternatives exist on Hugging Face.
 
-WorshipSync itself must be released under **GPL-3.0** to comply with FreeShow's copyleft license.
+LyriCue itself must be released under **GPL-3.0** to comply with FreeShow's copyleft license.
 
 ### OQ6: Fork vs. Upstream Contribution ✅ RESOLVED
 
 **Decision:** **Start as a fork, target upstream contribution for core integration points.**
 
 Rationale:
-- WorshipSync introduces a Python sidecar dependency and significant new subsystems (audio input, beat detection, timing engine) that may be too invasive for the FreeShow maintainers to accept initially
+- LyriCue introduces a Python sidecar dependency and significant new subsystems (audio input, beat detection, timing engine) that may be too invasive for the FreeShow maintainers to accept initially
 - The FreeShow project has a small core team (~2–3 active maintainers) and explicitly welcomes contributions via their Slack channel
 - The `.show` format already supports custom meta keys, and the output architecture supports new output types — these are natural extension points that don't require core modifications
 - **Phase 1:** Fork and develop independently, using clean API boundaries (sidecar files, new output type, separate settings panel)
 - **Phase 2:** Once proven in production (3+ churches), propose the core integration hooks as a PR: (a) timing map sidecar file convention, (b) karaoke output type, (c) audio input subsystem
-- **Phase 3:** If accepted upstream, WorshipSync becomes a "feature module" within FreeShow rather than a fork — dramatically reducing maintenance burden
+- **Phase 3:** If accepted upstream, LyriCue becomes a "feature module" within FreeShow rather than a fork — dramatically reducing maintenance burden
 
 ---
 
