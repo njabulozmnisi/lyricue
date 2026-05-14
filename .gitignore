@@ -7,6 +7,11 @@ node_modules/
 dist/
 build/
 out/
+*.tsbuildinfo
+
+# Test artifacts
+coverage/
+.vitest-cache/
 
 # Python
 __pycache__/
@@ -16,19 +21,33 @@ __pycache__/
 .eggs/
 venv/
 .venv/
+.pytest_cache/
+.ruff_cache/
 
-# ML models (large, download separately)
+# PyInstaller artifacts
+python-sidecar/build/
+python-sidecar/dist/
+python-sidecar/*.spec
+
+# ML models (large, downloaded separately at first use)
 models/
 *.pt
 *.pth
 *.onnx
 *.bin
+*.ggml
+*.gguf
+
+# Electron build artifacts
+apps/*/dist-electron/
+apps/*/release/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+.history/
 
 # OS
 .DS_Store
@@ -37,9 +56,15 @@ Thumbs.db
 # Environment
 .env
 .env.local
+.env.*.local
 
-# Rehearsal recordings (temporary, large)
+# Rehearsal recordings (transient, large)
 rehearsal-recordings/
 
 # Logs
 *.log
+logs/
+
+# Cloudflare Worker secrets
+infra/publish-worker/.dev.vars
+infra/publish-worker/.wrangler/

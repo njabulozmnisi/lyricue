@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lyricue-sidecar"
+version = "0.1.0"
+description = "LyriCue ML sidecar: Demucs vocal isolation + WhisperX forced alignment, exposed over JSON-RPC 2.0 on stdin/stdout."
+authors = [{ name = "Njabulo Mnisi" }]
+license = { text = "GPL-3.0" }
+requires-python = ">=3.10"
+readme = "README.md"
+
+# Runtime dependencies are intentionally minimal at scaffold time.
+# Demucs / WhisperX / librosa land in EP-05 stories. Adding them here without using them
+# would bloat CI installs and slow PyInstaller experiments down.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.3",
+    "pyinstaller>=6.0",
+]
+
+[project.scripts]
+lyricue-sidecar = "lyricue_sidecar.__main__:main"
+
+[tool.setuptools]
+packages = ["lyricue_sidecar"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"

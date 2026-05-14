@@ -1,0 +1,45 @@
+{
+    "root": true,
+    "parser": "@typescript-eslint/parser",
+    "parserOptions": {
+        "ecmaVersion": 2022,
+        "sourceType": "module",
+        "project": ["./packages/*/tsconfig.json", "./apps/*/tsconfig.json"],
+        "tsconfigRootDir": "."
+    },
+    "plugins": ["@typescript-eslint", "svelte"],
+    "extends": [
+        "eslint:recommended",
+        "plugin:@typescript-eslint/recommended",
+        "plugin:svelte/recommended"
+    ],
+    "rules": {
+        "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+        "@typescript-eslint/no-explicit-any": "warn",
+        "@typescript-eslint/consistent-type-imports": ["error", { "prefer": "type-imports" }],
+        "prefer-const": "error",
+        "no-console": ["warn", { "allow": ["warn", "error", "info"] }]
+    },
+    "overrides": [
+        {
+            "files": ["*.svelte"],
+            "parser": "svelte-eslint-parser",
+            "parserOptions": {
+                "parser": "@typescript-eslint/parser"
+            }
+        },
+        {
+            "files": ["**/*.test.ts", "**/test-utils/**"],
+            "rules": {
+                "@typescript-eslint/no-explicit-any": "off"
+            }
+        }
+    ],
+    "ignorePatterns": [
+        "dist",
+        "build",
+        "node_modules",
+        "apps/fork/freeshow",
+        "*.cjs"
+    ]
+}

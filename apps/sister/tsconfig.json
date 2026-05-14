@@ -1,0 +1,17 @@
+{
+    "extends": "../../tsconfig.base.json",
+    "compilerOptions": {
+        "outDir": "./dist-electron",
+        "rootDir": "./src",
+        "composite": true,
+        "tsBuildInfoFile": "./dist-electron/.tsbuildinfo",
+        "lib": ["ES2022", "DOM"],
+        "types": ["node"]
+    },
+    "include": ["src/**/*"],
+    "exclude": ["dist-electron", "node_modules", "release", "**/*.test.ts"],
+    "references": [
+        { "path": "../../packages/core" },
+        { "path": "../../packages/ui" }
+    ]
+}

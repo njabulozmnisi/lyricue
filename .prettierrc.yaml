@@ -1,0 +1,22 @@
+# Matches FreeShow's prettier config exactly per ADR-17 / architecture.md §7.1.
+# Verified against ChurchApps/FreeShow config/formatting/.prettierrc.yaml as of FreeShow 1.6.1.
+# Do NOT change without aligning with upstream — fork-mode integration will diverge from FreeShow style if this drifts.
+
+printWidth: 500
+tabWidth: 4
+useTabs: false
+semi: false
+singleQuote: false
+quoteProps: as-needed
+trailingComma: none
+bracketSpacing: true
+arrowParens: always
+endOfLine: lf
+
+plugins:
+  - prettier-plugin-svelte
+
+overrides:
+  - files: "*.svelte"
+    options:
+      parser: svelte

@@ -1,0 +1,23 @@
+{
+    "name": "@lyricue/sister",
+    "version": "0.1.0",
+    "private": true,
+    "description": "LyriCue sister-service Electron app: standalone, drives FreeShow externally via its public APIs.",
+    "license": "GPL-3.0",
+    "main": "./dist-electron/main.js",
+    "type": "module",
+    "scripts": {
+        "build": "tsc -p tsconfig.json",
+        "dev": "echo 'sister-mode dev runner not yet wired (lands in EP-02 STORY-02.3)' && exit 0",
+        "demo:walking-skeleton": "echo 'walking-skeleton demo lands in EP-02 STORY-02.4' && exit 0",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@lyricue/core": "*",
+        "@lyricue/ui": "*"
+    },
+    "devDependencies": {
+        "typescript": "^5.3.0",
+        "vitest": "^1.2.0"
+    }
+}

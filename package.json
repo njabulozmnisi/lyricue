@@ -1,0 +1,50 @@
+{
+  "name": "lyricue",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-powered live lyric synchronization tool. Built on FreeShow. Domain-neutral.",
+  "license": "GPL-3.0",
+  "author": "Njabulo Mnisi",
+  "workspaces": [
+    "apps/*",
+    "apps/fork/freeshow",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "npm run build:core && npm run build:ui",
+    "build:core": "npm -w @lyricue/core run build",
+    "build:ui": "npm -w @lyricue/ui run build",
+    "build:fork": "npm -w @lyricue/fork run build",
+    "build:sister": "npm -w @lyricue/sister run build",
+    "build:sidecar": "cd python-sidecar && python -m build",
+    "dev:fork": "npm -w @lyricue/fork run dev",
+    "dev:sister": "npm -w @lyricue/sister run dev",
+    "lint": "npm run lint:ts && npm run lint:py",
+    "lint:ts": "eslint --ext .ts,.tsx,.svelte packages apps",
+    "lint:py": "cd python-sidecar && ruff check .",
+    "format": "prettier --config .prettierrc.yaml --write \"{apps,packages,infra}/**/*.{ts,tsx,svelte,json,md}\"",
+    "format:check": "prettier --config .prettierrc.yaml --check \"{apps,packages,infra}/**/*.{ts,tsx,svelte,json,md}\"",
+    "test": "npm run test:ts && npm run test:py",
+    "test:ts": "vitest run --workspace=vitest.workspace.ts",
+    "test:py": "cd python-sidecar && pytest",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "demo:walking-skeleton:fork": "npm -w @lyricue/fork run demo:walking-skeleton",
+    "demo:walking-skeleton:sister": "npm -w @lyricue/sister run demo:walking-skeleton"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-svelte": "^2.35.0",
+    "prettier": "^3.2.0",
+    "prettier-plugin-svelte": "^3.1.0",
+    "svelte-check": "^3.6.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
+  }
+}

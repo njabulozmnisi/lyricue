@@ -1,0 +1,18 @@
+# Cloudflare Worker config for the LyriCue library publish endpoint.
+# Per architecture.md §8.2 — fronts R2 for credentialed writes and catalog regeneration.
+# Full implementation lands in EP-14 STORY-14.1.
+
+name = "lyricue-publish"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+
+# R2 binding is populated by the org's setup script (STORY-14.2).
+# [[r2_buckets]]
+# binding = "LIBRARY"
+# bucket_name = "lyricue-library"
+
+# Credentials map (token → { campusId, role: 'central' | 'campus' }) is loaded from
+# the Worker's KV namespace at request time. Setup script provisions the namespace.
+# [[kv_namespaces]]
+# binding = "CREDENTIALS"
+# id = "<populated-by-setup-script>"

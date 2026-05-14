@@ -1,0 +1,3 @@
+[submodule "apps/fork/freeshow"]
+	path = apps/fork/freeshow
+	url = https://github.com/njabulozmnisi/lyricue-freeshow.git
