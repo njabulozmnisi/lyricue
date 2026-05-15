@@ -51,6 +51,10 @@
         "./audio": {
             "types": "./dist/audio/index.d.ts",
             "import": "./dist/audio/index.js"
+        },
+        "./sync": {
+            "types": "./dist/sync/index.d.ts",
+            "import": "./dist/sync/index.js"
         }
     },
     "scripts": {
