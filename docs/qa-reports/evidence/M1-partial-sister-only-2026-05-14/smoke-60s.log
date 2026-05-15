@@ -1,0 +1,12 @@
+[lyricue:sister] adapter.start() OK; running=true
+[lyricue:sister] health running=true delivered=265 dropped=0 lastError=none
+[lyricue:sister] health running=true delivered=522 dropped=0 lastError=none
+[lyricue:sister] health running=true delivered=791 dropped=0 lastError=none
+[lyricue:sister] health running=true delivered=1053 dropped=0 lastError=none
+[lyricue:sister] health running=true delivered=1315 dropped=0 lastError=none
+[lyricue:sister] health running=true delivered=1579 dropped=0 lastError=none
+[lyricue:sister] health running=true delivered=1840 dropped=0 lastError=none
+[lyricue:sister] health running=true delivered=2101 dropped=0 lastError=none
+[lyricue:sister] health running=true delivered=2365 dropped=0 lastError=none
+[lyricue:sister] health running=true delivered=2629 dropped=0 lastError=none
+[lyricue:sister] health running=true delivered=2896 dropped=0 lastError=none

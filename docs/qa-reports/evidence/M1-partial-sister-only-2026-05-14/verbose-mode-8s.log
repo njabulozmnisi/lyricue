@@ -1,0 +1,18 @@
+[lyricue:sister:dom-ready]
+[lyricue:sister:did-finish-load]
+[lyricue:sister] adapter.start() OK; running=true
+[lyricue:sister:renderer:warning] %cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security
+  Policy set or a policy with "unsafe-eval" enabled. This exposes users of
+  this app to unnecessary security risks.
+
+For more information and help, consult
+https://electronjs.org/docs/tutorial/security.
+This warning will not show up
+once the app is packaged. (node:electron/js2c/sandbox_bundle:2)
+[lyricue:sister:renderer:info] [lyricue:sister-renderer] frame #1 wordIndex=0 progress=0.00 (file:///Users/njabulomnisi/Projects/Dojo/worshipsync/.claude/worktrees/upbeat-dijkstra-86e3bd/apps/sister/public/build/karaoke-output.bundle.js:1)
+[lyricue:sister:renderer:info] [lyricue:sister-renderer] frame #60 wordIndex=1 progress=0.97 (file:///Users/njabulomnisi/Projects/Dojo/worshipsync/.claude/worktrees/upbeat-dijkstra-86e3bd/apps/sister/public/build/karaoke-output.bundle.js:1)
+[lyricue:sister:renderer:info] [lyricue:sister-renderer] frame #120 wordIndex=3 progress=0.97 (file:///Users/njabulomnisi/Projects/Dojo/worshipsync/.claude/worktrees/upbeat-dijkstra-86e3bd/apps/sister/public/build/karaoke-output.bundle.js:1)
+[lyricue:sister:renderer:info] [lyricue:sister-renderer] frame #180 wordIndex=5 progress=0.97 (file:///Users/njabulomnisi/Projects/Dojo/worshipsync/.claude/worktrees/upbeat-dijkstra-86e3bd/apps/sister/public/build/karaoke-output.bundle.js:1)
+[lyricue:sister:renderer:info] [lyricue:sister-renderer] frame #240 wordIndex=7 progress=0.97 (file:///Users/njabulomnisi/Projects/Dojo/worshipsync/.claude/worktrees/upbeat-dijkstra-86e3bd/apps/sister/public/build/karaoke-output.bundle.js:1)
+[lyricue:sister] health running=true delivered=264 dropped=0 lastError=none
+[lyricue:sister:renderer:info] [lyricue:sister-renderer] frame #300 wordIndex=9 progress=0.97 (file:///Users/njabulomnisi/Projects/Dojo/worshipsync/.claude/worktrees/upbeat-dijkstra-86e3bd/apps/sister/public/build/karaoke-output.bundle.js:1)

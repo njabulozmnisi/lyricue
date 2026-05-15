@@ -4,6 +4,7 @@
         { "path": "./packages/core" },
         { "path": "./packages/ui" },
         { "path": "./apps/fork" },
-        { "path": "./apps/sister" }
+        { "path": "./apps/sister" },
+        { "path": "./apps/sister/tsconfig.preload.json" }
     ]
 }

@@ -5,5 +5,6 @@
 import FirstRunWizard from "./FirstRunWizard.svelte"
 import SettingsTab from "./SettingsTab/SettingsTab.svelte"
 import KaraokeOutput from "./KaraokeOutput.svelte"
+import DiagnosticsPanel from "./DiagnosticsPanel.svelte"
 
-export { FirstRunWizard, SettingsTab, KaraokeOutput }
+export { FirstRunWizard, SettingsTab, KaraokeOutput, DiagnosticsPanel }

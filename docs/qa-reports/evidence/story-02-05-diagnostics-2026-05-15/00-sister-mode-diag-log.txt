@@ -1,0 +1,5 @@
+[lyricue:sister] adapter.start() OK; running=true
+[lyricue:sister] DEMO mode: walking-skeleton demo engine started
+[lyricue:sister] diag mode=own-window running=true delivered=0 dropped=0 fps=— dps=— since-frame=— rss=142.8MB heap=5.0MB uptime=0s lastError=none
+[lyricue:sister] diag mode=own-window running=true delivered=239 dropped=0 fps=48.8 dps=0.0 since-frame=0ms rss=125.7MB heap=5.2MB uptime=5s lastError=none
+[lyricue:sister] diag mode=own-window running=true delivered=480 dropped=0 fps=48.7 dps=0.0 since-frame=0ms rss=126.3MB heap=5.5MB uptime=10s lastError=none

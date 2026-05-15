@@ -35,6 +35,10 @@
         "./output/test-utils": {
             "types": "./dist/output/test-utils.d.ts",
             "import": "./dist/output/test-utils.js"
+        },
+        "./diagnostics": {
+            "types": "./dist/diagnostics/index.d.ts",
+            "import": "./dist/diagnostics/index.js"
         }
     },
     "scripts": {
