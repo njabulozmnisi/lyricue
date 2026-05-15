@@ -7,5 +7,17 @@ import SettingsTab from "./SettingsTab/SettingsTab.svelte"
 import KaraokeOutput from "./KaraokeOutput.svelte"
 import DiagnosticsPanel from "./DiagnosticsPanel.svelte"
 import AudioDevicePicker from "./AudioDevicePicker.svelte"
+import ModeIndicator from "./ModeIndicator.svelte"
+import TierChangeBanner from "./TierChangeBanner.svelte"
+import SetlistPanel from "./SetlistPanel.svelte"
 
-export { FirstRunWizard, SettingsTab, KaraokeOutput, DiagnosticsPanel, AudioDevicePicker }
+export {
+    FirstRunWizard,
+    SettingsTab,
+    KaraokeOutput,
+    DiagnosticsPanel,
+    AudioDevicePicker,
+    ModeIndicator,
+    TierChangeBanner,
+    SetlistPanel
+}
