@@ -1,0 +1,17 @@
+{
+    "extends": "../../tsconfig.base.json",
+    "compilerOptions": {
+        // Scripts are run via `node --experimental-strip-types`, not compiled to JS.
+        // This tsconfig exists so `tsc --noEmit -p ...` validates them and IDE tooling
+        // resolves their imports. composite: false because we don't emit.
+        "noEmit": true,
+        "composite": false,
+        "rootDir": "./scripts",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "lib": ["ES2022", "DOM"],
+        "types": ["node"]
+    },
+    "include": ["scripts/**/*.ts"],
+    "exclude": ["dist-electron", "node_modules"]
+}

@@ -116,10 +116,28 @@ npm run test:py
 npm run format:check
 npm run lint
 
-# Walking-skeleton demo (proves dual-mode end-to-end; ships in EP-02 STORY-02.4)
-npm run demo:walking-skeleton:fork
+# Walking-skeleton demo (proves dual-mode end-to-end; EP-02 STORY-02.4)
 npm run demo:walking-skeleton:sister
+npm run demo:walking-skeleton:fork  # requires FreeShow native deps (see below)
 ```
+
+## Verifying the architecture works (STORY-02.4)
+
+The walking-skeleton demos prove that LyriCue's `OutputAdapter` abstraction (ADR-16) actually composes — same `KaraokeOutput.svelte` component, same `DemoSyncEngine`, same `DEMO_TIMING_MAP`, same SyncFrame stream — through two different rendering backends.
+
+**Sister-mode demo** (`npm run demo:walking-skeleton:sister`):
+- Launches a standalone Electron app
+- Opens a karaoke output BrowserWindow (transparent + frameless + alwaysOnTop)
+- Walks the demo timing map at 60fps via `DemoSyncEngine`
+- Renders the karaoke sweep via `OwnWindowOutputAdapter`
+- No FreeShow native deps required — runs on a fresh checkout after `npm install + npm -w @lyricue/sister run build`
+
+**Fork-mode demo** (`npm run demo:walking-skeleton:fork`):
+- Launches the FreeShow fork (`apps/fork/freeshow/`) with the LyriCue extension surface patches
+- Same `DemoSyncEngine` + `DEMO_TIMING_MAP`, frames driven through `ForkOutputAdapter` and FreeShow's `OUTPUT` IPC channel
+- **Prerequisite:** FreeShow's native deps (NDI SDK, Blackmagic SDK, libltc-wrapper) must be installed via FreeShow's own developer setup at <https://freeshow.app/docs>. These are vendor SDKs the LyriCue build does not (and cannot) provide. If they're not installed, this demo fails at FreeShow's `electron-builder install-app-deps` step with native-module errors — use the sister-mode demo instead for architecture verification.
+
+The two demos consume identical `SyncFrame` streams. If the karaoke sweep effect looks visually identical in both windows, the OutputAdapter abstraction is proven sound.
 
 ## Architecture Documents
 

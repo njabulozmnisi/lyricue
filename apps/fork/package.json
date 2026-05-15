@@ -26,8 +26,8 @@
     },
     "scripts": {
         "build": "tsc -p tsconfig.json",
-        "dev": "echo 'fork-mode dev runner not yet wired (lands in EP-02 STORY-02.2)' && exit 0",
-        "demo:walking-skeleton": "echo 'walking-skeleton demo lands in EP-02 STORY-02.4' && exit 0",
+        "dev": "echo 'fork-mode dev runner not yet wired (post-MVP polish)' && exit 0",
+        "demo:walking-skeleton": "node --experimental-strip-types scripts/demo.ts",
         "freeshow:init": "git submodule update --init --recursive freeshow",
         "test": "vitest run"
     },

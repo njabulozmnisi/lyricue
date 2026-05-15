@@ -8,3 +8,5 @@
 
 export * from "./mock-output-adapter.js"
 export * from "./sync-frame-fixture.js"
+export * from "./demo-timing-map.js"
+export * from "./demo-runner.js"
