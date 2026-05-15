@@ -1,0 +1,4 @@
+export * from "./sidecar-protocol.js"
+export * from "./sidecar-controller.js"
+export * from "./node-sidecar-spawner.js"
+export * from "./sidecar-path-resolver.js"

@@ -43,6 +43,10 @@
         "./timing": {
             "types": "./dist/timing/index.d.ts",
             "import": "./dist/timing/index.js"
+        },
+        "./sidecar": {
+            "types": "./dist/sidecar/index.d.ts",
+            "import": "./dist/sidecar/index.js"
         }
     },
     "scripts": {
