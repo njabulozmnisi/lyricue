@@ -1,0 +1,28 @@
+{
+    "extends": "../../tsconfig.base.json",
+    "compilerOptions": {
+        // Emit into the preload/ subdirectory of dist-electron so this composite project
+        // owns its own output root (composite projects cannot share output dirs with
+        // other composite projects in the same chain).
+        "outDir": "./dist-electron/preload",
+        "rootDir": "./src/preload",
+
+        // The preload script must be CommonJS for Electron's preload context. We
+        // achieve this by:
+        //   1. Naming the source file `.cts` (TypeScript CommonJS extension)
+        //   2. Configuring node16 module resolution which respects .cts → .cjs emission
+        // The compiled file lands at dist-electron/preload/karaoke-output-preload.cjs
+        // and Electron loads it as CJS regardless of the workspace's "type": "module".
+        // This replaces an earlier approach that emitted .js + a package.json CJS marker.
+        "module": "node16",
+        "moduleResolution": "node16",
+        "verbatimModuleSyntax": false,
+        "isolatedModules": false,
+        "composite": true,
+        "tsBuildInfoFile": "./dist-electron/preload/.tsbuildinfo",
+        "lib": ["ES2022", "DOM"],
+        "types": ["node"]
+    },
+    "include": ["src/preload/**/*.cts", "src/preload/**/*.ts"],
+    "exclude": ["dist-electron", "node_modules"]
+}

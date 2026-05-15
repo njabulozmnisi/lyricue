@@ -9,7 +9,13 @@
         "types": ["node"]
     },
     "include": ["src/**/*"],
-    "exclude": ["dist-electron", "node_modules", "release", "**/*.test.ts"],
+    "exclude": [
+        "dist-electron",
+        "node_modules",
+        "release",
+        "**/*.test.ts",
+        "src/preload/**/*"
+    ],
     "references": [
         { "path": "../../packages/core" },
         { "path": "../../packages/ui" }
