@@ -47,6 +47,10 @@
         "./sidecar": {
             "types": "./dist/sidecar/index.d.ts",
             "import": "./dist/sidecar/index.js"
+        },
+        "./audio": {
+            "types": "./dist/audio/index.d.ts",
+            "import": "./dist/audio/index.js"
         }
     },
     "scripts": {

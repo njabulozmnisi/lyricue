@@ -6,5 +6,6 @@ import FirstRunWizard from "./FirstRunWizard.svelte"
 import SettingsTab from "./SettingsTab/SettingsTab.svelte"
 import KaraokeOutput from "./KaraokeOutput.svelte"
 import DiagnosticsPanel from "./DiagnosticsPanel.svelte"
+import AudioDevicePicker from "./AudioDevicePicker.svelte"
 
-export { FirstRunWizard, SettingsTab, KaraokeOutput, DiagnosticsPanel }
+export { FirstRunWizard, SettingsTab, KaraokeOutput, DiagnosticsPanel, AudioDevicePicker }
