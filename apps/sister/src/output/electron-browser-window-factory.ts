@@ -19,7 +19,7 @@ import { OWN_WINDOW_READY_EVENT, type BrowserWindowFactory, type ManagedWindow }
  * constructs a fresh `BrowserWindow` for the given options.
  */
 export function createElectronBrowserWindowFactory(): BrowserWindowFactory {
-    return async ({ bounds, rendererHtmlPath, preloadPath }) => {
+    return async ({ bounds, rendererHtmlPath, preloadPath, outputId }) => {
         const windowOpts: BrowserWindowConstructorOptions = {
             x: bounds.x,
             y: bounds.y,
@@ -111,11 +111,16 @@ export function createElectronBrowserWindowFactory(): BrowserWindowFactory {
         // replays it to handlers registered later via `onRendererReady`.
         const readyLatch = makeReadyLatch(win)
 
-        // Load the renderer HTML. Failures are surfaced via the ManagedWindow handle —
-        // we still return the window so the adapter can record the error and the user
-        // sees a clear "blank window" rather than a crash.
+        // Load the renderer HTML. We pass the outputId via the URL hash so the renderer
+        // bootstrap can resolve it via window.location.hash (D10 carry-forward from the
+        // M1-partial QA pass). The hash is the only out-of-band channel that's available
+        // before the preload's IPC bridge is wired and the first LC_LOAD_MAP envelope arrives.
+        //
+        // Failures are surfaced via the ManagedWindow handle — we still return the
+        // window so the adapter can record the error and the user sees a clear
+        // "blank window" rather than a crash.
         try {
-            await win.loadFile(rendererHtmlPath)
+            await win.loadFile(rendererHtmlPath, { hash: `out=${encodeURIComponent(outputId)}` })
         } catch (err) {
             console.error(`[lyricue:sister] Failed to load renderer at ${rendererHtmlPath}:`, err)
             // Don't destroy the window — the adapter expects a handle back. The window

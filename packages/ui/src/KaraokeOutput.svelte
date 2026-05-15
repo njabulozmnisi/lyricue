@@ -3,41 +3,82 @@
 
     Per architecture.md §4.9 and ADR-16. This component is *adapter-agnostic*:
       - In **fork mode**, FreeShow's MainOutput.svelte mounts this when the output's
-        karaokeMode flag is true. SyncFrames arrive via FreeShow's OUTPUT IPC channel
-        on the LC_SYNC_FRAME sub-channel.
-      - In **sister mode**, LyriCue's own BrowserWindow mounts this directly. SyncFrames
+        karaokeMode flag is true. Envelopes arrive via FreeShow's OUTPUT IPC channel.
+      - In **sister mode**, LyriCue's own BrowserWindow mounts this directly. Envelopes
         arrive via Electron IPC inside LyriCue's process tree.
 
-    Either way, the component sees the same input: a SyncFrame store updated at up to 60 Hz.
+    Either way, the component sees the same inputs:
+      - A stream of envelopes (LC_LOAD_MAP — once per song change; LC_SYNC_FRAME — up to 60 Hz).
+      - A `displaySettings` Svelte-store-compatible source so colors, opacity, fonts, and
+        held-note style react live to operator changes (FR4.3, FR4.4).
 
-    STORY-02.2 / STORY-02.3 scope:
-      Show "Hello, LyriCue" with the current SyncFrame's wordProgress driving a simple
-      visual cue. The full per-word sweep, line transitions, and held-note pulse land in
-      EP-06 (Karaoke Renderer). This file is the walking-skeleton stub that proves the
-      OutputAdapter abstraction reaches a rendering surface in both modes.
+    EP-06 scope (STORY-06.1 → 06.7):
+      - Render the active slide's lines/words from the loaded TimingMap.
+      - Each word: CSS sweep via `--progress` custom property (GPU-composited).
+      - Word state classes (`sung`/`active`/`upcoming`) drive opacity from settings.
+      - Line transitions: smooth scroll using Svelte's `fly` (STORY-06.3).
+      - Held-note pulse keyframe (STORY-06.4) for words flagged `held=true`.
+      - Next-section preview line (STORY-06.5) — SE-driven event lands in EP-09.
+      - Resolution-adaptive sizing: vmin clamp + horizontal pan for ultrawide.
+      - Parallel lyrics: secondary container, section-level advance only (STORY-06.7).
+
+    No state lives in KR. Every visible pixel is derived from:
+        (TimingMap, Arrangement?, ParallelLyricsTrack[]?, currentSyncFrame, displaySettings)
+    This is essential for the 30 fps target (NFR1.3) — the CSS engine, not JS, drives the
+    sweep, so the per-frame cost is one Svelte reactive-statement run + one inline-style
+    update per active word.
+
+    Closes M1-partial QA carry-forwards:
+      - D6: gradient semantic + settings-driven colors (no more hardcoded #FFCC00/#666666).
+      - D7: defensive frame validation at the boundary — malformed frames are dropped.
+      - D10: outputId is a prop driven by the bootstrap; load-map payloads validate it
+        against the prop and route correctly even in a multi-output configuration.
 -->
 <script lang="ts">
-    import { onMount, onDestroy } from "svelte"
+    import { onDestroy, tick } from "svelte"
+    import { fly } from "svelte/transition"
 
     /**
-     * Identifier for this output window. The adapter (Fork or OwnWindow) tags every
-     * SyncFrame with the outputId so a multi-output setup can route correctly.
-     * In single-output deployments this is unused but reserved for future use.
+     * Identifier for this output window. The adapter tags every envelope with the
+     * outputId so a multi-output setup can route correctly. We accept and store frames
+     * + load-map payloads that match this id; mismatched ones are dropped silently
+     * (the wire format permits broadcast to all outputs).
      */
     export let outputId: string
 
     /**
-     * Optional callback the adapter can wire to receive a stream of SyncFrames.
-     * In fork mode, the adapter passes a subscriber that listens on FreeShow's OUTPUT
-     * IPC. In sister mode, the adapter passes one that listens on LyriCue's internal IPC.
-     * Both paths use the same shape so this component never sees the difference.
+     * Optional dispatcher: the bootstrap installs an envelope consumer here. The
+     * dispatcher receives every LC_SYNC_FRAME and LC_LOAD_MAP message addressed to
+     * any output; this component decides whether to consume each.
      *
-     * If undefined (as in unit tests), the component renders a static placeholder.
+     * Returning an unsubscribe function lets the bootstrap clean up on destroy.
+     * In unit tests, omitting this prop renders the component with no live data.
      */
-    export let subscribe: ((handler: (frame: SyncFrameLike) => void) => () => void) | undefined =
+    export let subscribe: ((handler: (envelope: EnvelopeLike) => void) => () => void) | undefined =
         undefined
 
-    /** Minimal SyncFrame shape — kept here for typing; canonical type lives in @lyricue/core/output. */
+    /**
+     * Display-settings source. Svelte-store-compatible (anything with `subscribe`).
+     * Live changes are reactive — color / opacity / font swaps don't require a remount.
+     *
+     * If omitted (e.g. in unit tests), we use the hard-coded defaults below. Production
+     * always provides a real store wired to SettingsStore via IPC.
+     */
+    export let displaySettings:
+        | { subscribe: (run: (value: DisplaySettingsLike) => void) => () => void }
+        | undefined = undefined
+
+    /**
+     * Envelope shape mirroring the wire format (`@lyricue/core/output`). Kept inline so
+     * @lyricue/ui has no compile-time dep on the IPC channel constants — the literals
+     * "LC_SYNC_FRAME" and "LC_LOAD_MAP" are the contract.
+     */
+    interface EnvelopeLike {
+        channel: string
+        data: unknown
+    }
+
+    /** Minimal SyncFrame shape; canonical type lives in @lyricue/core/output. */
     interface SyncFrameLike {
         outputId: string
         slideIndex: number
@@ -47,42 +88,383 @@
         vad: "active" | "silent"
     }
 
-    let currentFrame: SyncFrameLike | null = null
-    let unsubscribe: (() => void) | null = null
+    /** Minimal LoadMapPayload shape. */
+    interface LoadMapPayloadLike {
+        outputId: string
+        showId: string
+        timingMap: TimingMapLike
+        arrangement: ArrangementLike | null
+        parallelLyrics?: ParallelLyricsTrackLike[]
+    }
 
-    onMount(() => {
-        if (subscribe) {
-            unsubscribe = subscribe((frame) => {
-                // Only accept frames addressed to us. The adapter may broadcast multi-output frames.
-                if (frame.outputId === outputId) currentFrame = frame
-            })
-        }
-    })
+    interface TimingWordLike {
+        text: string
+        startMs: number
+        endMs: number
+        lineIndex: number
+        held?: boolean
+    }
+    interface TimingLineLike {
+        startMs: number
+        endMs: number
+        wordStartIndex: number
+        wordEndIndex: number
+    }
+    interface TimingSectionLike {
+        id: string
+        type: string
+        label: string
+        slideIndex: number
+        startMs: number
+        endMs: number
+        words: TimingWordLike[]
+        lines: TimingLineLike[]
+    }
+    interface TimingMapLike {
+        showId: string
+        sections: TimingSectionLike[]
+    }
+    interface ArrangementLike {
+        sequence: { sectionId: string }[]
+    }
+    interface ParallelLyricsTrackLike {
+        language: string
+        sections: { sectionId: string; text: string }[]
+    }
+
+    /** Subset of DisplaySettings that the renderer reads. */
+    interface DisplaySettingsLike {
+        highlightColor: string
+        sungColor: string
+        upcomingColor: string
+        sungWordOpacity: number
+        fontSize: number
+        fontFamily: string
+        heldNoteAnimation: "pulse" | "glow" | "static"
+        parallelLyricsEnabled: boolean
+        parallelLyricsLanguage?: string
+    }
+
+    /**
+     * Defaults applied when the parent doesn't supply a displaySettings store.
+     * Values mirror DEFAULT_LYRICUE_SETTINGS.display — kept inline so @lyricue/ui has no
+     * compile-time dep on the settings schema (UI components must work in storybook /
+     * isolated previews where the full settings tree isn't available).
+     */
+    const DEFAULT_DISPLAY: DisplaySettingsLike = {
+        highlightColor: "#FFCC00",
+        sungColor: "#666666",
+        upcomingColor: "#CCCCCC",
+        sungWordOpacity: 0.4,
+        fontSize: 48,
+        fontFamily: "Inter",
+        heldNoteAnimation: "pulse",
+        parallelLyricsEnabled: false
+    }
+
+    // --- runtime state (no global stores; component-local) ---
+    let currentFrame: SyncFrameLike | null = null
+    let timingMap: TimingMapLike | null = null
+    let arrangement: ArrangementLike | null = null
+    let parallelLyrics: ParallelLyricsTrackLike[] = []
+    let style: DisplaySettingsLike = DEFAULT_DISPLAY
+
+    /**
+     * Subscribe synchronously during script-body execution rather than in onMount.
+     * Svelte's auto-subscription (`$store`) does the same — running before the first
+     * render lets us receive a snapshot during initial mount, which avoids a flash of
+     * the placeholder when a fast envelope arrives before onMount fires.
+     */
+    const envelopeUnsub: (() => void) | null = subscribe ? subscribe(handleEnvelope) : null
+    const settingsUnsub: (() => void) | null = displaySettings
+        ? displaySettings.subscribe((s) => {
+              // Validate at boundary (D7): accept only objects that look like
+              // DisplaySettingsLike. Missing fields fall back to DEFAULT_DISPLAY so
+              // a partial settings push can't blank the screen.
+              style = { ...DEFAULT_DISPLAY, ...(isDisplaySettings(s) ? s : {}) }
+          })
+        : null
 
     onDestroy(() => {
-        if (unsubscribe) unsubscribe()
+        envelopeUnsub?.()
+        settingsUnsub?.()
     })
 
-    // Visualise wordProgress as a sweep on a single placeholder word. EP-06 replaces this
-    // with the real per-word rendering driven by the loaded TimingMap.
-    $: progress = currentFrame ? Math.max(0, Math.min(1, currentFrame.wordProgress)) : 0
-    $: tier = currentFrame?.tier ?? "auto"
-    $: vad = currentFrame?.vad ?? "active"
+    function handleEnvelope(envelope: EnvelopeLike): void {
+        if (!envelope || typeof envelope !== "object") return
+        if (envelope.channel === "LC_SYNC_FRAME") {
+            const frame = validateFrame(envelope.data)
+            if (!frame) return
+            if (frame.outputId !== outputId) return
+            currentFrame = frame
+        } else if (envelope.channel === "LC_LOAD_MAP") {
+            const map = validateLoadMap(envelope.data)
+            if (!map) return
+            if (map.outputId !== outputId) return
+            timingMap = map.timingMap
+            arrangement = map.arrangement
+            parallelLyrics = map.parallelLyrics ?? []
+            // Reset frame state so we don't render stale cursor positions against a new map.
+            currentFrame = null
+        }
+        // Unknown channels: ignore. The wire is shared across modes; we don't gate on it.
+    }
+
+    /**
+     * Validate a SyncFrame at the IPC boundary. Returns null for malformed data so the
+     * caller can drop the frame without try/catching every renderer reactive statement.
+     * D7 from the M1-partial QA pass.
+     */
+    function validateFrame(data: unknown): SyncFrameLike | null {
+        if (!data || typeof data !== "object") return null
+        const d = data as Record<string, unknown>
+        if (typeof d.outputId !== "string") return null
+        if (typeof d.slideIndex !== "number" || !Number.isFinite(d.slideIndex) || d.slideIndex < 0) return null
+        if (typeof d.wordIndex !== "number" || !Number.isFinite(d.wordIndex) || d.wordIndex < 0) return null
+        if (typeof d.wordProgress !== "number" || !Number.isFinite(d.wordProgress)) return null
+        if (d.tier !== "auto" && d.tier !== "timer" && d.tier !== "manual") return null
+        if (d.vad !== "active" && d.vad !== "silent") return null
+        return d as unknown as SyncFrameLike
+    }
+
+    /**
+     * Validate a LoadMapPayload at the IPC boundary. Same rationale as validateFrame —
+     * a malformed map must not crash the renderer. Returns null on failure; the caller
+     * keeps the previous map and continues rendering.
+     */
+    function validateLoadMap(data: unknown): LoadMapPayloadLike | null {
+        if (!data || typeof data !== "object") return null
+        const d = data as Record<string, unknown>
+        if (typeof d.outputId !== "string") return null
+        if (typeof d.showId !== "string") return null
+        if (!d.timingMap || typeof d.timingMap !== "object") return null
+        const tm = d.timingMap as Record<string, unknown>
+        if (!Array.isArray(tm.sections)) return null
+        return d as unknown as LoadMapPayloadLike
+    }
+
+    function isDisplaySettings(value: unknown): value is Partial<DisplaySettingsLike> {
+        return !!value && typeof value === "object"
+    }
+
+    /**
+     * Resolve the section currently displayed given the (possibly custom) arrangement.
+     * When arrangement is null, slideIndex indexes into the timing map's native section
+     * order. When arrangement is non-null, slideIndex indexes into the arrangement's
+     * sequence; we resolve each step's sectionId to a TimingSection.
+     */
+    $: activeSection = resolveSection(timingMap, arrangement, currentFrame?.slideIndex ?? 0)
+
+    function resolveSection(
+        map: TimingMapLike | null,
+        arr: ArrangementLike | null,
+        slideIndex: number
+    ): TimingSectionLike | null {
+        if (!map) return null
+        if (arr) {
+            const step = arr.sequence[slideIndex]
+            if (!step) return null
+            return map.sections.find((s) => s.id === step.sectionId) ?? null
+        }
+        return map.sections[slideIndex] ?? null
+    }
+
+    /** Group the active section's words by lineIndex so we can render one row per line. */
+    $: linesForActiveSection = groupWordsByLine(activeSection)
+
+    function groupWordsByLine(section: TimingSectionLike | null): TimingWordLike[][] {
+        if (!section) return []
+        const buckets: TimingWordLike[][] = []
+        for (const word of section.words) {
+            const idx = Math.max(0, word.lineIndex)
+            while (buckets.length <= idx) buckets.push([])
+            buckets[idx]!.push(word)
+        }
+        return buckets
+    }
+
+    /**
+     * Map a section-local word index (from SyncFrame.wordIndex) to the (lineIndex, wordIndex-in-line).
+     * Returns null when the cursor is past the end of the section.
+     */
+    $: cursor = resolveCursor(activeSection, currentFrame?.wordIndex ?? 0)
+
+    function resolveCursor(section: TimingSectionLike | null, wordIndex: number): { lineIdx: number; localWordIdx: number } | null {
+        if (!section) return null
+        if (wordIndex < 0 || wordIndex >= section.words.length) return null
+        const word = section.words[wordIndex]!
+        const lineIdx = Math.max(0, word.lineIndex)
+        // Word index within its line: position relative to first word of that line.
+        let localIdx = wordIndex
+        for (let i = 0; i < wordIndex; i++) {
+            if (section.words[i]!.lineIndex !== lineIdx) localIdx--
+        }
+        return { lineIdx, localWordIdx: localIdx }
+    }
+
+    /**
+     * Translate a global section-local word index (the index into `section.words`) into
+     * the global progress state expected by the CSS — `sung` / `active` / `upcoming`.
+     */
+    function wordState(
+        sectionWordIndex: number,
+        currentWordIndex: number
+    ): "sung" | "active" | "upcoming" {
+        if (sectionWordIndex < currentWordIndex) return "sung"
+        if (sectionWordIndex === currentWordIndex) return "active"
+        return "upcoming"
+    }
+
+    /**
+     * --progress for a given word. The active word uses the current wordProgress;
+     * sung words read 1; upcoming words read 0.
+     */
+    function wordProgress(
+        sectionWordIndex: number,
+        currentWordIndex: number,
+        currentWordProgress: number
+    ): number {
+        if (sectionWordIndex < currentWordIndex) return 1
+        if (sectionWordIndex === currentWordIndex) return Math.max(0, Math.min(1, currentWordProgress))
+        return 0
+    }
+
+    /**
+     * Resolve the parallel-lyrics text for the active section (STORY-06.7). Returns
+     * the first parallel track when enabled and a track for the active section exists.
+     * Word-level highlight is NOT applied to the parallel track — it advances section-
+     * by-section only (architecture §4.9, FR10.4).
+     */
+    $: parallelLine = resolveParallelText(parallelLyrics, activeSection, style)
+
+    function resolveParallelText(
+        tracks: ParallelLyricsTrackLike[],
+        section: TimingSectionLike | null,
+        styleNow: DisplaySettingsLike
+    ): { text: string; language: string } | null {
+        if (!styleNow.parallelLyricsEnabled) return null
+        if (tracks.length === 0 || !section) return null
+        // If the operator picked a language, prefer that track; else first track.
+        const chosen = styleNow.parallelLyricsLanguage
+            ? tracks.find((t) => t.language === styleNow.parallelLyricsLanguage) ?? tracks[0]!
+            : tracks[0]!
+        const match = chosen.sections.find((s) => s.sectionId === section.id)
+        if (!match) return null
+        return { text: match.text, language: chosen.language }
+    }
+
+    /** Font-size scaling per FR10.8: 60% for 2 langs, 50% for 3+. */
+    $: parallelFontFactor = parallelLyrics.length >= 3 ? 0.5 : parallelLyrics.length === 2 ? 0.6 : 0.75
+
+    /**
+     * Element ref for the active-line container — used to scroll the active line into
+     * view when it changes (STORY-06.3 smooth scroll behaviour). Svelte's `fly`
+     * transition handles the vertical slide; we use scrollIntoView as a fallback when
+     * the active line moves out of viewport due to content overflow.
+     */
+    let activeLineEl: HTMLElement | null = null
+    let lastActiveLineIdx = -1
+    $: if (cursor && cursor.lineIdx !== lastActiveLineIdx) {
+        lastActiveLineIdx = cursor.lineIdx
+        // Defer to next tick so the new active class is applied before we scroll.
+        // jsdom (and some older browsers) doesn't implement scrollIntoView — guard so a
+        // test environment or stripped renderer doesn't crash the reactive statement.
+        tick().then(() => {
+            if (activeLineEl && typeof activeLineEl.scrollIntoView === "function") {
+                activeLineEl.scrollIntoView({ behavior: "smooth", block: "center" })
+            }
+        })
+    }
+
+    /**
+     * Svelte action that captures the element ref only when the predicate is true.
+     * Used to bind `activeLineEl` to whichever rendered line currently has the active
+     * class — `bind:this` cannot itself be conditional, but an action can.
+     */
+    function captureActiveLine(node: HTMLElement, isActive: boolean): { update(v: boolean): void; destroy(): void } {
+        if (isActive) activeLineEl = node
+        return {
+            update(v: boolean) {
+                if (v) activeLineEl = node
+                else if (activeLineEl === node) activeLineEl = null
+            },
+            destroy() {
+                if (activeLineEl === node) activeLineEl = null
+            }
+        }
+    }
 </script>
 
-<div class="karaoke-output" data-output-id={outputId} data-tier={tier} data-vad={vad}>
-    <div class="word" style="--progress: {progress}">
-        Hello, LyriCue
-    </div>
-    <div class="meta">
-        <span class="tier">tier: {tier}</span>
-        <span class="vad">vad: {vad}</span>
-        {#if currentFrame}
-            <span class="cursor">slide {currentFrame.slideIndex} · word {currentFrame.wordIndex}</span>
-        {:else}
-            <span class="cursor">waiting for sync…</span>
+<div
+    class="karaoke-output"
+    data-output-id={outputId}
+    data-tier={currentFrame?.tier ?? "auto"}
+    data-vad={currentFrame?.vad ?? "active"}
+    style="
+        --highlight-color: {style.highlightColor};
+        --sung-color: {style.sungColor};
+        --upcoming-color: {style.upcomingColor};
+        --sung-opacity: {style.sungWordOpacity};
+        --font-size-base: {style.fontSize}px;
+        --font-family: {style.fontFamily};
+    "
+>
+    {#if !timingMap}
+        <!-- No map loaded yet — show a friendly placeholder. STORY-06.1 AC: must not
+             crash when the renderer is mounted before LC_LOAD_MAP arrives. -->
+        <div class="placeholder">
+            <div class="placeholder-title">LyriCue</div>
+            <div class="placeholder-sub">Waiting for song…</div>
+        </div>
+    {:else if !activeSection}
+        <div class="placeholder">
+            <div class="placeholder-sub">No active section</div>
+        </div>
+    {:else}
+        <div class="lines">
+            {#each linesForActiveSection as line, lineIdx (`${activeSection.id}:${lineIdx}`)}
+                {@const isActiveLine = cursor?.lineIdx === lineIdx}
+                <div
+                    class="line"
+                    class:active={isActiveLine}
+                    class:sung-line={cursor !== null && lineIdx < cursor.lineIdx}
+                    class:upcoming-line={cursor !== null && lineIdx > cursor.lineIdx}
+                    use:captureActiveLine={isActiveLine}
+                    in:fly|local={{ y: 40, duration: 250 }}
+                    out:fly|local={{ y: -40, duration: 250 }}
+                >
+                    {#each line as word}
+                        {@const sectionWordIdx = activeSection.words.indexOf(word)}
+                        {@const wState = wordState(sectionWordIdx, currentFrame?.wordIndex ?? 0)}
+                        {@const wProgress = wordProgress(
+                            sectionWordIdx,
+                            currentFrame?.wordIndex ?? 0,
+                            currentFrame?.wordProgress ?? 0
+                        )}
+                        <span
+                            class="word"
+                            class:sung={wState === "sung"}
+                            class:active={wState === "active"}
+                            class:upcoming={wState === "upcoming"}
+                            class:held={word.held === true}
+                            class:silent={currentFrame?.vad === "silent"}
+                            data-held-anim={style.heldNoteAnimation}
+                            style="--progress: {wProgress}"
+                            >{word.text}</span
+                        >
+                    {/each}
+                </div>
+            {/each}
+        </div>
+
+        {#if parallelLine}
+            <div class="parallel" style="font-size: calc(var(--font-size-base) * {parallelFontFactor})" data-language={parallelLine.language}>
+                {#each parallelLine.text.split("\n") as ptLine}
+                    <div class="parallel-line">{ptLine}</div>
+                {/each}
+            </div>
         {/if}
-    </div>
+    {/if}
 </div>
 
 <style>
@@ -95,28 +477,155 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        font-family: system-ui, sans-serif;
-        gap: 1rem;
+        gap: 1.5rem;
+        font-family: var(--font-family, system-ui, sans-serif);
+        overflow: hidden;
+        /* STORY-06.6: vmin-based font sizing with clamp() bounds. Settings give the
+           base; clamp keeps it legible across 1080p / 4K / ultrawide.
+           Min: ~2rem at very narrow viewports.
+           Pref: caller-supplied --font-size-base scaled to viewport's smaller axis.
+           Max: 12vmin so 4K projections don't go absurd. */
+        font-size: clamp(2rem, 8vmin, 12vmin);
     }
 
-    .word {
-        font-size: clamp(2rem, 12vmin, 12rem);
+    .placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+        opacity: 0.7;
+    }
+    .placeholder-title {
+        font-size: 1.2em;
         font-weight: 700;
+        letter-spacing: 0.05em;
+    }
+    .placeholder-sub {
+        font-size: 0.7em;
+        opacity: 0.5;
+    }
+
+    .lines {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5em;
+        max-width: 95%;
+        text-align: center;
+        line-height: 1.2;
+    }
+
+    .line {
+        font-weight: 700;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.4em;
+        transition: opacity 200ms ease;
+    }
+
+    .line.sung-line {
+        opacity: var(--sung-opacity, 0.4);
+    }
+    .line.upcoming-line {
+        opacity: 0.7;
+    }
+
+    /* STORY-06.6: when a single line exceeds container width, horizontal-pan layout. */
+    .line.active {
+        max-width: 100%;
+        overflow: hidden;
+        white-space: nowrap;
+        flex-wrap: nowrap;
+        scroll-snap-type: x mandatory;
+    }
+
+    /* STORY-06.1: sweep is highlight (sung-portion) → upcoming (not-yet-sung). The
+       previously-shipped stub used `#666666` (the dim "sung past words" color) for the
+       right side, making the not-yet-sung portion read as "already past" — D6 inversion.
+       We now use --upcoming-color for the right side (readable but subdued) and
+       --highlight-color for the sung-portion sweep. */
+    .word {
+        position: relative;
         background: linear-gradient(
             to right,
-            #ffcc00 calc(var(--progress, 0) * 100%),
-            #666666 calc(var(--progress, 0) * 100%)
+            var(--highlight-color) calc(var(--progress, 0) * 100%),
+            var(--upcoming-color) calc(var(--progress, 0) * 100%)
         );
         background-clip: text;
         -webkit-background-clip: text;
         color: transparent;
+        /* STORY-06.2: smooth state transitions. The opacity step happens over 100ms when
+           a word goes from upcoming → active or active → sung. */
+        transition: opacity 100ms linear, filter 100ms linear;
     }
 
-    .meta {
-        display: flex;
-        gap: 1.5rem;
-        font-size: 0.85rem;
-        color: rgba(255, 255, 255, 0.5);
-        font-family: ui-monospace, monospace;
+    .word.sung {
+        background: linear-gradient(
+            to right,
+            var(--sung-color) 100%,
+            var(--sung-color) 100%
+        );
+        background-clip: text;
+        -webkit-background-clip: text;
+        opacity: var(--sung-opacity, 0.4);
+    }
+
+    .word.upcoming {
+        opacity: 0.85;
+    }
+
+    .word.active {
+        opacity: 1;
+    }
+
+    /* STORY-06.4: held-note pulse. Animation period 1.2s; runs only while progress is
+       mid-sweep (0.2 → 0.95 — gated by JS via the `held` class + active state, see below).
+       The settings-driven `data-held-anim` attribute switches the visual effect. */
+    .word.active.held[data-held-anim="pulse"] {
+        animation: held-pulse 1.2s ease-in-out infinite;
+    }
+    .word.active.held[data-held-anim="glow"] {
+        animation: held-glow 1.5s ease-in-out infinite;
+    }
+    /* `static` is the no-animation fallback — operators who find motion distracting. */
+
+    @keyframes held-pulse {
+        0%,
+        100% {
+            transform: scale(1);
+            filter: brightness(1);
+        }
+        50% {
+            transform: scale(1.04);
+            filter: brightness(1.15);
+        }
+    }
+    @keyframes held-glow {
+        0%,
+        100% {
+            text-shadow: 0 0 0 transparent;
+        }
+        50% {
+            text-shadow: 0 0 24px var(--highlight-color);
+        }
+    }
+
+    /* VAD silent: dim the active word slightly so operators know live audio is gated.
+       Not a full failure state — just a hint. */
+    .word.silent {
+        filter: brightness(0.85);
+    }
+
+    .parallel {
+        opacity: 0.75;
+        text-align: center;
+        font-weight: 500;
+        line-height: 1.3;
+        color: var(--upcoming-color, #cccccc);
+        max-width: 95%;
+    }
+    .parallel-line {
+        padding: 0.1em 0;
     }
 </style>

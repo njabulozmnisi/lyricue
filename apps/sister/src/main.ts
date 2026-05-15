@@ -35,9 +35,10 @@
  * operator but stay useful for headless verification and CI.
  */
 
-import { app } from "electron"
+import { app, BrowserWindow } from "electron"
+import { mkdirSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
-import { dirname, resolve } from "node:path"
+import { dirname, resolve, join } from "node:path"
 import { DEPLOYMENT_MODE } from "@lyricue/core/types"
 import { DEMO_TIMING_MAP, DemoSyncEngine } from "@lyricue/core/output/test-utils"
 import {
@@ -141,6 +142,14 @@ async function startSisterMode(): Promise<void> {
         })
         demoEngine.start()
         log("DEMO mode: walking-skeleton demo engine started")
+
+        // EP-06 evidence capture (env-gated). LC_CAPTURE_EVIDENCE=1 captures four
+        // screenshots at predictable cursor offsets and quits. The capture path is
+        // documented in docs/qa-reports/evidence/ep06-karaoke-renderer-2026-05-15/
+        // and committed alongside the EP-06 QA notes.
+        if (process.env.LC_CAPTURE_EVIDENCE === "1") {
+            void captureEp06Evidence()
+        }
     } else {
         log("non-demo mode: adapter idle, awaiting Sync Engine wiring (EP-09)")
     }
@@ -180,6 +189,46 @@ function formatDiagnostics(s: DiagnosticsSnapshot): string {
         `rss=${rssMb}MB heap=${heapMb}MB uptime=${s.uptimeSeconds.toFixed(0)}s ` +
         `lastError=${s.adapter.lastError?.message ?? "none"}`
     )
+}
+
+async function captureEp06Evidence(): Promise<void> {
+    const evidenceDir = resolve(
+        "docs",
+        "qa-reports",
+        "evidence",
+        "ep06-karaoke-renderer-2026-05-15"
+    )
+    mkdirSync(evidenceDir, { recursive: true })
+
+    /** Cursor offsets selected so each screenshot captures a distinct rendered state.
+     *  DEMO_TIMING_MAP plays at 500ms per word × 12 words = 6s total before looping.
+     *  We sample at four offsets that exercise: first-word sweep, mid-section words,
+     *  late-section words, and the post-loop restart. */
+    const steps: { label: string; waitMs: number }[] = [
+        { label: "01-first-word-active", waitMs: 600 },
+        { label: "02-mid-section", waitMs: 1000 },
+        { label: "03-late-section", waitMs: 2500 },
+        { label: "04-post-loop-restart", waitMs: 1500 }
+    ]
+
+    for (const step of steps) {
+        await new Promise<void>((r) => setTimeout(r, step.waitMs))
+        const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed())
+        if (!win) {
+            log(`[capture] no window for step ${step.label}; aborting`)
+            return
+        }
+        try {
+            const image = await win.webContents.capturePage()
+            const path = join(evidenceDir, `${step.label}.png`)
+            writeFileSync(path, image.toPNG())
+            log(`[capture] wrote ${path}`)
+        } catch (err) {
+            log(`[capture] step ${step.label} failed: ${(err as Error).message}`)
+        }
+    }
+    log("[capture] evidence run complete; quitting")
+    setTimeout(() => app.quit(), 500)
 }
 
 function stopTimers(): void {
