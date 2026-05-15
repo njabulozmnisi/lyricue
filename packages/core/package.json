@@ -39,6 +39,10 @@
         "./diagnostics": {
             "types": "./dist/diagnostics/index.d.ts",
             "import": "./dist/diagnostics/index.js"
+        },
+        "./timing": {
+            "types": "./dist/timing/index.d.ts",
+            "import": "./dist/timing/index.js"
         }
     },
     "scripts": {

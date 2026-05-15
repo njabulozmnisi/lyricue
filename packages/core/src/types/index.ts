@@ -6,6 +6,17 @@ export * from "./identity.js"
 export * from "./library-config.js"
 export * from "./settings.js"
 export * from "./timing-map.js"
+export {
+    validateTimingMap,
+    validateArrangement,
+    validateArrangements,
+    validateParallelLyricsTrack,
+    timingMapSchema,
+    arrangementSchema,
+    parallelLyricsTrackSchema,
+    type ValidationError,
+    type Result
+} from "./timing-map-schema.js"
 
 /**
  * Deployment-mode discriminator. Decides which OutputAdapter is the default at runtime
