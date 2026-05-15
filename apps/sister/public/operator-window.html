@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <!-- Same CSP as the karaoke output (closes M1-close D12). -->
+        <meta
+            http-equiv="Content-Security-Policy"
+            content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; base-uri 'self'; form-action 'none'; object-src 'none';"
+        />
+        <title>LyriCue · Operator</title>
+        <style>
+            html,
+            body {
+                margin: 0;
+                padding: 0;
+                height: 100%;
+                background: #050505;
+                color: #e0e0e0;
+                font-family: system-ui, sans-serif;
+                overflow: hidden;
+            }
+            #root {
+                height: 100%;
+                width: 100%;
+                display: flex;
+                flex-direction: column;
+                gap: 0.85rem;
+                padding: 0.85rem;
+                box-sizing: border-box;
+                overflow-y: auto;
+            }
+            .banner-slot {
+                /* TierChangeBanner mounts here; reserved height collapses when no banner. */
+                min-height: 0;
+            }
+        </style>
+        <link rel="stylesheet" href="./build/operator-window.bundle.css" />
+    </head>
+    <body>
+        <div id="root"></div>
+        <script src="./build/operator-window.bundle.js"></script>
+    </body>
+</html>

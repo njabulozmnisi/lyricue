@@ -37,6 +37,7 @@
 <script lang="ts">
     import { onDestroy, tick } from "svelte"
     import { fly } from "svelte/transition"
+    import { wordEaseMs } from "./karaoke-easing.js"
 
     /**
      * Identifier for this output window. The adapter tags every envelope with the
@@ -357,6 +358,21 @@
     $: parallelFontFactor = parallelLyrics.length >= 3 ? 0.5 : parallelLyrics.length === 2 ? 0.6 : 0.75
 
     /**
+     * Resolved easing duration for the currently-active word. Recomputed whenever the
+     * cursor moves to a new word. Pushed through as `--word-ease-ms` on the karaoke-
+     * output root — the CSS reads it for the transition durations on .word. The
+     * computation itself lives in `./karaoke-easing.ts` so it's unit-testable in
+     * plain Node.
+     */
+    $: activeWordEaseMs = (() => {
+        if (!activeSection || !currentFrame) return 80
+        const idx = currentFrame.wordIndex
+        const word = activeSection.words[idx]
+        if (!word) return 80
+        return wordEaseMs(word.endMs - word.startMs)
+    })()
+
+    /**
      * Element ref for the active-line container — used to scroll the active line into
      * view when it changes (STORY-06.3 smooth scroll behaviour). Svelte's `fly`
      * transition handles the vertical slide; we use scrollIntoView as a fallback when
@@ -407,6 +423,7 @@
         --sung-opacity: {style.sungWordOpacity};
         --font-size-base: {style.fontSize}px;
         --font-family: {style.fontFamily};
+        --word-ease-ms: {activeWordEaseMs}ms;
     "
 >
     {#if !timingMap}
@@ -544,7 +561,14 @@
        previously-shipped stub used `#666666` (the dim "sung past words" color) for the
        right side, making the not-yet-sung portion read as "already past" — D6 inversion.
        We now use --upcoming-color for the right side (readable but subdued) and
-       --highlight-color for the sung-portion sweep. */
+       --highlight-color for the sung-portion sweep.
+
+       Tempo-adaptive easing (operator feedback 2026-05-15): without a CSS transition,
+       the 16ms per-tick --progress updates render as a hard stair-step. We add an
+       `ease-out` transition driven by `--word-ease-ms` — computed per active word from
+       its musical duration (see wordEaseMs in the script). Short staccato words → 50ms;
+       normal words → 80ms; long held notes → 200ms. This unifies the gradient sweep
+       AND the opacity/colour handoff so word-to-word transitions feel like one motion. */
     .word {
         position: relative;
         background: linear-gradient(
@@ -555,9 +579,10 @@
         background-clip: text;
         -webkit-background-clip: text;
         color: transparent;
-        /* STORY-06.2: smooth state transitions. The opacity step happens over 100ms when
-           a word goes from upcoming → active or active → sung. */
-        transition: opacity 100ms linear, filter 100ms linear;
+        transition:
+            background var(--word-ease-ms, 80ms) ease-out,
+            opacity var(--word-ease-ms, 80ms) ease-out,
+            filter var(--word-ease-ms, 80ms) ease-out;
     }
 
     .word.sung {

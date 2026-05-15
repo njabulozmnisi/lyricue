@@ -488,6 +488,54 @@ describe("KaraokeOutput", () => {
         })
     })
 
+    describe("tempo-adaptive word easing (--word-ease-ms)", () => {
+        it("sets --word-ease-ms on the root container based on the active word's duration", async () => {
+            const cmp = new KaraokeOutput({
+                target,
+                props: { outputId: "out-1", subscribe: bus.subscribe }
+            })
+            bus.push({ channel: "LC_LOAD_MAP", data: makeLoadMap("out-1") })
+            // "Amazing" is the first word (0-1000ms duration) → 140ms ease per wordEaseMs.
+            bus.push({
+                channel: "LC_SYNC_FRAME",
+                data: makeFrame({ wordIndex: 0, wordProgress: 0.5 })
+            })
+            await Promise.resolve()
+            const root = target.querySelector(".karaoke-output") as HTMLElement
+            expect(root.style.getPropertyValue("--word-ease-ms")).toBe("140ms")
+            cmp.$destroy()
+        })
+
+        it("updates --word-ease-ms when the cursor moves to a word with different duration", async () => {
+            const cmp = new KaraokeOutput({
+                target,
+                props: { outputId: "out-1", subscribe: bus.subscribe }
+            })
+            bus.push({ channel: "LC_LOAD_MAP", data: makeLoadMap("out-1") })
+            // Move to "how" (wordIndex=2, 500ms duration → 80ms ease).
+            bus.push({
+                channel: "LC_SYNC_FRAME",
+                data: makeFrame({ wordIndex: 2, wordProgress: 0.5 })
+            })
+            await Promise.resolve()
+            const root = target.querySelector(".karaoke-output") as HTMLElement
+            expect(root.style.getPropertyValue("--word-ease-ms")).toBe("80ms")
+            cmp.$destroy()
+        })
+
+        it("falls back to 80ms baseline before any frame arrives", async () => {
+            const cmp = new KaraokeOutput({
+                target,
+                props: { outputId: "out-1", subscribe: bus.subscribe }
+            })
+            bus.push({ channel: "LC_LOAD_MAP", data: makeLoadMap("out-1") })
+            await Promise.resolve()
+            const root = target.querySelector(".karaoke-output") as HTMLElement
+            expect(root.style.getPropertyValue("--word-ease-ms")).toBe("80ms")
+            cmp.$destroy()
+        })
+    })
+
     describe("data-tier / data-vad attributes (operator feedback)", () => {
         it("reflects tier and vad from the active frame", async () => {
             const cmp = new KaraokeOutput({

@@ -35,7 +35,7 @@
  * operator but stay useful for headless verification and CI.
  */
 
-import { app, BrowserWindow } from "electron"
+import { app, BrowserWindow, ipcMain } from "electron"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { dirname, resolve, join } from "node:path"
@@ -46,7 +46,14 @@ import {
     type DiagnosticsObserverState,
     type DiagnosticsSnapshot
 } from "@lyricue/core/diagnostics"
-import { createSyncEngine, type SyncEngine } from "@lyricue/core/sync"
+import {
+    createSyncEngine,
+    findNextSlideStart,
+    findPrevSlideStart,
+    type SyncEngine,
+    type SyncEngineState,
+    type SyncTier
+} from "@lyricue/core/sync"
 import { OwnWindowOutputAdapter } from "./output/OwnWindowOutputAdapter.js"
 import { createElectronBrowserWindowFactory } from "./output/electron-browser-window-factory.js"
 import { createSyntheticAudioDriver, type SyntheticAudioDriver } from "./audio/synthetic-audio-driver.js"
@@ -99,8 +106,19 @@ function log(line: string): void {
 const here = dirname(fileURLToPath(import.meta.url))
 const RENDERER_HTML_PATH = resolve(here, "..", "public", "karaoke-output.html")
 const PRELOAD_PATH = resolve(here, "preload", "karaoke-output-preload.cjs")
+const OPERATOR_HTML_PATH = resolve(here, "..", "public", "operator-window.html")
+const OPERATOR_PRELOAD_PATH = resolve(here, "preload", "operator-window-preload.cjs")
 
 const OUTPUT_ID = "lyricue-sister-output"
+
+/**
+ * IPC channel names — must match the operator-window preload constants exactly.
+ * Duplicated as string literals on both sides to avoid pulling Electron into the
+ * preload bundle unexpectedly.
+ */
+const OPERATOR_STATE_CHANNEL = "lyricue:operator:state"
+const OPERATOR_COMMAND_CHANNEL = "lyricue:operator:command"
+const OPERATOR_READY_EVENT = "lyricue:operator:ready"
 
 /**
  * The karaoke output adapter and the demo engine that drives it (when demo mode is on).
@@ -112,9 +130,29 @@ let demoEngine: DemoSyncEngine | null = null
 let syncEngine: SyncEngine | null = null
 let syncEngineSyncFrameUnsub: (() => void) | null = null
 let syncEngineSongCompleteUnsub: (() => void) | null = null
+let syncEngineStateUnsub: (() => void) | null = null
 let syntheticAudio: SyntheticAudioDriver | null = null
 let diagnostics: DiagnosticsObserverState | null = null
 let diagnosticsUnsub: (() => void) | null = null
+
+/** Operator window state. */
+let operatorWindow: BrowserWindow | null = null
+let operatorReady = false
+let lastTierForTransition: SyncTier = "auto"
+let lastTransition: {
+    from: SyncTier
+    to: SyncTier
+    reason: string
+    atWallMs: number
+} | null = null
+/**
+ * Buffered state envelope emitted before the operator renderer was ready. Like the
+ * OwnWindowOutputAdapter's pre-ready buffer (D11): we hold the latest snapshot so the
+ * operator window doesn't render with empty defaults the first time it mounts.
+ */
+let pendingOperatorState: Record<string, unknown> | null = null
+let ipcCommandHandler: ((event: Electron.IpcMainEvent, command: unknown) => void) | null = null
+let ipcReadyHandler: ((event: Electron.IpcMainEvent) => void) | null = null
 
 async function startSisterMode(): Promise<void> {
     adapter = new OwnWindowOutputAdapter({
@@ -150,6 +188,11 @@ async function startSisterMode(): Promise<void> {
         // Composition proves EP-07 + EP-08.1 + EP-09 + EP-06 + EP-02 compose end-to-end.
         startE2EMode()
         log("E2E mode: SyncEngine + synthetic audio pipeline started")
+
+        // EP-10 operator window: hosts SetlistPanel + TierChangeBanner. Available in
+        // both E2E and DEMO mode, but only E2E mode has a live SyncEngine to receive
+        // commands. In DEMO mode the panel is decorative (commands log and no-op).
+        void startOperatorWindow()
 
         if (process.env.LC_CAPTURE_EVIDENCE === "1") {
             void captureEp06Evidence()
@@ -265,9 +308,281 @@ function startE2EMode(): void {
     )
     syntheticAudio.start()
 
-    // 5. Boot the SyncEngine's tick loop. From here, every 16ms tick advances the
+    // 5. Subscribe the operator window to SyncEngine state changes. Broadcast on
+    //    every tick so the panel's tier badge / sync-active indicator / mode update
+    //    in lockstep with the renderer.
+    //
+    //    The subscriber MUST be installed before `start()` so the first tick's state
+    //    reaches the operator window without lag.
+    syncEngineStateUnsub = syncEngine.state.subscribe(() => broadcastOperatorState())
+
+    // 6. Boot the SyncEngine's tick loop. From here, every 16ms tick advances the
     //    cursor, emits a SyncFrame, and the OutputAdapter ships it to the renderer.
     syncEngine.start()
+}
+
+/**
+ * Spawn the operator BrowserWindow. Mounts SetlistPanel + TierChangeBanner; receives
+ * commands from the operator and dispatches them to SyncEngine. Wired in both E2E
+ * mode (live SyncEngine) and DEMO mode (no engine — commands are logged but no-op).
+ *
+ * Lifecycle:
+ *   - Window opens visible + focusable (different from the karaoke output's
+ *     transparent + frameless + alwaysOnTop config).
+ *   - Operator receives state via the `lyricue:operator:state` IPC channel.
+ *   - Operator sends commands via `lyricue:operator:command`. Main maps them to
+ *     SyncEngine.dispatch (when E2E mode is active).
+ */
+async function startOperatorWindow(): Promise<void> {
+    operatorWindow = new BrowserWindow({
+        x: 1450,
+        y: 100,
+        width: 520,
+        height: 720,
+        title: "LyriCue · Operator",
+        backgroundColor: "#0a0a0a",
+        show: false,
+        webPreferences: {
+            contextIsolation: true,
+            backgroundThrottling: false,
+            preload: OPERATOR_PRELOAD_PATH
+        }
+    })
+
+    operatorWindow.once("ready-to-show", () => {
+        if (!operatorWindow?.isDestroyed()) operatorWindow?.show()
+    })
+
+    if (process.env.LC_OPEN_DEVTOOLS === "1") {
+        operatorWindow.webContents.openDevTools({ mode: "detach" })
+    }
+
+    if (process.env.LC_VERBOSE === "1") {
+        operatorWindow.webContents.on(
+            "console-message",
+            (event: Electron.WebContentsConsoleMessageEventParams) => {
+                const levelName = event.level ?? "log"
+                const where = event.sourceId ? ` (${event.sourceId}:${event.lineNumber})` : ""
+                process.stderr.write(
+                    `[lyricue:sister:operator:${levelName}] ${event.message}${where}\n`
+                )
+            }
+        )
+    }
+
+    operatorWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
+        process.stderr.write(
+            `[lyricue:sister:operator:preload-error] ${preloadPath}: ${error.message}\n`
+        )
+    })
+    operatorWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
+        if (errorCode === -3) return
+        process.stderr.write(
+            `[lyricue:sister:operator:did-fail-load] code=${errorCode} url=${validatedURL} msg=${errorDescription}\n`
+        )
+    })
+
+    operatorWindow.on("closed", () => {
+        operatorWindow = null
+        operatorReady = false
+        pendingOperatorState = null
+        // The karaoke output window may still be open. Don't quit on operator close
+        // unless this was the last window (handled by `window-all-closed` upstream).
+    })
+
+    // Install the IPC handlers. These persist for the app's lifetime; we remove them
+    // on shutdown to keep `before-quit` deterministic.
+    ipcReadyHandler = (event) => {
+        if (event.sender !== operatorWindow?.webContents) return
+        operatorReady = true
+        log("operator window: renderer signalled ready")
+        // Flush the buffered snapshot if one was emitted before the renderer mounted.
+        if (pendingOperatorState !== null) {
+            const buffered = pendingOperatorState
+            pendingOperatorState = null
+            operatorWindow.webContents.send(OPERATOR_STATE_CHANNEL, buffered)
+        }
+    }
+    ipcCommandHandler = (event, command) => {
+        if (event.sender !== operatorWindow?.webContents) return
+        handleOperatorCommand(command)
+    }
+    ipcMain.on(OPERATOR_READY_EVENT, ipcReadyHandler)
+    ipcMain.on(OPERATOR_COMMAND_CHANNEL, ipcCommandHandler)
+
+    try {
+        await operatorWindow.loadFile(OPERATOR_HTML_PATH)
+    } catch (err) {
+        log(`operator window: failed to load HTML: ${(err as Error).message}`)
+    }
+
+    // Push the initial state snapshot — synchronous so the renderer has data on its
+    // very first paint (if the renderer signalled ready before this, the snapshot
+    // delivers directly; otherwise it's buffered for the ready event).
+    broadcastOperatorState()
+}
+
+/**
+ * Translate operator commands into SyncEngine event dispatches. Commands that don't
+ * require an engine (e.g., `changeDevice` updating a setting) are handled here.
+ */
+function handleOperatorCommand(command: unknown): void {
+    if (!command || typeof command !== "object" || typeof (command as { kind?: unknown }).kind !== "string") {
+        log(`operator command: malformed payload, ignoring`)
+        return
+    }
+    const c = command as { kind: string } & Record<string, unknown>
+    log(`operator command: ${c.kind}`)
+
+    // For now, broadcasting state back happens implicitly via SyncEngine.state's
+    // subscriber wired in startE2EMode(). For DEMO_MODE / no-engine paths, we log
+    // and no-op.
+
+    switch (c.kind) {
+        case "engageSync":
+            syncEngine?.engageSync()
+            break
+        case "selectSong":
+            // The demo currently has a single hard-coded song (DEMO_TIMING_MAP). Real
+            // selection lands in EP-12 (Setlist & Continuous Playback). For now, the
+            // command's only effect is to push state back so the panel shows the song
+            // as 'active' — which the demo bootstrap does already.
+            broadcastOperatorState(c)
+            break
+        case "changeDevice":
+            // Device-selection plumbing lands in EP-07 STORY-07.2 wiring. For now,
+            // just record the change in the state so the picker shows it persistently.
+            broadcastOperatorState(c)
+            break
+        case "forceTier": {
+            const tier = c.tier
+            if (tier === "auto" || tier === "timer" || tier === "manual") {
+                syncEngine?.forceTier(tier)
+            }
+            break
+        }
+        case "toggleManual":
+            syncEngine?.toggleManual()
+            break
+        case "reEngageSync":
+            syncEngine?.reEngageSync()
+            break
+        case "nextSection":
+            handleNextSection()
+            break
+        case "prevSection":
+            handlePrevSection()
+            break
+        default:
+            log(`operator command: unknown kind=${c.kind}`)
+    }
+}
+
+function handleNextSection(): void {
+    if (!syncEngine) return
+    const state = syncEngine.snapshot()
+    if (!state.activeTimingMap) return
+    const target = findNextSlideStart(
+        state.activeTimingMap,
+        state.activeArrangement,
+        state.cursorRefTime
+    )
+    if (target === null) return
+    syncEngine.dispatch({ kind: "nextSection", targetRefMs: target, wallTime: performance.now() })
+}
+
+function handlePrevSection(): void {
+    if (!syncEngine) return
+    const state = syncEngine.snapshot()
+    if (!state.activeTimingMap) return
+    const target = findPrevSlideStart(
+        state.activeTimingMap,
+        state.activeArrangement,
+        state.cursorRefTime
+    )
+    if (target === null) return
+    syncEngine.dispatch({ kind: "prevSection", targetRefMs: target, wallTime: performance.now() })
+}
+
+/**
+ * Build + send a full state snapshot to the operator renderer. When the renderer
+ * hasn't signalled ready yet, the snapshot is buffered (D11-style pre-ready buffer).
+ *
+ * `commandHint` lets callers pass a recently-handled command so derived state
+ * (e.g., selectedDeviceId) updates without a SyncEngine state change. This is the
+ * minimum-viable wiring for EP-10; EP-12's Setlist module will own this state.
+ */
+function broadcastOperatorState(commandHint?: Record<string, unknown>): void {
+    const seState = syncEngine?.snapshot() ?? null
+    detectTierTransition(seState)
+
+    // For now the demo always shows the DEMO_TIMING_MAP as the single setlist entry.
+    // EP-12 replaces this with a real setlist loaded from disk.
+    const setlist = [
+        {
+            id: DEMO_TIMING_MAP.showId,
+            title: "Walking-Skeleton Demo",
+            artist: "LyriCue",
+            syncStatus: "learned" as const,
+            bpm: DEMO_TIMING_MAP.bpm
+        }
+    ]
+
+    const payload: Record<string, unknown> = {
+        projectTitle: "Walking-Skeleton Demo",
+        tier: seState?.tier ?? "auto",
+        syncActive: seState?.runState === "running",
+        activeSongId: seState?.activeShowId ?? null,
+        nextSongTitle: null,
+        setlist,
+        selectedDeviceId:
+            (commandHint?.kind === "changeDevice" ? (commandHint.deviceId as string) : null) ?? null,
+        audioDevices: [
+            // Synthetic placeholder; EP-07 wiring will replace with enumerated devices.
+            { deviceId: "synthetic-120bpm", label: "Synthetic 120 BPM (E2E demo)", kind: "audioinput", groupId: "demo" }
+        ],
+        lastTransition,
+        shortcuts: {
+            startSync: "Space",
+            nextSection: "ArrowRight",
+            prevSection: "ArrowLeft",
+            toggleManual: "Escape",
+            reEngageSync: "Enter"
+        }
+    }
+
+    if (operatorWindow !== null && !operatorWindow.isDestroyed() && operatorReady) {
+        operatorWindow.webContents.send(OPERATOR_STATE_CHANNEL, payload)
+    } else {
+        // Pre-ready buffer — last-write-wins.
+        pendingOperatorState = payload
+    }
+}
+
+/**
+ * Detect tier transitions for the TierChangeBanner. SE doesn't emit a dedicated
+ * "transition" event — we derive it by watching `state.tier` and synthesising a
+ * `{ from, to, reason }` record whenever the value changes.
+ */
+function detectTierTransition(seState: SyncEngineState | null): void {
+    if (seState === null) return
+    if (seState.tier === lastTierForTransition) return
+    const reason = explainTransition(lastTierForTransition, seState.tier, seState)
+    lastTransition = {
+        from: lastTierForTransition,
+        to: seState.tier,
+        reason,
+        atWallMs: performance.now()
+    }
+    lastTierForTransition = seState.tier
+}
+
+function explainTransition(from: SyncTier, to: SyncTier, _seState: SyncEngineState): string {
+    if (from === "auto" && to === "timer") return "Beat confidence dropped — switched to timer mode."
+    if (from === "timer" && to === "auto") return "Sync re-engaged — back to auto."
+    if (to === "manual") return "Manual mode engaged — auto-advance paused."
+    if (from === "manual" && to === "auto") return "Re-engaging auto sync."
+    return `Tier changed from ${from} to ${to}.`
 }
 
 function formatDiagnostics(s: DiagnosticsSnapshot): string {
@@ -291,14 +606,21 @@ function formatDiagnostics(s: DiagnosticsSnapshot): string {
 }
 
 async function captureEp06Evidence(): Promise<void> {
-    // When invoked from E2E mode, write to the EP-09 evidence dir so EP-06 evidence
-    // (captured from the DemoSyncEngine path) stays intact and reviewers can A/B the
-    // two engines. When invoked from DEMO mode, use the original EP-06 dir.
-    const subDir = E2E_MODE
+    // When invoked from E2E mode, write the karaoke captures to ep09-e2e/ and the
+    // operator-window captures to ep10-operator-window/. DEMO mode writes karaoke to
+    // ep06-karaoke-renderer/ and skips operator (no operator window in DEMO).
+    const karaokeSubDir = E2E_MODE
         ? "ep09-e2e-2026-05-15"
         : "ep06-karaoke-renderer-2026-05-15"
-    const evidenceDir = resolve("docs", "qa-reports", "evidence", subDir)
-    mkdirSync(evidenceDir, { recursive: true })
+    const karaokeDir = resolve("docs", "qa-reports", "evidence", karaokeSubDir)
+    const operatorDir = resolve(
+        "docs",
+        "qa-reports",
+        "evidence",
+        "ep10-operator-window-2026-05-15"
+    )
+    mkdirSync(karaokeDir, { recursive: true })
+    if (E2E_MODE) mkdirSync(operatorDir, { recursive: true })
 
     /** Cursor offsets selected so each screenshot captures a distinct rendered state.
      *  DEMO_TIMING_MAP plays at 500ms per word × 12 words = 6s total before looping.
@@ -313,18 +635,35 @@ async function captureEp06Evidence(): Promise<void> {
 
     for (const step of steps) {
         await new Promise<void>((r) => setTimeout(r, step.waitMs))
-        const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed())
-        if (!win) {
-            log(`[capture] no window for step ${step.label}; aborting`)
-            return
+        // The karaoke output window is opened by the adapter — its title is
+        // "Electron" by default since we don't override it. We identify it as the
+        // window that is NOT the operatorWindow handle.
+        const allWindows = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed())
+        const karaokeWindow = allWindows.find((w) => w !== operatorWindow)
+        const opWindow = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : null
+
+        if (karaokeWindow) {
+            try {
+                const image = await karaokeWindow.webContents.capturePage()
+                const path = join(karaokeDir, `${step.label}.png`)
+                writeFileSync(path, image.toPNG())
+                log(`[capture] wrote ${path}`)
+            } catch (err) {
+                log(`[capture] karaoke ${step.label} failed: ${(err as Error).message}`)
+            }
+        } else {
+            log(`[capture] no karaoke window for step ${step.label}`)
         }
-        try {
-            const image = await win.webContents.capturePage()
-            const path = join(evidenceDir, `${step.label}.png`)
-            writeFileSync(path, image.toPNG())
-            log(`[capture] wrote ${path}`)
-        } catch (err) {
-            log(`[capture] step ${step.label} failed: ${(err as Error).message}`)
+
+        if (E2E_MODE && opWindow) {
+            try {
+                const image = await opWindow.webContents.capturePage()
+                const path = join(operatorDir, `${step.label}-operator.png`)
+                writeFileSync(path, image.toPNG())
+                log(`[capture] wrote ${path}`)
+            } catch (err) {
+                log(`[capture] operator ${step.label} failed: ${(err as Error).message}`)
+            }
         }
     }
     log("[capture] evidence run complete; quitting")
@@ -339,6 +678,10 @@ function stopTimers(): void {
     if (syntheticAudio) {
         syntheticAudio.stop()
         syntheticAudio = null
+    }
+    if (syncEngineStateUnsub) {
+        syncEngineStateUnsub()
+        syncEngineStateUnsub = null
     }
     if (syncEngineSyncFrameUnsub) {
         syncEngineSyncFrameUnsub()
@@ -360,6 +703,24 @@ function stopTimers(): void {
         diagnostics.stop()
         diagnostics = null
     }
+    if (ipcReadyHandler) {
+        ipcMain.off(OPERATOR_READY_EVENT, ipcReadyHandler)
+        ipcReadyHandler = null
+    }
+    if (ipcCommandHandler) {
+        ipcMain.off(OPERATOR_COMMAND_CHANNEL, ipcCommandHandler)
+        ipcCommandHandler = null
+    }
+    if (operatorWindow && !operatorWindow.isDestroyed()) {
+        try {
+            operatorWindow.close()
+        } catch {
+            // OS-level close races are fine
+        }
+    }
+    operatorWindow = null
+    operatorReady = false
+    pendingOperatorState = null
 }
 
 /**
