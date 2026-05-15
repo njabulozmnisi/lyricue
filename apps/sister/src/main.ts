@@ -46,8 +46,10 @@ import {
     type DiagnosticsObserverState,
     type DiagnosticsSnapshot
 } from "@lyricue/core/diagnostics"
+import { createSyncEngine, type SyncEngine } from "@lyricue/core/sync"
 import { OwnWindowOutputAdapter } from "./output/OwnWindowOutputAdapter.js"
 import { createElectronBrowserWindowFactory } from "./output/electron-browser-window-factory.js"
+import { createSyntheticAudioDriver, type SyntheticAudioDriver } from "./audio/synthetic-audio-driver.js"
 
 // Fail fast if launched with the wrong mode. The fork-mode entry has the same guard;
 // this prevents a misconfigured build from silently doing the wrong thing.
@@ -60,6 +62,17 @@ if (DEPLOYMENT_MODE !== "sister") {
 }
 
 const DEMO_MODE = process.env.LC_DEMO_MODE === "1"
+/**
+ * End-to-end mode (LC_E2E_MODE=1). Replaces DemoSyncEngine with the real composition:
+ *   SyntheticAudioDriver (BpmEstimator + VadDetector) → SyncEngine → OutputAdapter.
+ *
+ * This proves the full EP-07 + EP-08.1 + EP-09 + EP-06 + EP-02 stack composes correctly
+ * end-to-end. The renderer sees frames produced by the real Sync Engine (not the demo
+ * walker), driven by synthetic 120-BPM features.
+ *
+ * Mutually exclusive with LC_DEMO_MODE for clarity. If both are set, e2e takes priority.
+ */
+const E2E_MODE = process.env.LC_E2E_MODE === "1"
 
 /**
  * Single-line stderr logger. Electron's main-process `console.info` is unreliable across
@@ -96,6 +109,10 @@ const OUTPUT_ID = "lyricue-sister-output"
  */
 let adapter: OwnWindowOutputAdapter | null = null
 let demoEngine: DemoSyncEngine | null = null
+let syncEngine: SyncEngine | null = null
+let syncEngineSyncFrameUnsub: (() => void) | null = null
+let syncEngineSongCompleteUnsub: (() => void) | null = null
+let syntheticAudio: SyntheticAudioDriver | null = null
 let diagnostics: DiagnosticsObserverState | null = null
 let diagnosticsUnsub: (() => void) | null = null
 
@@ -128,12 +145,22 @@ async function startSisterMode(): Promise<void> {
     }
     log(`adapter.start() OK; running=${adapter.health.running}`)
 
-    if (DEMO_MODE) {
-        // Walking-skeleton demo: the DemoSyncEngine in @lyricue/core/output/test-utils
-        // walks DEMO_TIMING_MAP at 1x tempo and pushes SyncFrames at 60fps. Same map and
-        // same engine are used by the fork-mode demo (apps/fork/scripts/demo.ts) so the
-        // two modes are guaranteed to receive identical frame streams — proving the
-        // OutputAdapter abstraction (STORY-02.4 AC4).
+    if (E2E_MODE) {
+        // End-to-end mode: real SyncEngine driven by synthetic 120 BPM audio features.
+        // Composition proves EP-07 + EP-08.1 + EP-09 + EP-06 + EP-02 compose end-to-end.
+        startE2EMode()
+        log("E2E mode: SyncEngine + synthetic audio pipeline started")
+
+        if (process.env.LC_CAPTURE_EVIDENCE === "1") {
+            void captureEp06Evidence()
+        }
+    } else if (DEMO_MODE) {
+        // Walking-skeleton demo (preserved for backwards compat with EP-06 evidence flow):
+        // the DemoSyncEngine in @lyricue/core/output/test-utils walks DEMO_TIMING_MAP at
+        // 1x tempo and pushes SyncFrames directly to the adapter. Same map and same engine
+        // are used by the fork-mode demo (apps/fork/scripts/demo.ts) so the two modes are
+        // guaranteed to receive identical frame streams — proving the OutputAdapter
+        // abstraction (STORY-02.4 AC4).
         demoEngine = new DemoSyncEngine({
             adapter,
             map: DEMO_TIMING_MAP,
@@ -143,15 +170,11 @@ async function startSisterMode(): Promise<void> {
         demoEngine.start()
         log("DEMO mode: walking-skeleton demo engine started")
 
-        // EP-06 evidence capture (env-gated). LC_CAPTURE_EVIDENCE=1 captures four
-        // screenshots at predictable cursor offsets and quits. The capture path is
-        // documented in docs/qa-reports/evidence/ep06-karaoke-renderer-2026-05-15/
-        // and committed alongside the EP-06 QA notes.
         if (process.env.LC_CAPTURE_EVIDENCE === "1") {
             void captureEp06Evidence()
         }
     } else {
-        log("non-demo mode: adapter idle, awaiting Sync Engine wiring (EP-09)")
+        log("non-demo mode: adapter idle, awaiting operator engagement")
     }
 
     // STORY-02.5 diagnostics observer: derives fps/dps/msSinceLastFrame + system memory
@@ -169,6 +192,82 @@ async function startSisterMode(): Promise<void> {
         if (logTickCount !== 1) return
         log(formatDiagnostics(snapshot))
     })
+}
+
+/**
+ * Compose the real Sync Engine end-to-end:
+ *
+ *   SyntheticAudioDriver (BpmEstimator + VadDetector)
+ *       ↓ onTempoUpdate / onVadUpdate
+ *   SyncEngine.dispatch(...)
+ *       ↓ onSyncFrame
+ *   OutputAdapter.pushSyncFrame(...)
+ *
+ * The SyncEngine's frame scheduler in Electron main can't use rAF (renderer-only),
+ * so we drive it with setInterval at 16ms (~60 Hz) — the same cadence the renderer
+ * would request. This matches the prior DemoSyncEngine pacing and keeps the OutputAdapter
+ * happy.
+ */
+function startE2EMode(): void {
+    if (!adapter) return
+
+    // 1. Build a setInterval-based FrameScheduler. Each scheduled callback fires once
+    //    per requestFrame call (the SyncEngine re-requests after each tick).
+    const TICK_INTERVAL_MS = 16
+    syncEngine = createSyncEngine({
+        requestFrame: (cb) => {
+            const id = setTimeout(() => cb(performance.now()), TICK_INTERVAL_MS)
+            return () => clearTimeout(id)
+        },
+        now: () => performance.now()
+    })
+
+    // 2. Wire SyncEngine.onSyncFrame → adapter.pushSyncFrame.
+    //    Note: the SyncEngine emits SyncFrames tagged with its own internal outputId,
+    //    NOT the adapter's. The renderer filters by outputId, so we rewrite the tag
+    //    here so frames match the adapter's outputId. Multi-output routing (EP-10+)
+    //    will replace this with per-output engines.
+    syncEngineSyncFrameUnsub = syncEngine.onSyncFrame((frame) => {
+        adapter?.pushSyncFrame({ ...frame, outputId: OUTPUT_ID })
+    })
+    syncEngineSongCompleteUnsub = syncEngine.onSongComplete(() => {
+        log("E2E: songComplete fired — looping demo by re-engaging at song start")
+        // For the headless e2e demo we loop instead of waiting for the next song.
+        // engageSync resets cursorRefTime to 0; no need to re-send the map (the
+        // adapter has already buffered/flushed it once and the renderer still has it).
+        syncEngine?.dispatch({ kind: "engageSync", wallTime: performance.now() })
+    })
+
+    // 3. Load the demo map + engage.
+    //    The SyncEngine tracks the map for its own cursor lookup; the OutputAdapter
+    //    needs LC_LOAD_MAP sent separately so the renderer can hydrate KaraokeOutput.
+    //    The adapter buffers the load-map if the renderer isn't ready (D11 fix).
+    syncEngine.loadSong({ map: DEMO_TIMING_MAP, arrangement: null, showId: DEMO_TIMING_MAP.showId })
+    adapter.loadTimingMap(DEMO_TIMING_MAP, null)
+    syncEngine.engageSync()
+
+    // 4. Build the synthetic audio driver. The 120 BPM target matches DEMO_TIMING_MAP's
+    //    reference BPM, so tempoRatio should converge near 1.0.
+    syntheticAudio = createSyntheticAudioDriver(
+        {
+            targetBPM: DEMO_TIMING_MAP.bpm,
+            referenceBPM: DEMO_TIMING_MAP.bpm,
+            sampleIntervalMs: 11
+        },
+        {
+            onTempoUpdate: ({ tempoRatio, beatConfidence }) => {
+                syncEngine?.dispatch({ kind: "tempoUpdate", tempoRatio, beatConfidence })
+            },
+            onVadUpdate: (vadState) => {
+                syncEngine?.dispatch({ kind: "vadUpdate", vadState })
+            }
+        }
+    )
+    syntheticAudio.start()
+
+    // 5. Boot the SyncEngine's tick loop. From here, every 16ms tick advances the
+    //    cursor, emits a SyncFrame, and the OutputAdapter ships it to the renderer.
+    syncEngine.start()
 }
 
 function formatDiagnostics(s: DiagnosticsSnapshot): string {
@@ -192,12 +291,13 @@ function formatDiagnostics(s: DiagnosticsSnapshot): string {
 }
 
 async function captureEp06Evidence(): Promise<void> {
-    const evidenceDir = resolve(
-        "docs",
-        "qa-reports",
-        "evidence",
-        "ep06-karaoke-renderer-2026-05-15"
-    )
+    // When invoked from E2E mode, write to the EP-09 evidence dir so EP-06 evidence
+    // (captured from the DemoSyncEngine path) stays intact and reviewers can A/B the
+    // two engines. When invoked from DEMO mode, use the original EP-06 dir.
+    const subDir = E2E_MODE
+        ? "ep09-e2e-2026-05-15"
+        : "ep06-karaoke-renderer-2026-05-15"
+    const evidenceDir = resolve("docs", "qa-reports", "evidence", subDir)
     mkdirSync(evidenceDir, { recursive: true })
 
     /** Cursor offsets selected so each screenshot captures a distinct rendered state.
@@ -235,6 +335,22 @@ function stopTimers(): void {
     if (demoEngine) {
         demoEngine.stop()
         demoEngine = null
+    }
+    if (syntheticAudio) {
+        syntheticAudio.stop()
+        syntheticAudio = null
+    }
+    if (syncEngineSyncFrameUnsub) {
+        syncEngineSyncFrameUnsub()
+        syncEngineSyncFrameUnsub = null
+    }
+    if (syncEngineSongCompleteUnsub) {
+        syncEngineSongCompleteUnsub()
+        syncEngineSongCompleteUnsub = null
+    }
+    if (syncEngine) {
+        syncEngine.stop()
+        syncEngine = null
     }
     if (diagnosticsUnsub) {
         diagnosticsUnsub()
