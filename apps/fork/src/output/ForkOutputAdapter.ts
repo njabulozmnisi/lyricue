@@ -69,6 +69,18 @@ export class ForkOutputAdapter implements OutputAdapter {
     }
     #outputId: string | null = null
     #getKaraokeWindows: () => BrowserWindow[]
+    /**
+     * The most recent LC_LOAD_MAP envelope buffered when no karaoke window was available.
+     *
+     * Closes M1-close D11 (the fork-mode side). If `loadTimingMap()` is called before
+     * any FreeShow output has been opened with `karaokeMode: true`, we hold the envelope
+     * here. `pushSyncFrame` is the next opportunity to detect that a window has appeared;
+     * when it does, we flush the load-map BEFORE delivering the frame so the renderer can
+     * resolve the cursor against the loaded map.
+     *
+     * Only the latest payload is retained — earlier maps are superseded by definition.
+     */
+    #pendingLoadMap: { channel: typeof LC_LOAD_MAP; data: unknown } | null = null
 
     constructor(opts: ForkOutputAdapterOptions) {
         this.#getKaraokeWindows = opts.getKaraokeWindows
@@ -88,6 +100,7 @@ export class ForkOutputAdapter implements OutputAdapter {
     async stop(): Promise<void> {
         this.#outputId = null
         this.#health.running = false
+        this.#pendingLoadMap = null
     }
 
     pushSyncFrame(frame: SyncFrame): void {
@@ -101,6 +114,10 @@ export class ForkOutputAdapter implements OutputAdapter {
                 this.#health.framesDropped++
                 return
             }
+            // D11 — if a load-map was buffered before any karaoke window existed, flush
+            // it now (before the frame) so the renderer can resolve `slideIndex` against
+            // the loaded map. Map first, then frame.
+            this.#flushPendingLoadMap(windows)
             for (const w of windows) {
                 if (w.isDestroyed()) continue
                 w.webContents.send(FREESHOW_OUTPUT_CHANNEL, { channel: LC_SYNC_FRAME, data: frame })
@@ -125,21 +142,52 @@ export class ForkOutputAdapter implements OutputAdapter {
         parallelLyrics?: ParallelLyricsTrack[]
     ): void {
         if (!this.#outputId) return
+        // Build the payload conditionally so `parallelLyrics` is omitted when undefined,
+        // matching the LoadMapPayload contract under exactOptionalPropertyTypes.
+        const payload = parallelLyrics
+            ? { outputId: this.#outputId, showId: map.showId, timingMap: map, arrangement, parallelLyrics }
+            : { outputId: this.#outputId, showId: map.showId, timingMap: map, arrangement }
+        const envelope = { channel: LC_LOAD_MAP, data: payload }
+
         try {
             const windows = this.#getKaraokeWindows()
-            // Build the payload conditionally so `parallelLyrics` is omitted when undefined,
-            // matching the LoadMapPayload contract under exactOptionalPropertyTypes.
-            const payload = parallelLyrics
-                ? { outputId: this.#outputId, showId: map.showId, timingMap: map, arrangement, parallelLyrics }
-                : { outputId: this.#outputId, showId: map.showId, timingMap: map, arrangement }
+            // D11 — if no karaoke window exists yet (e.g., FreeShow's output hasn't been
+            // opened in karaoke mode), buffer the envelope. The next pushSyncFrame call
+            // will flush it once a window is available. Without this, the load-map was
+            // silently dropped and the renderer would stay on its waiting placeholder.
+            if (windows.length === 0) {
+                this.#pendingLoadMap = envelope
+                return
+            }
             for (const w of windows) {
                 if (w.isDestroyed()) continue
-                w.webContents.send(FREESHOW_OUTPUT_CHANNEL, { channel: LC_LOAD_MAP, data: payload })
+                w.webContents.send(FREESHOW_OUTPUT_CHANNEL, envelope)
             }
+            // A fresh load-map supersedes any earlier buffered one.
+            this.#pendingLoadMap = null
         } catch (err) {
             this.#health.lastError = {
                 at: performance.now(),
                 message: (err as Error).message || String(err)
+            }
+        }
+    }
+
+    #flushPendingLoadMap(windows: BrowserWindow[]): void {
+        if (this.#pendingLoadMap === null) return
+        const envelope = this.#pendingLoadMap
+        this.#pendingLoadMap = null
+        for (const w of windows) {
+            if (w.isDestroyed()) continue
+            try {
+                w.webContents.send(FREESHOW_OUTPUT_CHANNEL, envelope)
+            } catch (err) {
+                // Don't bail the whole flush — record and keep going so other windows
+                // (if any) still receive the map.
+                this.#health.lastError = {
+                    at: performance.now(),
+                    message: (err as Error).message || String(err)
+                }
             }
         }
     }

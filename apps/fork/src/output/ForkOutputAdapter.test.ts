@@ -131,3 +131,90 @@ describe("ForkOutputAdapter", () => {
         expect(adapter.health.framesDropped).toBe(1)
     })
 })
+
+describe("ForkOutputAdapter — load-map buffering before any karaoke window exists (M1-close D11)", () => {
+    it("buffers LC_LOAD_MAP when no karaoke window is open at call time", async () => {
+        // Start with zero windows. FreeShow hasn't opened its karaoke output yet.
+        let windows: any[] = []
+        const adapter = new ForkOutputAdapter({ getKaraokeWindows: () => windows })
+        await adapter.start({ outputId: "out-1" })
+        adapter.loadTimingMap(stubMap, null)
+        // Nothing was sent — there was no window to send to.
+        // (No assertion needed beyond "no exception"; the next test verifies the flush.)
+        expect(adapter.health.lastError).toBeNull()
+    })
+
+    it("flushes the buffered load-map on the next pushSyncFrame, BEFORE the frame itself", async () => {
+        let windows: any[] = []
+        const adapter = new ForkOutputAdapter({ getKaraokeWindows: () => windows })
+        await adapter.start({ outputId: "out-1" })
+        adapter.loadTimingMap(stubMap, null)
+
+        // Now FreeShow opens a karaoke window.
+        const w = makeStubWindow()
+        windows = [w.win as any]
+
+        adapter.pushSyncFrame(makeFrame({ wordIndex: 0 }))
+
+        // The window must have received the load-map first, then the frame.
+        expect(w.sent).toHaveLength(2)
+        expect((w.sent[0]?.msg as any).channel).toBe("LC_LOAD_MAP")
+        expect((w.sent[1]?.msg as any).channel).toBe("LC_SYNC_FRAME")
+    })
+
+    it("does NOT buffer when a karaoke window already exists at call time", async () => {
+        const w = makeStubWindow()
+        const adapter = new ForkOutputAdapter({ getKaraokeWindows: () => [w.win as any] })
+        await adapter.start({ outputId: "out-1" })
+        adapter.loadTimingMap(stubMap, null)
+        // The send fired immediately.
+        expect(w.sent).toHaveLength(1)
+        expect((w.sent[0]?.msg as any).channel).toBe("LC_LOAD_MAP")
+        // And the buffer is empty so the next pushSyncFrame doesn't re-send the map.
+        const wForFrame = makeStubWindow()
+        const adapter2 = new ForkOutputAdapter({ getKaraokeWindows: () => [wForFrame.win as any] })
+        await adapter2.start({ outputId: "out-1" })
+        // To prove "no replay across adapter instances" we just confirm w.sent count was 1.
+        // Verifying same-instance no-replay:
+        adapter.pushSyncFrame(makeFrame())
+        // The original adapter sent map + frame to its window; no second map.
+        const channels = w.sent.map((s) => (s.msg as any).channel)
+        expect(channels).toEqual(["LC_LOAD_MAP", "LC_SYNC_FRAME"])
+    })
+
+    it("a fresh loadTimingMap before any window appears supersedes the buffered one", async () => {
+        let windows: any[] = []
+        const adapter = new ForkOutputAdapter({ getKaraokeWindows: () => windows })
+        await adapter.start({ outputId: "out-1" })
+        const first: TimingMap = { ...stubMap, showId: "first" }
+        const second: TimingMap = { ...stubMap, showId: "second" }
+        adapter.loadTimingMap(first, null)
+        adapter.loadTimingMap(second, null)
+
+        const w = makeStubWindow()
+        windows = [w.win as any]
+        adapter.pushSyncFrame(makeFrame())
+
+        const loadMaps = w.sent.filter((s) => (s.msg as any).channel === "LC_LOAD_MAP")
+        expect(loadMaps).toHaveLength(1)
+        expect((loadMaps[0]!.msg as any).data.showId).toBe("second")
+    })
+
+    it("stop() clears the buffered load-map", async () => {
+        let windows: any[] = []
+        const adapter = new ForkOutputAdapter({ getKaraokeWindows: () => windows })
+        await adapter.start({ outputId: "out-1" })
+        adapter.loadTimingMap(stubMap, null)
+        await adapter.stop()
+
+        // After stop(), even if a window appears and pushSyncFrame fires, no map flushes.
+        // (Frames will drop too because !running; that's expected.)
+        const w = makeStubWindow()
+        windows = [w.win as any]
+        // Re-start without re-issuing loadTimingMap.
+        await adapter.start({ outputId: "out-1" })
+        adapter.pushSyncFrame(makeFrame())
+        const loadMaps = w.sent.filter((s) => (s.msg as any).channel === "LC_LOAD_MAP")
+        expect(loadMaps).toHaveLength(0)
+    })
+})

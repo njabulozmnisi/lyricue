@@ -152,6 +152,20 @@ export class OwnWindowOutputAdapter extends EventEmitter implements OutputAdapte
     #opts: OwnWindowOutputAdapterOptions
     /** Frames received before the renderer is ready are buffered up to PENDING_FRAME_BUFFER_CAP. */
     #pendingFrames: SyncFrame[] = []
+    /**
+     * The most recent LC_LOAD_MAP payload received before the renderer signalled ready.
+     *
+     * Closes M1-close D11. The adapter previously sent LC_LOAD_MAP immediately on every
+     * `loadTimingMap()` call, which races with the renderer bootstrap: under slower
+     * bundle loads the envelope arrives at the bridge dispatcher before the Svelte
+     * component has installed its envelopeHandler, and the load-map is silently dropped.
+     *
+     * We now hold the latest payload here until the ready event fires, then send it
+     * BEFORE flushing buffered frames so the renderer can resolve `slideIndex` correctly
+     * against the freshly-loaded map. Only the latest map is retained — earlier maps are
+     * superseded by definition (the SE loads one map at a time per show change).
+     */
+    #pendingLoadMap: { channel: typeof LC_LOAD_MAP; data: unknown } | null = null
     #rendererReady = false
 
     constructor(opts: OwnWindowOutputAdapterOptions) {
@@ -215,6 +229,7 @@ export class OwnWindowOutputAdapter extends EventEmitter implements OutputAdapte
         this.#health.running = false
         this.#rendererReady = false
         this.#pendingFrames.length = 0
+        this.#pendingLoadMap = null
         if (!w.isDestroyed()) {
             try {
                 w.close()
@@ -260,11 +275,21 @@ export class OwnWindowOutputAdapter extends EventEmitter implements OutputAdapte
         parallelLyrics?: ParallelLyricsTrack[]
     ): void {
         if (!this.#window || this.#window.isDestroyed() || !this.#outputId) return
+        const payload = parallelLyrics
+            ? { outputId: this.#outputId, showId: map.showId, timingMap: map, arrangement, parallelLyrics }
+            : { outputId: this.#outputId, showId: map.showId, timingMap: map, arrangement }
+        const envelope = { channel: LC_LOAD_MAP, data: payload }
+
+        // D11 — defer the send until the renderer is ready. The adapter previously sent
+        // unconditionally; if the renderer hadn't yet mounted its envelopeHandler, the
+        // load-map was silently dropped and the renderer stayed on its waiting-for-song
+        // placeholder forever.
+        if (!this.#rendererReady) {
+            this.#pendingLoadMap = envelope
+            return
+        }
         try {
-            const payload = parallelLyrics
-                ? { outputId: this.#outputId, showId: map.showId, timingMap: map, arrangement, parallelLyrics }
-                : { outputId: this.#outputId, showId: map.showId, timingMap: map, arrangement }
-            this.#window.send(OWN_WINDOW_CHANNEL, { channel: LC_LOAD_MAP, data: payload })
+            this.#window.send(OWN_WINDOW_CHANNEL, envelope)
         } catch (err) {
             this.#health.lastError = {
                 at: performance.now(),
@@ -280,7 +305,26 @@ export class OwnWindowOutputAdapter extends EventEmitter implements OutputAdapte
      */
     #onRendererReady(): void {
         this.#rendererReady = true
-        if (!this.#window || this.#pendingFrames.length === 0) return
+        if (!this.#window) return
+
+        // D11 — flush the pending LC_LOAD_MAP first. Frames are meaningless without the
+        // map (cursor can't resolve a section), so the order matters: map → frames.
+        if (this.#pendingLoadMap !== null) {
+            const pending = this.#pendingLoadMap
+            this.#pendingLoadMap = null
+            try {
+                this.#window.send(OWN_WINDOW_CHANNEL, pending)
+            } catch (err) {
+                this.#health.lastError = {
+                    at: performance.now(),
+                    message: (err as Error).message || String(err)
+                }
+                // Don't bail — buffered frames still flush below. The renderer will get
+                // the frames but stay on its placeholder until the next loadTimingMap retries.
+            }
+        }
+
+        if (this.#pendingFrames.length === 0) return
         const buffered = this.#pendingFrames
         this.#pendingFrames = []
         for (const frame of buffered) {
@@ -312,6 +356,7 @@ export class OwnWindowOutputAdapter extends EventEmitter implements OutputAdapte
         this.#health.running = false
         this.#rendererReady = false
         this.#pendingFrames.length = 0
+        this.#pendingLoadMap = null
         this.emit("adapterClosed")
         this.#opts.onWindowClosed?.()
     }

@@ -142,12 +142,14 @@ describe("OwnWindowOutputAdapter — adapter contract conformance", () => {
         expect(a.health.framesDropped).toBe(1)
     })
 
-    it("loadTimingMap broadcasts LC_LOAD_MAP with the expected payload shape", async () => {
+    it("loadTimingMap broadcasts LC_LOAD_MAP with the expected payload shape (after renderer-ready)", async () => {
         const h = makeHarness()
         const a = new OwnWindowOutputAdapter({ factory: h.factory })
         await a.start({ outputId: "out-1" })
+        // Per the M1-close D11 fix, loadTimingMap defers until the renderer signals ready.
+        // The map is the contract the renderer needs BEFORE any frame can resolve a section.
+        h.simulateRendererReady()
         a.loadTimingMap(stubMap, null)
-        // loadTimingMap fires regardless of renderer-ready, so we expect it immediately.
         const lastSent = h.sent[h.sent.length - 1]
         expect(lastSent?.channel).toBe(OWN_WINDOW_CHANNEL)
         expect((lastSent?.payload as any).channel).toBe("LC_LOAD_MAP")
@@ -159,6 +161,7 @@ describe("OwnWindowOutputAdapter — adapter contract conformance", () => {
         const h = makeHarness()
         const a = new OwnWindowOutputAdapter({ factory: h.factory })
         await a.start({ outputId: "out-1" })
+        h.simulateRendererReady()
         a.loadTimingMap(stubMap, null)
         const payload = (h.sent[0]?.payload as any).data
         expect("parallelLyrics" in payload).toBe(false)
@@ -168,6 +171,7 @@ describe("OwnWindowOutputAdapter — adapter contract conformance", () => {
         const h = makeHarness()
         const a = new OwnWindowOutputAdapter({ factory: h.factory })
         await a.start({ outputId: "out-1" })
+        h.simulateRendererReady()
         a.loadTimingMap(stubMap, null, [{ language: "zu-ZA", sections: [] }])
         const payload = (h.sent[0]?.payload as any).data
         expect(payload.parallelLyrics).toHaveLength(1)
@@ -310,5 +314,74 @@ describe("OwnWindowOutputAdapter — frame buffering before renderer ready", () 
         a.pushSyncFrame(makeFrame({ wordIndex: 99 }))
         expect(h.sent).toHaveLength(1)
         expect((h.sent[0]?.payload as any).data.wordIndex).toBe(99)
+    })
+})
+
+describe("OwnWindowOutputAdapter — load-map buffering before renderer ready (M1-close D11)", () => {
+    it("does NOT send LC_LOAD_MAP before renderer signals ready", async () => {
+        const h = makeHarness()
+        const a = new OwnWindowOutputAdapter({ factory: h.factory })
+        await a.start({ outputId: "out-1" })
+        a.loadTimingMap(stubMap, null)
+        // The envelope must be buffered, not yet flushed to the window.
+        expect(h.sent).toHaveLength(0)
+    })
+
+    it("flushes the buffered LC_LOAD_MAP when renderer signals ready, BEFORE any buffered frames", async () => {
+        const h = makeHarness()
+        const a = new OwnWindowOutputAdapter({ factory: h.factory })
+        await a.start({ outputId: "out-1" })
+        // Order in: load-map first, then frames. The renderer expects this order so it
+        // can resolve `slideIndex` before frames cursor into the map.
+        a.loadTimingMap(stubMap, null)
+        a.pushSyncFrame(makeFrame({ wordIndex: 0 }))
+        a.pushSyncFrame(makeFrame({ wordIndex: 1 }))
+        h.simulateRendererReady()
+        // Three envelopes: 1 LC_LOAD_MAP + 2 LC_SYNC_FRAME, in that order.
+        expect(h.sent).toHaveLength(3)
+        expect((h.sent[0]?.payload as any).channel).toBe("LC_LOAD_MAP")
+        expect((h.sent[1]?.payload as any).channel).toBe("LC_SYNC_FRAME")
+        expect((h.sent[2]?.payload as any).channel).toBe("LC_SYNC_FRAME")
+    })
+
+    it("a fresh loadTimingMap before ready supersedes the buffered one (last-write-wins)", async () => {
+        const h = makeHarness()
+        const a = new OwnWindowOutputAdapter({ factory: h.factory })
+        await a.start({ outputId: "out-1" })
+        const firstMap: TimingMap = { ...stubMap, showId: "first" }
+        const secondMap: TimingMap = { ...stubMap, showId: "second" }
+        a.loadTimingMap(firstMap, null)
+        a.loadTimingMap(secondMap, null)
+        h.simulateRendererReady()
+        // Only the second map should have been flushed.
+        const loadMapEnvelopes = h.sent.filter((m) => (m.payload as any).channel === "LC_LOAD_MAP")
+        expect(loadMapEnvelopes).toHaveLength(1)
+        expect((loadMapEnvelopes[0]!.payload as any).data.showId).toBe("second")
+    })
+
+    it("after renderer-ready, subsequent loadTimingMap calls deliver immediately", async () => {
+        const h = makeHarness()
+        const a = new OwnWindowOutputAdapter({ factory: h.factory })
+        await a.start({ outputId: "out-1" })
+        h.simulateRendererReady()
+        h.sent.length = 0
+        a.loadTimingMap(stubMap, null)
+        expect(h.sent).toHaveLength(1)
+        expect((h.sent[0]?.payload as any).channel).toBe("LC_LOAD_MAP")
+    })
+
+    it("stop() clears the buffered load-map so a re-start doesn't replay a stale one", async () => {
+        const h = makeHarness()
+        const a = new OwnWindowOutputAdapter({ factory: h.factory })
+        await a.start({ outputId: "out-1" })
+        a.loadTimingMap(stubMap, null)
+        await a.stop()
+        // Subsequent start() + ready should NOT replay the buffered load-map.
+        const h2 = makeHarness()
+        const a2 = new OwnWindowOutputAdapter({ factory: h2.factory })
+        await a2.start({ outputId: "out-1" })
+        h2.simulateRendererReady()
+        // h2 should have received nothing because no loadTimingMap was issued on the new adapter.
+        expect(h2.sent.filter((m) => (m.payload as any).channel === "LC_LOAD_MAP")).toHaveLength(0)
     })
 })
