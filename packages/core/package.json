@@ -59,6 +59,10 @@
         "./setlist": {
             "types": "./dist/setlist/index.d.ts",
             "import": "./dist/setlist/index.js"
+        },
+        "./lyrics": {
+            "types": "./dist/lyrics/index.d.ts",
+            "import": "./dist/lyrics/index.js"
         }
     },
     "scripts": {
