@@ -119,6 +119,7 @@ const OUTPUT_ID = "lyricue-sister-output"
 const OPERATOR_STATE_CHANNEL = "lyricue:operator:state"
 const OPERATOR_COMMAND_CHANNEL = "lyricue:operator:command"
 const OPERATOR_READY_EVENT = "lyricue:operator:ready"
+const OPERATOR_STATE_BROADCAST_INTERVAL_MS = 200
 
 /**
  * The karaoke output adapter and the demo engine that drives it (when demo mode is on).
@@ -138,6 +139,7 @@ let diagnosticsUnsub: (() => void) | null = null
 /** Operator window state. */
 let operatorWindow: BrowserWindow | null = null
 let operatorReady = false
+let operatorSelectedDeviceId: string | null = E2E_MODE ? "synthetic-120bpm" : null
 let lastTierForTransition: SyncTier = "auto"
 let lastTransition: {
     from: SyncTier
@@ -151,6 +153,8 @@ let lastTransition: {
  * operator window doesn't render with empty defaults the first time it mounts.
  */
 let pendingOperatorState: Record<string, unknown> | null = null
+let operatorStateBroadcastTimer: ReturnType<typeof setTimeout> | null = null
+let lastOperatorStateBroadcastAt = 0
 let ipcCommandHandler: ((event: Electron.IpcMainEvent, command: unknown) => void) | null = null
 let ipcReadyHandler: ((event: Electron.IpcMainEvent) => void) | null = null
 
@@ -308,13 +312,13 @@ function startE2EMode(): void {
     )
     syntheticAudio.start()
 
-    // 5. Subscribe the operator window to SyncEngine state changes. Broadcast on
-    //    every tick so the panel's tier badge / sync-active indicator / mode update
-    //    in lockstep with the renderer.
+    // 5. Subscribe the operator window to SyncEngine state changes. The SyncEngine
+    //    store updates at frame cadence; the operator UI only needs a low-frequency
+    //    control-plane snapshot, so throttle separately from the karaoke frame path.
     //
     //    The subscriber MUST be installed before `start()` so the first tick's state
     //    reaches the operator window without lag.
-    syncEngineStateUnsub = syncEngine.state.subscribe(() => broadcastOperatorState())
+    syncEngineStateUnsub = syncEngine.state.subscribe(() => scheduleOperatorStateBroadcast())
 
     // 6. Boot the SyncEngine's tick loop. From here, every 16ms tick advances the
     //    cursor, emits a SyncFrame, and the OutputAdapter ships it to the renderer.
@@ -334,6 +338,16 @@ function startE2EMode(): void {
  *     SyncEngine.dispatch (when E2E mode is active).
  */
 async function startOperatorWindow(): Promise<void> {
+    if (operatorWindow && !operatorWindow.isDestroyed()) {
+        operatorWindow.focus()
+        broadcastOperatorState()
+        return
+    }
+
+    removeOperatorIpcHandlers()
+    operatorReady = false
+    pendingOperatorState = null
+
     operatorWindow = new BrowserWindow({
         x: 1450,
         y: 100,
@@ -386,6 +400,7 @@ async function startOperatorWindow(): Promise<void> {
         operatorWindow = null
         operatorReady = false
         pendingOperatorState = null
+        removeOperatorIpcHandlers()
         // The karaoke output window may still be open. Don't quit on operator close
         // unless this was the last window (handled by `window-all-closed` upstream).
     })
@@ -447,12 +462,13 @@ function handleOperatorCommand(command: unknown): void {
             // selection lands in EP-12 (Setlist & Continuous Playback). For now, the
             // command's only effect is to push state back so the panel shows the song
             // as 'active' — which the demo bootstrap does already.
-            broadcastOperatorState(c)
+            broadcastOperatorState()
             break
         case "changeDevice":
             // Device-selection plumbing lands in EP-07 STORY-07.2 wiring. For now,
             // just record the change in the state so the picker shows it persistently.
-            broadcastOperatorState(c)
+            operatorSelectedDeviceId = typeof c.deviceId === "string" ? c.deviceId : null
+            broadcastOperatorState()
             break
         case "forceTier": {
             const tier = c.tier
@@ -507,12 +523,10 @@ function handlePrevSection(): void {
 /**
  * Build + send a full state snapshot to the operator renderer. When the renderer
  * hasn't signalled ready yet, the snapshot is buffered (D11-style pre-ready buffer).
- *
- * `commandHint` lets callers pass a recently-handled command so derived state
- * (e.g., selectedDeviceId) updates without a SyncEngine state change. This is the
- * minimum-viable wiring for EP-10; EP-12's Setlist module will own this state.
+ * EP-12's Setlist module will replace the hard-coded demo setlist with real state.
  */
-function broadcastOperatorState(commandHint?: Record<string, unknown>): void {
+function broadcastOperatorState(): void {
+    lastOperatorStateBroadcastAt = performance.now()
     const seState = syncEngine?.snapshot() ?? null
     detectTierTransition(seState)
 
@@ -535,8 +549,7 @@ function broadcastOperatorState(commandHint?: Record<string, unknown>): void {
         activeSongId: seState?.activeShowId ?? null,
         nextSongTitle: null,
         setlist,
-        selectedDeviceId:
-            (commandHint?.kind === "changeDevice" ? (commandHint.deviceId as string) : null) ?? null,
+        selectedDeviceId: operatorSelectedDeviceId,
         audioDevices: [
             // Synthetic placeholder; EP-07 wiring will replace with enumerated devices.
             { deviceId: "synthetic-120bpm", label: "Synthetic 120 BPM (E2E demo)", kind: "audioinput", groupId: "demo" }
@@ -556,6 +569,34 @@ function broadcastOperatorState(commandHint?: Record<string, unknown>): void {
     } else {
         // Pre-ready buffer — last-write-wins.
         pendingOperatorState = payload
+    }
+}
+
+function scheduleOperatorStateBroadcast(): void {
+    if (!operatorWindow || operatorWindow.isDestroyed()) return
+    if (operatorStateBroadcastTimer !== null) return
+
+    const now = performance.now()
+    const elapsed = now - lastOperatorStateBroadcastAt
+    if (elapsed >= OPERATOR_STATE_BROADCAST_INTERVAL_MS) {
+        broadcastOperatorState()
+        return
+    }
+
+    operatorStateBroadcastTimer = setTimeout(() => {
+        operatorStateBroadcastTimer = null
+        broadcastOperatorState()
+    }, OPERATOR_STATE_BROADCAST_INTERVAL_MS - elapsed)
+}
+
+function removeOperatorIpcHandlers(): void {
+    if (ipcReadyHandler) {
+        ipcMain.off(OPERATOR_READY_EVENT, ipcReadyHandler)
+        ipcReadyHandler = null
+    }
+    if (ipcCommandHandler) {
+        ipcMain.off(OPERATOR_COMMAND_CHANNEL, ipcCommandHandler)
+        ipcCommandHandler = null
     }
 }
 
@@ -703,14 +744,11 @@ function stopTimers(): void {
         diagnostics.stop()
         diagnostics = null
     }
-    if (ipcReadyHandler) {
-        ipcMain.off(OPERATOR_READY_EVENT, ipcReadyHandler)
-        ipcReadyHandler = null
+    if (operatorStateBroadcastTimer) {
+        clearTimeout(operatorStateBroadcastTimer)
+        operatorStateBroadcastTimer = null
     }
-    if (ipcCommandHandler) {
-        ipcMain.off(OPERATOR_COMMAND_CHANNEL, ipcCommandHandler)
-        ipcCommandHandler = null
-    }
+    removeOperatorIpcHandlers()
     if (operatorWindow && !operatorWindow.isDestroyed()) {
         try {
             operatorWindow.close()
@@ -721,6 +759,10 @@ function stopTimers(): void {
     operatorWindow = null
     operatorReady = false
     pendingOperatorState = null
+    operatorSelectedDeviceId = E2E_MODE ? "synthetic-120bpm" : null
+    lastOperatorStateBroadcastAt = 0
+    lastTierForTransition = "auto"
+    lastTransition = null
 }
 
 /**
@@ -759,6 +801,10 @@ app.on("activate", () => {
     if (!adapter || !adapter.health.running) {
         startSisterMode().catch((err) => {
             log(`reopen failed: ${(err as Error).message}`)
+        })
+    } else if (E2E_MODE && (!operatorWindow || operatorWindow.isDestroyed())) {
+        startOperatorWindow().catch((err) => {
+            log(`operator reopen failed: ${(err as Error).message}`)
         })
     }
 })

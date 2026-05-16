@@ -20,6 +20,7 @@
 import SetlistPanel from "@lyricue/ui/SetlistPanel.svelte"
 import TierChangeBanner from "@lyricue/ui/TierChangeBanner.svelte"
 import { createShortcutHandler } from "@lyricue/core/sync"
+import { shouldBypassOperatorShortcutTarget } from "./operator-shortcuts.js"
 
 /**
  * Envelope shape mirroring the main-process broadcast. Mirrored loosely so adding
@@ -81,7 +82,7 @@ if (!root) {
     throw new Error("[lyricue] #root missing")
 }
 
-const bridge = (
+const bridgeCandidate = (
     window as unknown as {
         lyricueOperator?: {
             subscribeState: (handler: (state: unknown) => void) => () => void
@@ -91,7 +92,7 @@ const bridge = (
     }
 ).lyricueOperator
 
-if (!bridge) {
+if (!bridgeCandidate) {
     const msg =
         "[lyricue:operator-renderer] FATAL: window.lyricueOperator is not exposed. " +
         "Preload script failed or contextIsolation is misconfigured."
@@ -99,6 +100,7 @@ if (!bridge) {
     root.textContent = msg
     throw new Error(msg)
 }
+const bridge = bridgeCandidate
 
 // ── Component composition ────────────────────────────────────────────────────
 
@@ -112,40 +114,42 @@ panelSlot.style.flex = "1"
 root.appendChild(panelSlot)
 
 let currentState: OperatorState = DEFAULT_STATE
+let panel: SetlistPanel | null = null
 
 const banner = new TierChangeBanner({
     target: bannerSlot,
     props: { transition: null }
 })
 
-const panel = new SetlistPanel({
-    target: panelSlot,
-    props: {
-        projectTitle: currentState.projectTitle,
-        tier: currentState.tier,
-        lastTransition: currentState.lastTransition,
-        setlist: currentState.setlist,
-        activeSongId: currentState.activeSongId,
-        nextSongTitle: currentState.nextSongTitle,
-        syncActive: currentState.syncActive,
-        selectedDeviceId: currentState.selectedDeviceId,
-        // SetlistPanel's enumerate callback wraps the audioDevices coming via state.
-        // The picker calls this on mount and on Refresh; we return the latest list.
-        enumerateDevices: async () => currentState.audioDevices
-    }
-})
+function mountPanel(): SetlistPanel {
+    if (panel) return panel
+    panel = new SetlistPanel({
+        target: panelSlot,
+        props: {
+            projectTitle: currentState.projectTitle,
+            tier: currentState.tier,
+            lastTransition: currentState.lastTransition,
+            setlist: currentState.setlist,
+            activeSongId: currentState.activeSongId,
+            nextSongTitle: currentState.nextSongTitle,
+            syncActive: currentState.syncActive,
+            selectedDeviceId: currentState.selectedDeviceId,
+            enumerateDevices: async () => currentState.audioDevices
+        }
+    })
 
-// Wire SetlistPanel events → command envelopes.
-panel.$on("start-sync", () => bridge.sendCommand({ kind: "engageSync" }))
-panel.$on("select-song", (e: CustomEvent<{ songId: string }>) =>
-    bridge.sendCommand({ kind: "selectSong", songId: e.detail.songId })
-)
-panel.$on("change-device", (e: CustomEvent<{ deviceId: string }>) =>
-    bridge.sendCommand({ kind: "changeDevice", deviceId: e.detail.deviceId })
-)
-panel.$on("force-tier", (e: CustomEvent<{ tier: "auto" | "timer" | "manual" }>) =>
-    bridge.sendCommand({ kind: "forceTier", tier: e.detail.tier })
-)
+    panel.$on("start-sync", () => bridge.sendCommand({ kind: "engageSync" }))
+    panel.$on("select-song", (e: CustomEvent<{ songId: string }>) =>
+        bridge.sendCommand({ kind: "selectSong", songId: e.detail.songId })
+    )
+    panel.$on("change-device", (e: CustomEvent<{ deviceId: string }>) =>
+        bridge.sendCommand({ kind: "changeDevice", deviceId: e.detail.deviceId })
+    )
+    panel.$on("force-tier", (e: CustomEvent<{ tier: "auto" | "timer" | "manual" }>) =>
+        bridge.sendCommand({ kind: "forceTier", tier: e.detail.tier })
+    )
+    return panel
+}
 
 // ── Keyboard shortcuts ───────────────────────────────────────────────────────
 
@@ -164,6 +168,7 @@ const handleKey = createShortcutHandler({
 })
 
 function onKeyDown(event: KeyboardEvent): void {
+    if (shouldBypassOperatorShortcutTarget(event.target)) return
     const action = handleKey({
         code: event.code,
         ctrlKey: event.ctrlKey,
@@ -196,7 +201,8 @@ const stateUnsub = bridge.subscribeState((raw) => {
     const transitionChanged = next.lastTransition !== currentState.lastTransition
     currentState = next
 
-    panel.$set({
+    const mountedPanel = mountPanel()
+    mountedPanel.$set({
         projectTitle: next.projectTitle,
         tier: next.tier,
         lastTransition: next.lastTransition,
@@ -226,7 +232,7 @@ window.addEventListener("beforeunload", () => {
     }
     window.removeEventListener("keydown", onKeyDown)
     try {
-        panel.$destroy()
+        panel?.$destroy()
     } catch {
         // already destroyed
     }

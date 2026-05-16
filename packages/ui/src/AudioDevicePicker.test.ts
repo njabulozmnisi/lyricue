@@ -53,7 +53,7 @@ describe("AudioDevicePicker", () => {
             await new Promise((r) => setTimeout(r, 0))
             expect(enumerateDevices).toHaveBeenCalledTimes(1)
             const options = Array.from(target.querySelectorAll("option")) as HTMLOptionElement[]
-            expect(options.map((o) => o.value)).toEqual(["mic-1", "mic-2"])
+            expect(options.map((o) => o.value)).toEqual(["", "mic-1", "mic-2"])
             expect(options.map((o) => o.textContent?.trim())).toContain("Built-in Mic")
             cmp.$destroy()
         })
@@ -102,7 +102,7 @@ describe("AudioDevicePicker", () => {
             const cmp = new AudioDevicePicker({ target, props: { enumerateDevices } })
             await new Promise((r) => setTimeout(r, 0))
             const opt = target.querySelector("option")
-            expect(opt?.textContent).toContain("(unnamed device · mic-1abc")
+            expect(target.textContent).toContain("(unnamed device · mic-1abc")
             cmp.$destroy()
         })
 
@@ -148,6 +148,19 @@ describe("AudioDevicePicker", () => {
             const options = Array.from(target.querySelectorAll("option")) as HTMLOptionElement[]
             const selected = options.find((o) => o.selected)
             expect(selected?.value).toBe("mic-2")
+            cmp.$destroy()
+        })
+
+        it("renders a neutral placeholder when devices exist but no value is selected", async () => {
+            const enumerateDevices = vi.fn(async () => [
+                makeDevice({ deviceId: "mic-1" }),
+                makeDevice({ deviceId: "mic-2", groupId: "g2" })
+            ])
+            const cmp = new AudioDevicePicker({ target, props: { enumerateDevices, value: null } })
+            await new Promise((r) => setTimeout(r, 0))
+            const selected = target.querySelector("option:checked") as HTMLOptionElement
+            expect(selected.value).toBe("")
+            expect(selected.textContent?.trim()).toBe("Select an audio input")
             cmp.$destroy()
         })
     })

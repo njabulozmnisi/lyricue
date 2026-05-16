@@ -152,7 +152,9 @@
         data-testid="device-select"
     >
         {#if devices.length === 0 && !loading}
-            <option disabled value="">No audio inputs detected</option>
+            <option disabled value="" selected>No audio inputs detected</option>
+        {:else if value === null}
+            <option disabled value="" selected>Select an audio input</option>
         {/if}
         {#each devices as device (device.deviceId)}
             <option value={device.deviceId} selected={value === device.deviceId}>
