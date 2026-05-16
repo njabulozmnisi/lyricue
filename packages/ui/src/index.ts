@@ -10,6 +10,7 @@ import AudioDevicePicker from "./AudioDevicePicker.svelte"
 import ModeIndicator from "./ModeIndicator.svelte"
 import TierChangeBanner from "./TierChangeBanner.svelte"
 import SetlistPanel from "./SetlistPanel.svelte"
+import LearnSongWizard from "./LearnSongWizard.svelte"
 
 export {
     FirstRunWizard,
@@ -19,5 +20,6 @@ export {
     AudioDevicePicker,
     ModeIndicator,
     TierChangeBanner,
-    SetlistPanel
+    SetlistPanel,
+    LearnSongWizard
 }

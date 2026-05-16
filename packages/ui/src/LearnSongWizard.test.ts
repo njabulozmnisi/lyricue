@@ -1,0 +1,140 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
+import LearnSongWizard from "./LearnSongWizard.svelte"
+
+function click(el: Element | null): void {
+    if (!(el instanceof HTMLButtonElement)) throw new Error("Expected button")
+    el.click()
+}
+
+function input(el: Element | null, value: string): void {
+    if (!(el instanceof HTMLInputElement) && !(el instanceof HTMLTextAreaElement)) {
+        throw new Error("Expected input or textarea")
+    }
+    el.value = value
+    el.dispatchEvent(new Event("input", { bubbles: true }))
+}
+
+function buttonByText(target: HTMLElement, text: string): HTMLButtonElement {
+    const btn = Array.from(target.querySelectorAll("button")).find((b) => b.textContent?.includes(text))
+    if (!(btn instanceof HTMLButtonElement)) throw new Error(`Button not found: ${text}`)
+    return btn
+}
+
+async function settle(): Promise<void> {
+    await Promise.resolve()
+}
+
+async function waitForText(target: HTMLElement, text: string): Promise<void> {
+    for (let i = 0; i < 10; i++) {
+        if (target.textContent?.includes(text)) return
+        await settle()
+    }
+    throw new Error(`Text not found: ${text}`)
+}
+
+describe("LearnSongWizard", () => {
+    let target: HTMLElement
+
+    beforeEach(() => {
+        target = document.createElement("div")
+        document.body.appendChild(target)
+    })
+
+    afterEach(() => {
+        document.body.removeChild(target)
+    })
+
+    it("renders the five-step scaffold and gates Next until lyrics parse into sections", async () => {
+        const cmp = new LearnSongWizard({ target })
+        expect(Array.from(target.querySelectorAll(".steps li")).map((li) => li.textContent)).toEqual([
+            "1. Source lyrics",
+            "2. Review sections",
+            "3. Attach audio",
+            "4. Learn",
+            "5. Preview"
+        ])
+        expect(buttonByText(target, "Next").disabled).toBe(true)
+
+        input(target.querySelector(".lyrics-input"), "[Verse 1]\nAmazing grace\n\n[Chorus]\nI once was lost")
+        await settle()
+        expect(target.textContent).toContain("2 detected sections")
+        expect(buttonByText(target, "Next").disabled).toBe(false)
+        cmp.$destroy()
+    })
+
+    it("shows parsed sections for review and allows label/text edits", async () => {
+        const cmp = new LearnSongWizard({ target })
+        input(target.querySelector(".lyrics-input"), "[Verse 1]\nLine one\nLine two\n\n[Chorus]\nSing")
+        await settle()
+        click(buttonByText(target, "Next"))
+        await settle()
+
+        const label = target.querySelector(".section-editor input")
+        input(label, "Verse A")
+        const text = target.querySelector(".section-editor textarea")
+        input(text, "Edited line")
+        await settle()
+
+        expect(target.querySelector(".section-editor input") instanceof HTMLInputElement).toBe(true)
+        expect((target.querySelector(".section-editor input") as HTMLInputElement).value).toBe("Verse A")
+        expect((target.querySelector(".section-editor textarea") as HTMLTextAreaElement).value).toBe("Edited line")
+        cmp.$destroy()
+    })
+
+    it("uses injected lyric search results to populate the source step", async () => {
+        const cmp = new LearnSongWizard({
+            target,
+            props: {
+                searchLyrics: vi.fn(async () => [
+                    { id: "r1", title: "Way Maker", artist: "Sinach", lyrics: "[Chorus]\nWay maker" }
+                ])
+            }
+        })
+        input(target.querySelector('input[aria-label="Lyric search query"]'), "Way Maker")
+        await settle()
+        click(buttonByText(target, "Search"))
+        await waitForText(target, "Way Maker")
+        click(buttonByText(target, "Way Maker"))
+        await settle()
+
+        expect((target.querySelector(".lyrics-input") as HTMLTextAreaElement).value).toContain("Way maker")
+        expect(target.textContent).toContain("1 detected section")
+        cmp.$destroy()
+    })
+
+    it("requires cancel confirmation when the draft is dirty", async () => {
+        const confirmCancel = vi.fn(() => false)
+        const onCancel = vi.fn()
+        const cmp = new LearnSongWizard({ target, props: { confirmCancel } })
+        cmp.$on("cancel", onCancel)
+        input(target.querySelector(".lyrics-input"), "[Chorus]\nSing")
+        await settle()
+        click(buttonByText(target, "Cancel"))
+        expect(confirmCancel).toHaveBeenCalledOnce()
+        expect(onCancel).not.toHaveBeenCalled()
+        cmp.$destroy()
+    })
+
+    it("can skip audio, create a manual preview, and emit complete", async () => {
+        const onComplete = vi.fn()
+        const cmp = new LearnSongWizard({ target })
+        cmp.$on("complete", onComplete)
+
+        input(target.querySelector(".lyrics-input"), "[Verse 1]\nLine one\n\n[Chorus]\nLine two")
+        await settle()
+        click(buttonByText(target, "Next"))
+        await settle()
+        click(buttonByText(target, "Next"))
+        await settle()
+        click(buttonByText(target, "Skip audio"))
+        await settle()
+        click(buttonByText(target, "Create manual preview"))
+        await settle()
+        await settle()
+
+        expect(target.textContent).toContain("2 sections ready for manual mode")
+        click(buttonByText(target, "Finish"))
+        expect(onComplete).toHaveBeenCalledOnce()
+        cmp.$destroy()
+    })
+})
