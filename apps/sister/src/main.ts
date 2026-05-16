@@ -54,6 +54,11 @@ import {
     type SyncEngineState,
     type SyncTier
 } from "@lyricue/core/sync"
+import {
+    createSetlistController,
+    type Project,
+    type SetlistController
+} from "@lyricue/core/setlist"
 import { OwnWindowOutputAdapter } from "./output/OwnWindowOutputAdapter.js"
 import { createElectronBrowserWindowFactory } from "./output/electron-browser-window-factory.js"
 import { createSyntheticAudioDriver, type SyntheticAudioDriver } from "./audio/synthetic-audio-driver.js"
@@ -121,6 +126,29 @@ const OPERATOR_COMMAND_CHANNEL = "lyricue:operator:command"
 const OPERATOR_READY_EVENT = "lyricue:operator:ready"
 const OPERATOR_STATE_BROADCAST_INTERVAL_MS = 200
 
+const DEMO_REPRISE_TIMING_MAP = {
+    ...DEMO_TIMING_MAP,
+    showId: "demo-show-reprise",
+    metadata: {
+        ...DEMO_TIMING_MAP.metadata,
+        sourceAudioHash: "demo-show-reprise"
+    }
+}
+
+const DEMO_PROJECT: Project = {
+    id: "walking-skeleton-project",
+    title: "Walking-Skeleton Demo",
+    shows: [
+        { id: DEMO_TIMING_MAP.showId, title: "Walking-Skeleton Demo", artist: "LyriCue" },
+        { id: DEMO_REPRISE_TIMING_MAP.showId, title: "Walking-Skeleton Reprise", artist: "LyriCue" }
+    ]
+}
+
+const DEMO_TIMING_MAPS = new Map([
+    [DEMO_TIMING_MAP.showId, DEMO_TIMING_MAP],
+    [DEMO_REPRISE_TIMING_MAP.showId, DEMO_REPRISE_TIMING_MAP]
+])
+
 /**
  * The karaoke output adapter and the demo engine that drives it (when demo mode is on).
  * STORY-02.3 opened one window; STORY-02.5 (diagnostics) and EP-06 (renderer polish)
@@ -130,8 +158,9 @@ let adapter: OwnWindowOutputAdapter | null = null
 let demoEngine: DemoSyncEngine | null = null
 let syncEngine: SyncEngine | null = null
 let syncEngineSyncFrameUnsub: (() => void) | null = null
-let syncEngineSongCompleteUnsub: (() => void) | null = null
 let syncEngineStateUnsub: (() => void) | null = null
+let setlistController: SetlistController | null = null
+let setlistControllerUnsub: (() => void) | null = null
 let syntheticAudio: SyntheticAudioDriver | null = null
 let diagnostics: DiagnosticsObserverState | null = null
 let diagnosticsUnsub: (() => void) | null = null
@@ -277,21 +306,25 @@ function startE2EMode(): void {
     syncEngineSyncFrameUnsub = syncEngine.onSyncFrame((frame) => {
         adapter?.pushSyncFrame({ ...frame, outputId: OUTPUT_ID })
     })
-    syncEngineSongCompleteUnsub = syncEngine.onSongComplete(() => {
-        log("E2E: songComplete fired — looping demo by re-engaging at song start")
-        // For the headless e2e demo we loop instead of waiting for the next song.
-        // engageSync resets cursorRefTime to 0; no need to re-send the map (the
-        // adapter has already buffered/flushed it once and the renderer still has it).
-        syncEngine?.dispatch({ kind: "engageSync", wallTime: performance.now() })
+    // 3. Load the demo project through the EP-12 setlist controller. It owns active
+    //    song loading, songComplete → next-song advance, and waitingForStart → VAD
+    //    active engagement. The adapter buffers LC_LOAD_MAP if the renderer isn't
+    //    ready yet (D11 fix).
+    setlistController = createSetlistController({
+        syncEngine,
+        outputAdapter: adapter,
+        timingMaps: {
+            exists: async (showId) => DEMO_TIMING_MAPS.has(showId),
+            load: async (showId) => DEMO_TIMING_MAPS.get(showId) ?? null,
+            loadArrangement: async () => null
+        }
     })
-
-    // 3. Load the demo map + engage.
-    //    The SyncEngine tracks the map for its own cursor lookup; the OutputAdapter
-    //    needs LC_LOAD_MAP sent separately so the renderer can hydrate KaraokeOutput.
-    //    The adapter buffers the load-map if the renderer isn't ready (D11 fix).
-    syncEngine.loadSong({ map: DEMO_TIMING_MAP, arrangement: null, showId: DEMO_TIMING_MAP.showId })
-    adapter.loadTimingMap(DEMO_TIMING_MAP, null)
-    syncEngine.engageSync()
+    setlistControllerUnsub = setlistController.state.subscribe(() => broadcastOperatorState())
+    void setlistController.loadProject(DEMO_PROJECT).then(async () => {
+        await setlistController?.jumpToSong(DEMO_TIMING_MAP.showId)
+        syncEngine?.engageSync()
+        broadcastOperatorState()
+    })
 
     // 4. Build the synthetic audio driver. The 120 BPM target matches DEMO_TIMING_MAP's
     //    reference BPM, so tempoRatio should converge near 1.0.
@@ -458,11 +491,9 @@ function handleOperatorCommand(command: unknown): void {
             syncEngine?.engageSync()
             break
         case "selectSong":
-            // The demo currently has a single hard-coded song (DEMO_TIMING_MAP). Real
-            // selection lands in EP-12 (Setlist & Continuous Playback). For now, the
-            // command's only effect is to push state back so the panel shows the song
-            // as 'active' — which the demo bootstrap does already.
-            broadcastOperatorState()
+            if (typeof c.songId === "string") {
+                void setlistController?.jumpToSong(c.songId).then(() => broadcastOperatorState())
+            }
             break
         case "changeDevice":
             // Device-selection plumbing lands in EP-07 STORY-07.2 wiring. For now,
@@ -528,26 +559,20 @@ function handlePrevSection(): void {
 function broadcastOperatorState(): void {
     lastOperatorStateBroadcastAt = performance.now()
     const seState = syncEngine?.snapshot() ?? null
+    const setlistState = setlistController?.snapshot() ?? null
     detectTierTransition(seState)
-
-    // For now the demo always shows the DEMO_TIMING_MAP as the single setlist entry.
-    // EP-12 replaces this with a real setlist loaded from disk.
-    const setlist = [
-        {
-            id: DEMO_TIMING_MAP.showId,
-            title: "Walking-Skeleton Demo",
-            artist: "LyriCue",
-            syncStatus: "learned" as const,
-            bpm: DEMO_TIMING_MAP.bpm
-        }
-    ]
+    const setlist =
+        setlistState?.songs.map((song) => ({
+            ...song,
+            bpm: DEMO_TIMING_MAPS.get(song.id)?.bpm ?? song.bpm
+        })) ?? []
 
     const payload: Record<string, unknown> = {
-        projectTitle: "Walking-Skeleton Demo",
+        projectTitle: setlistState?.project?.title ?? "Walking-Skeleton Demo",
         tier: seState?.tier ?? "auto",
         syncActive: seState?.runState === "running",
-        activeSongId: seState?.activeShowId ?? null,
-        nextSongTitle: null,
+        activeSongId: setlistState?.activeShowId ?? seState?.activeShowId ?? null,
+        nextSongTitle: setlistState?.nextSongTitle ?? null,
         setlist,
         selectedDeviceId: operatorSelectedDeviceId,
         audioDevices: [
@@ -671,7 +696,7 @@ async function captureEp06Evidence(): Promise<void> {
         { label: "01-first-word-active", waitMs: 600 },
         { label: "02-mid-section", waitMs: 1000 },
         { label: "03-late-section", waitMs: 2500 },
-        { label: "04-post-loop-restart", waitMs: 1500 }
+        { label: "04-post-loop-restart", waitMs: E2E_MODE ? 2200 : 1500 }
     ]
 
     for (const step of steps) {
@@ -724,13 +749,17 @@ function stopTimers(): void {
         syncEngineStateUnsub()
         syncEngineStateUnsub = null
     }
+    if (setlistControllerUnsub) {
+        setlistControllerUnsub()
+        setlistControllerUnsub = null
+    }
+    if (setlistController) {
+        setlistController.destroy()
+        setlistController = null
+    }
     if (syncEngineSyncFrameUnsub) {
         syncEngineSyncFrameUnsub()
         syncEngineSyncFrameUnsub = null
-    }
-    if (syncEngineSongCompleteUnsub) {
-        syncEngineSongCompleteUnsub()
-        syncEngineSongCompleteUnsub = null
     }
     if (syncEngine) {
         syncEngine.stop()

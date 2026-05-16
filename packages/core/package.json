@@ -55,6 +55,10 @@
         "./sync": {
             "types": "./dist/sync/index.d.ts",
             "import": "./dist/sync/index.js"
+        },
+        "./setlist": {
+            "types": "./dist/setlist/index.d.ts",
+            "import": "./dist/setlist/index.js"
         }
     },
     "scripts": {
