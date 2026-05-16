@@ -63,6 +63,10 @@
         "./lyrics": {
             "types": "./dist/lyrics/index.d.ts",
             "import": "./dist/lyrics/index.js"
+        },
+        "./stt": {
+            "types": "./dist/stt/index.d.ts",
+            "import": "./dist/stt/index.js"
         }
     },
     "scripts": {
