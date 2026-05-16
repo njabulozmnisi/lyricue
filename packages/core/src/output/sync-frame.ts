@@ -38,6 +38,11 @@ export interface SyncFrame {
     tier: "auto" | "timer" | "manual"
     /** VAD state. When `silent`, the renderer holds steady; KR may dim or pulse the display. */
     vad: "active" | "silent"
+    /**
+     * Optional congregation-facing next-song hint. Hosts set this only while the current
+     * song is in its final rendered section; absent/null means KR renders no hint.
+     */
+    nextSongTitle?: string | null
 }
 
 /**

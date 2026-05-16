@@ -26,6 +26,8 @@ export interface FrameSequenceOptions {
     /** Tier and VAD state for the whole sequence. Defaults to ('auto', 'active'). */
     tier?: SyncFrame["tier"]
     vad?: SyncFrame["vad"]
+    /** Optional next-song hint stamped on every generated frame. */
+    nextSongTitle?: string | null
 }
 
 /**
@@ -43,7 +45,8 @@ export function generateFrameSequence(opts: FrameSequenceOptions = {}): SyncFram
         fps = 60,
         slideIndex = 0,
         tier = "auto",
-        vad = "active"
+        vad = "active",
+        nextSongTitle
     } = opts
 
     const totalMs = wordCount * msPerWord
@@ -54,14 +57,16 @@ export function generateFrameSequence(opts: FrameSequenceOptions = {}): SyncFram
         const wordIndex = Math.min(Math.floor(elapsedMs / msPerWord), wordCount - 1)
         const wordStartMs = wordIndex * msPerWord
         const progress = Math.min((elapsedMs - wordStartMs) / msPerWord, 1)
-        frames.push({
+        const frame: SyncFrame = {
             outputId,
             slideIndex,
             wordIndex,
             wordProgress: progress,
             tier,
             vad
-        })
+        }
+        if (nextSongTitle !== undefined) frame.nextSongTitle = nextSongTitle
+        frames.push(frame)
     }
 
     return frames

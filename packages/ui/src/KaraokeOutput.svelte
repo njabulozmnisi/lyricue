@@ -87,6 +87,7 @@
         wordProgress: number
         tier: "auto" | "timer" | "manual"
         vad: "active" | "silent"
+        nextSongTitle?: string | null
     }
 
     /** Minimal LoadMapPayload shape. */
@@ -225,6 +226,13 @@
         if (typeof d.wordProgress !== "number" || !Number.isFinite(d.wordProgress)) return null
         if (d.tier !== "auto" && d.tier !== "timer" && d.tier !== "manual") return null
         if (d.vad !== "active" && d.vad !== "silent") return null
+        if (
+            d.nextSongTitle !== undefined &&
+            d.nextSongTitle !== null &&
+            typeof d.nextSongTitle !== "string"
+        ) {
+            return null
+        }
         return d as unknown as SyncFrameLike
     }
 
@@ -481,11 +489,19 @@
                 {/each}
             </div>
         {/if}
+
+        {#if currentFrame?.nextSongTitle}
+            <div class="next-song-hint" role="status" aria-live="polite">
+                <span class="next-song-label">Next:</span>
+                <span class="next-song-title">{currentFrame.nextSongTitle}</span>
+            </div>
+        {/if}
     {/if}
 </div>
 
 <style>
     .karaoke-output {
+        position: relative;
         height: 100%;
         width: 100%;
         background: black;
@@ -652,5 +668,35 @@
     }
     .parallel-line {
         padding: 0.1em 0;
+    }
+
+    .next-song-hint {
+        position: absolute;
+        left: 50%;
+        bottom: 6vmin;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: baseline;
+        justify-content: center;
+        gap: 0.3em;
+        max-width: 88%;
+        color: var(--upcoming-color, #cccccc);
+        font-size: clamp(1.1rem, 2.8vmin, 3rem);
+        font-weight: 700;
+        line-height: 1.1;
+        opacity: 0.82;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+    }
+    .next-song-label {
+        opacity: 0.72;
+    }
+    .next-song-title {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 </style>

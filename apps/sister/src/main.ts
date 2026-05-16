@@ -304,7 +304,8 @@ function startE2EMode(): void {
     //    here so frames match the adapter's outputId. Multi-output routing (EP-10+)
     //    will replace this with per-output engines.
     syncEngineSyncFrameUnsub = syncEngine.onSyncFrame((frame) => {
-        adapter?.pushSyncFrame({ ...frame, outputId: OUTPUT_ID })
+        const nextSongTitle = nextSongHintForFrame(frame.slideIndex)
+        adapter?.pushSyncFrame({ ...frame, outputId: OUTPUT_ID, nextSongTitle })
     })
     // 3. Load the demo project through the EP-12 setlist controller. It owns active
     //    song loading, songComplete → next-song advance, and waitingForStart → VAD
@@ -549,6 +550,15 @@ function handlePrevSection(): void {
     )
     if (target === null) return
     syncEngine.dispatch({ kind: "prevSection", targetRefMs: target, wallTime: performance.now() })
+}
+
+function nextSongHintForFrame(slideIndex: number): string | null {
+    const seState = syncEngine?.snapshot() ?? null
+    const setlistState = setlistController?.snapshot() ?? null
+    if (!seState?.activeTimingMap || !setlistState?.nextSongTitle) return null
+    const sectionCount = seState.activeArrangement?.sequence.length ?? seState.activeTimingMap.sections.length
+    if (sectionCount === 0) return null
+    return slideIndex === sectionCount - 1 ? setlistState.nextSongTitle : null
 }
 
 /**

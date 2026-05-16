@@ -78,7 +78,7 @@ function makeLoadMap(outputId: string) {
     }
 }
 
-function makeFrame(overrides: Partial<{ outputId: string; slideIndex: number; wordIndex: number; wordProgress: number; tier: "auto" | "timer" | "manual"; vad: "active" | "silent" }> = {}) {
+function makeFrame(overrides: Partial<{ outputId: string; slideIndex: number; wordIndex: number; wordProgress: number; tier: "auto" | "timer" | "manual"; vad: "active" | "silent"; nextSongTitle: string | null }> = {}) {
     return {
         outputId: "out-1",
         slideIndex: 0,
@@ -552,6 +552,57 @@ describe("KaraokeOutput", () => {
             const root = target.querySelector(".karaoke-output")!
             expect(root.getAttribute("data-tier")).toBe("manual")
             expect(root.getAttribute("data-vad")).toBe("silent")
+            cmp.$destroy()
+        })
+    })
+
+    describe("EP-12 — congregation next-song hint", () => {
+        it("renders the Next hint when a frame carries nextSongTitle", async () => {
+            const cmp = new KaraokeOutput({
+                target,
+                props: { outputId: "out-1", subscribe: bus.subscribe }
+            })
+            bus.push({ channel: "LC_LOAD_MAP", data: makeLoadMap("out-1") })
+            bus.push({
+                channel: "LC_SYNC_FRAME",
+                data: makeFrame({ nextSongTitle: "Good Good Father" })
+            })
+            await Promise.resolve()
+            const hint = target.querySelector(".next-song-hint")
+            expect(hint?.textContent).toContain("Next:")
+            expect(hint?.textContent).toContain("Good Good Father")
+            cmp.$destroy()
+        })
+
+        it("hides the Next hint when nextSongTitle is absent or null", async () => {
+            const cmp = new KaraokeOutput({
+                target,
+                props: { outputId: "out-1", subscribe: bus.subscribe }
+            })
+            bus.push({ channel: "LC_LOAD_MAP", data: makeLoadMap("out-1") })
+            bus.push({ channel: "LC_SYNC_FRAME", data: makeFrame() })
+            await Promise.resolve()
+            expect(target.querySelector(".next-song-hint")).toBeNull()
+            bus.push({ channel: "LC_SYNC_FRAME", data: makeFrame({ nextSongTitle: null }) })
+            await Promise.resolve()
+            expect(target.querySelector(".next-song-hint")).toBeNull()
+            cmp.$destroy()
+        })
+
+        it("rejects a frame with a malformed nextSongTitle", async () => {
+            const cmp = new KaraokeOutput({
+                target,
+                props: { outputId: "out-1", subscribe: bus.subscribe }
+            })
+            bus.push({ channel: "LC_LOAD_MAP", data: makeLoadMap("out-1") })
+            bus.push({
+                channel: "LC_SYNC_FRAME",
+                data: { ...makeFrame({ wordIndex: 1 }), nextSongTitle: 123 }
+            })
+            await Promise.resolve()
+            const words = Array.from(target.querySelectorAll(".word"))
+            expect(words[0]!.classList.contains("active")).toBe(true)
+            expect(target.querySelector(".next-song-hint")).toBeNull()
             cmp.$destroy()
         })
     })
