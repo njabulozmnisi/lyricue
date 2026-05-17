@@ -19,6 +19,7 @@
 
 import SetlistPanel from "@lyricue/ui/SetlistPanel.svelte"
 import TierChangeBanner from "@lyricue/ui/TierChangeBanner.svelte"
+import LearnSongWizard from "@lyricue/ui/LearnSongWizard.svelte"
 import { createShortcutHandler } from "@lyricue/core/sync"
 import { shouldBypassOperatorShortcutTarget } from "./operator-shortcuts.js"
 
@@ -115,6 +116,8 @@ root.appendChild(panelSlot)
 
 let currentState: OperatorState = DEFAULT_STATE
 let panel: SetlistPanel | null = null
+let learnSongWizard: LearnSongWizard | null = null
+let learnSongDraft: unknown = null
 
 const banner = new TierChangeBanner({
     target: bannerSlot,
@@ -139,6 +142,7 @@ function mountPanel(): SetlistPanel {
     })
 
     panel.$on("start-sync", () => bridge.sendCommand({ kind: "engageSync" }))
+    panel.$on("learn-song", () => openLearnSongWizard())
     panel.$on("select-song", (e: CustomEvent<{ songId: string }>) =>
         bridge.sendCommand({ kind: "selectSong", songId: e.detail.songId })
     )
@@ -149,6 +153,48 @@ function mountPanel(): SetlistPanel {
         bridge.sendCommand({ kind: "forceTier", tier: e.detail.tier })
     )
     return panel
+}
+
+function openLearnSongWizard(): void {
+    if (learnSongWizard) return
+
+    const overlay = document.createElement("div")
+    overlay.className = "learn-song-overlay"
+    overlay.style.position = "fixed"
+    overlay.style.inset = "0"
+    overlay.style.zIndex = "100"
+    overlay.style.overflow = "auto"
+    overlay.style.background = "rgba(0, 0, 0, 0.72)"
+    overlay.style.padding = "1rem"
+    document.body.appendChild(overlay)
+
+    learnSongWizard = new LearnSongWizard({
+        target: overlay,
+        props: {
+            initialDraft: learnSongDraft && typeof learnSongDraft === "object" ? learnSongDraft : undefined,
+            confirmCancel: () => window.confirm("Discard the current song-learning draft?"),
+            learnSong: async () => ({ progressLabel: "Manual preview ready" })
+        }
+    })
+    learnSongWizard.$on("draft-change", (e: CustomEvent<{ draft: unknown }>) => {
+        learnSongDraft = e.detail.draft
+    })
+    learnSongWizard.$on("cancel", closeLearnSongWizard)
+    learnSongWizard.$on("complete", (e: CustomEvent<{ draft: unknown }>) => {
+        learnSongDraft = e.detail.draft
+        closeLearnSongWizard()
+    })
+}
+
+function closeLearnSongWizard(): void {
+    const overlay = document.querySelector(".learn-song-overlay")
+    try {
+        learnSongWizard?.$destroy()
+    } catch {
+        // already destroyed
+    }
+    learnSongWizard = null
+    overlay?.remove()
 }
 
 // ── Keyboard shortcuts ───────────────────────────────────────────────────────
@@ -236,6 +282,7 @@ window.addEventListener("beforeunload", () => {
     } catch {
         // already destroyed
     }
+    closeLearnSongWizard()
     try {
         banner.$destroy()
     } catch {

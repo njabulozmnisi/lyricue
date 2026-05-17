@@ -81,6 +81,7 @@
 
     const dispatch = createEventDispatcher<{
         "start-sync": void
+        "learn-song": void
         "select-song": { songId: string }
         "change-device": { deviceId: string }
         "force-tier": { tier: SyncTier }
@@ -89,6 +90,10 @@
     function handleStartSync(): void {
         if (!canStart) return
         dispatch("start-sync")
+    }
+
+    function handleLearnSong(): void {
+        dispatch("learn-song")
     }
 
     function handleSelectSong(songId: string, song: SetlistSong): void {
@@ -127,6 +132,15 @@
             {/if}
         </h1>
         <div class="header-right">
+            <button
+                type="button"
+                class="learn-song-btn"
+                on:click={handleLearnSong}
+                data-testid="learn-song"
+                aria-label="Learn song"
+            >
+                Learn Song
+            </button>
             <ModeIndicator {tier} {lastTransition} on:force-tier={handleForceTier} />
         </div>
     </header>
@@ -263,6 +277,25 @@
     .project {
         color: #aaa;
         font-weight: 500;
+    }
+    .header-right {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+    }
+    .learn-song-btn {
+        background: #2b2b2b;
+        color: #f0f0f0;
+        border: 1px solid #444;
+        padding: 0.45rem 0.7rem;
+        font-size: 0.82rem;
+        font-weight: 700;
+        border-radius: 6px;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .learn-song-btn:hover {
+        background: #353535;
     }
 
     .control-row {

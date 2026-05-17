@@ -50,6 +50,12 @@ describe("SetlistPanel — layout (AC1)", () => {
         cmp.$destroy()
     })
 
+    it("renders the Learn Song command", () => {
+        const cmp = new SetlistPanel({ target })
+        expect(target.querySelector('[data-testid="learn-song"]')?.textContent).toContain("Learn Song")
+        cmp.$destroy()
+    })
+
     it("renders the audio device picker", () => {
         const cmp = new SetlistPanel({
             target,
@@ -198,6 +204,26 @@ describe("SetlistPanel — click any song to jump (AC4)", () => {
         ) as HTMLButtonElement
         s4Btn.click()
         expect(events).toEqual([])
+        cmp.$destroy()
+    })
+})
+
+describe("SetlistPanel — Learn Song command", () => {
+    let target: HTMLElement
+    beforeEach(() => {
+        target = document.createElement("div")
+        document.body.appendChild(target)
+    })
+    afterEach(() => {
+        document.body.removeChild(target)
+    })
+
+    it("dispatches learn-song when the command is clicked", () => {
+        const cmp = new SetlistPanel({ target })
+        const events: void[] = []
+        cmp.$on("learn-song", () => events.push(undefined))
+        ;(target.querySelector('[data-testid="learn-song"]') as HTMLButtonElement).click()
+        expect(events).toHaveLength(1)
         cmp.$destroy()
     })
 })
