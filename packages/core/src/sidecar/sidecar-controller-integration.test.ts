@@ -12,9 +12,11 @@
  */
 
 import { describe, it, expect } from "vitest"
-import { existsSync } from "node:fs"
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { validateTimingMap } from "../types/timing-map-schema.js"
 import { SidecarController } from "./sidecar-controller.js"
 import {
     nodePythonResolver,
@@ -83,6 +85,61 @@ describe.skipIf(!haveVenv)("SidecarController ↔ Python sidecar (integration)",
         await waitFor(() => controller.statusSnapshot() !== "running", 5000)
     }, 30_000)
 
+    it("learn_song returns a TimingMap accepted by the TS validator", async () => {
+        const tmp = mkdtempSync(join(tmpdir(), "lyricue-learn-song-"))
+        const audioPath = join(tmp, "tone.wav")
+        writeWavFixture(audioPath)
+
+        const controller = new SidecarController({
+            spawn: nodeSidecarSpawner,
+            resolvePython: async () => ({ pythonPath: venvPython, version: "3.14.0" }),
+            pythonOverride: venvPython,
+            readyTimeoutMs: 15_000,
+            cwd: sidecarRoot
+        })
+
+        try {
+            await controller.ensureRunning()
+            const result = await controller.request<{ timingMap: unknown; stage: string }>(
+                "learn_song",
+                {
+                    jobId: "integration-learn",
+                    showId: "integration-show",
+                    audioPath,
+                    lyrics: [
+                        {
+                            id: "verse-1",
+                            type: "verse",
+                            label: "Verse 1",
+                            text: "Amazing grace\nHow sweet the sound",
+                            lines: ["Amazing grace", "How sweet the sound"]
+                        }
+                    ],
+                    options: { language: "en" }
+                },
+                { timeoutMs: 60_000 }
+            )
+            expect(result.stage).toBe("timing_map_ready")
+            const parsed = validateTimingMap(result.timingMap)
+            expect(parsed.ok).toBe(true)
+            if (parsed.ok) {
+                expect(parsed.value.showId).toBe("integration-show")
+                expect(parsed.value.sections[0]?.words.map((word) => word.text)).toEqual([
+                    "Amazing",
+                    "grace",
+                    "How",
+                    "sweet",
+                    "the",
+                    "sound"
+                ])
+            }
+        } finally {
+            await controller.shutdown().catch(() => undefined)
+            await waitFor(() => controller.statusSnapshot() !== "running", 5000).catch(() => undefined)
+            rmSync(tmp, { recursive: true, force: true })
+        }
+    }, 90_000)
+
     it("nodePythonResolver finds the venv Python ≥3.10", async () => {
         const resolved = await nodePythonResolver(venvPython)
         expect(resolved.pythonPath).toBe(venvPython)
@@ -91,3 +148,29 @@ describe.skipIf(!haveVenv)("SidecarController ↔ Python sidecar (integration)",
         if (parts[0] === 3) expect(parts[1]!).toBeGreaterThanOrEqual(10)
     })
 })
+
+function writeWavFixture(path: string): void {
+    const sampleRate = 44_100
+    const durationSeconds = 1
+    const sampleCount = sampleRate * durationSeconds
+    const dataSize = sampleCount * 2
+    const buffer = Buffer.alloc(44 + dataSize)
+    buffer.write("RIFF", 0)
+    buffer.writeUInt32LE(36 + dataSize, 4)
+    buffer.write("WAVE", 8)
+    buffer.write("fmt ", 12)
+    buffer.writeUInt32LE(16, 16)
+    buffer.writeUInt16LE(1, 20)
+    buffer.writeUInt16LE(1, 22)
+    buffer.writeUInt32LE(sampleRate, 24)
+    buffer.writeUInt32LE(sampleRate * 2, 28)
+    buffer.writeUInt16LE(2, 32)
+    buffer.writeUInt16LE(16, 34)
+    buffer.write("data", 36)
+    buffer.writeUInt32LE(dataSize, 40)
+    for (let i = 0; i < sampleCount; i++) {
+        const value = Math.round(12_000 * Math.sin(2 * Math.PI * 440 * (i / sampleRate)))
+        buffer.writeInt16LE(value, 44 + i * 2)
+    }
+    writeFileSync(path, buffer)
+}

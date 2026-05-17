@@ -22,6 +22,7 @@ AudioLoader = Callable[[str], tuple[Any, int]]
 @dataclass(frozen=True)
 class DecodedAudio:
     path: Path
+    samples: Any
     sample_rate: int
     duration_seconds: float
     sample_count: int
@@ -85,6 +86,7 @@ def decode_audio_file(
 
     return DecodedAudio(
         path=path,
+        samples=samples,
         sample_rate=sample_rate,
         duration_seconds=sample_count / sample_rate,
         sample_count=sample_count,

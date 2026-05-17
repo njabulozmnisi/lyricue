@@ -57,7 +57,11 @@ export const LyriCueRpcErrorCode = {
     MODEL_NOT_FOUND: -32001,
     SIDECAR_BUSY: -32002,
     PYTHON_RUNTIME: -32003,
-    AUDIO_DECODE_FAILED: -32010
+    AUDIO_DECODE_FAILED: -32010,
+    VOCAL_ISOLATION_FAILED: -32011,
+    ALIGNMENT_FAILED: -32012,
+    NO_VOCALS_DETECTED: -32013,
+    JOB_CANCELLED: -32030
 } as const
 
 /** Errors thrown from request() when the response is an error. */

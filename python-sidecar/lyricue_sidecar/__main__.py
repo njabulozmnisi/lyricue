@@ -6,18 +6,18 @@ stderr is reserved for logging — never used for protocol traffic.
 
 Startup sequence:
   1. Construct the JsonRpcServer.
-  2. Register built-in methods (ping, check_models, learn_song, shutdown).
+  2. Register built-in methods (ping, check_models, learn_song, cancel_job, shutdown).
   3. Emit the `ready` notification with version + capability info.
   4. Enter the dispatch loop until stdin closes.
 
-The first EP-05 `learn_song` slice decodes/resamples audio. Later slices extend the
-same RPC through vocal isolation, forced alignment, BPM detection, and TimingMap assembly.
+EP-05 `learn_song` returns a schema-compatible TimingMap from local audio + structured lyrics.
 """
 from __future__ import annotations
 
 import sys
 
 from . import __version__
+from .jobs import cancel_job_handler
 from .learning import learn_song_handler
 from .methods import make_check_models_handler, ping_handler, shutdown_handler
 from .protocol import JsonRpcServer
@@ -29,6 +29,7 @@ def main() -> int:
     server.register("ping", ping_handler)
     server.register("check_models", make_check_models_handler())
     server.register("learn_song", learn_song_handler)
+    server.register("cancel_job", cancel_job_handler)
     server.register("shutdown", shutdown_handler)
 
     # The Electron-side SidecarController.ensureRunning() waits for this notification
@@ -37,8 +38,8 @@ def main() -> int:
         "ready",
         {
             "version": __version__,
-            "phase": "ep05-audio-decode",
-            "methods": ["ping", "check_models", "learn_song", "shutdown"],
+            "phase": "ep05-learning-pipeline",
+            "methods": ["ping", "check_models", "learn_song", "cancel_job", "shutdown"],
         },
     )
 
