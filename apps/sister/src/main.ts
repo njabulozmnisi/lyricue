@@ -36,7 +36,7 @@
  */
 
 import { app, BrowserWindow, ipcMain } from "electron"
-import { mkdirSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { dirname, resolve, join } from "node:path"
 import { DEPLOYMENT_MODE } from "@lyricue/core/types"
@@ -59,6 +59,12 @@ import {
     type Project,
     type SetlistController
 } from "@lyricue/core/setlist"
+import {
+    SidecarController,
+    nodePythonResolver,
+    nodeSidecarSpawner,
+    type SidecarControllerOptions
+} from "@lyricue/core/sidecar"
 import { OwnWindowOutputAdapter } from "./output/OwnWindowOutputAdapter.js"
 import { createElectronBrowserWindowFactory } from "./output/electron-browser-window-factory.js"
 import { createSyntheticAudioDriver, type SyntheticAudioDriver } from "./audio/synthetic-audio-driver.js"
@@ -124,6 +130,7 @@ const OUTPUT_ID = "lyricue-sister-output"
 const OPERATOR_STATE_CHANNEL = "lyricue:operator:state"
 const OPERATOR_COMMAND_CHANNEL = "lyricue:operator:command"
 const OPERATOR_READY_EVENT = "lyricue:operator:ready"
+const OPERATOR_LEARN_SONG_CHANNEL = "lyricue:operator:learn-song"
 const OPERATOR_STATE_BROADCAST_INTERVAL_MS = 200
 
 const DEMO_REPRISE_TIMING_MAP = {
@@ -186,6 +193,7 @@ let operatorStateBroadcastTimer: ReturnType<typeof setTimeout> | null = null
 let lastOperatorStateBroadcastAt = 0
 let ipcCommandHandler: ((event: Electron.IpcMainEvent, command: unknown) => void) | null = null
 let ipcReadyHandler: ((event: Electron.IpcMainEvent) => void) | null = null
+let sidecarController: SidecarController | null = null
 
 async function startSisterMode(): Promise<void> {
     adapter = new OwnWindowOutputAdapter({
@@ -458,6 +466,13 @@ async function startOperatorWindow(): Promise<void> {
     }
     ipcMain.on(OPERATOR_READY_EVENT, ipcReadyHandler)
     ipcMain.on(OPERATOR_COMMAND_CHANNEL, ipcCommandHandler)
+    ipcMain.removeHandler(OPERATOR_LEARN_SONG_CHANNEL)
+    ipcMain.handle(OPERATOR_LEARN_SONG_CHANNEL, async (event, request: unknown) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected learn_song request from unknown sender.")
+        }
+        return handleOperatorLearnSong(request)
+    })
 
     try {
         await operatorWindow.loadFile(OPERATOR_HTML_PATH)
@@ -633,6 +648,43 @@ function removeOperatorIpcHandlers(): void {
         ipcMain.off(OPERATOR_COMMAND_CHANNEL, ipcCommandHandler)
         ipcCommandHandler = null
     }
+    ipcMain.removeHandler(OPERATOR_LEARN_SONG_CHANNEL)
+}
+
+async function handleOperatorLearnSong(request: unknown): Promise<unknown> {
+    if (!request || typeof request !== "object") {
+        throw new Error("learn_song request must be an object.")
+    }
+    const payload = request as Record<string, unknown>
+    if (typeof payload.audioPath !== "string" || payload.audioPath.trim() === "") {
+        throw new Error("Choose a reference audio file before starting learning.")
+    }
+    if (!Array.isArray(payload.lyrics) || payload.lyrics.length === 0) {
+        throw new Error("Add at least one lyric section before starting learning.")
+    }
+    if (typeof payload.showId !== "string" || payload.showId.trim() === "") {
+        throw new Error("Song learning requires a showId.")
+    }
+
+    const controller = getSidecarController()
+    await controller.ensureRunning()
+    return controller.request("learn_song", payload, { timeoutMs: 120_000 })
+}
+
+function getSidecarController(): SidecarController {
+    if (sidecarController) return sidecarController
+    const sidecarRoot = resolve(here, "..", "..", "..", "python-sidecar")
+    const venvPython = resolve(sidecarRoot, ".venv", "bin", "python")
+    const opts: SidecarControllerOptions = {
+        spawn: nodeSidecarSpawner,
+        resolvePython: nodePythonResolver,
+        pythonOverride: existsSync(venvPython) ? venvPython : null,
+        readyTimeoutMs: 30_000,
+        cwd: sidecarRoot,
+        onStderrLine: (line) => log(`sidecar: ${line}`)
+    }
+    sidecarController = new SidecarController(opts)
+    return sidecarController
 }
 
 /**
@@ -825,6 +877,14 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", async () => {
     stopTimers()
+    if (sidecarController) {
+        try {
+            await sidecarController.shutdown()
+        } catch (err) {
+            log(`sidecar shutdown failed: ${(err as Error).message}`)
+        }
+        sidecarController = null
+    }
     if (adapter) {
         try {
             await adapter.stop()

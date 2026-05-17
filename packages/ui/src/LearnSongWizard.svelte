@@ -17,8 +17,10 @@
         sections: ParsedLyricsSection[]
         audioFileName: string | null
         audioFileSize: number | null
+        audioPath: string | null
         progressLabel: string
         warnings: string[]
+        timingMap: unknown | null
     }
 
     export interface LyricSearchResult {
@@ -38,7 +40,7 @@
     export let searchLyrics: ((query: string) => Promise<LyricSearchResult[]>) | undefined = undefined
     export let readFileText: ((file: File) => Promise<string>) | undefined = undefined
     export let learnSong:
-        | ((draft: LearnSongDraft) => Promise<{ progressLabel?: string } | void>)
+        | ((draft: LearnSongDraft) => Promise<{ progressLabel?: string; timingMap?: unknown } | void>)
         | undefined = undefined
     export let confirmCancel: ((draft: LearnSongDraft) => boolean) | undefined = undefined
 
@@ -68,8 +70,10 @@
         sections: initialDraft?.sections ?? [],
         audioFileName: initialDraft?.audioFileName ?? null,
         audioFileSize: initialDraft?.audioFileSize ?? null,
+        audioPath: initialDraft?.audioPath ?? null,
         progressLabel: initialDraft?.progressLabel ?? "Ready to learn",
-        warnings: initialDraft?.warnings ?? []
+        warnings: initialDraft?.warnings ?? [],
+        timingMap: initialDraft?.timingMap ?? null
     }
 
     let searchQuery = ""
@@ -164,6 +168,8 @@
     function skipAudio(): void {
         draft.audioFileName = null
         draft.audioFileSize = null
+        draft.audioPath = null
+        draft.timingMap = null
         goNext()
     }
 
@@ -171,8 +177,11 @@
         const input = event.currentTarget as HTMLInputElement
         const file = input.files?.[0]
         if (!file) return
+        const filePath = (file as unknown as { path?: string }).path
         draft.audioFileName = file.name
         draft.audioFileSize = file.size
+        draft.audioPath = typeof filePath === "string" && filePath.length > 0 ? filePath : null
+        draft.timingMap = null
         emitDraft()
     }
 
@@ -184,6 +193,9 @@
         try {
             const result = learnSong ? await learnSong(draft) : { progressLabel: "Preview ready" }
             draft.progressLabel = result?.progressLabel ?? "Preview ready"
+            if (result && "timingMap" in result) {
+                draft.timingMap = (result as { timingMap?: unknown }).timingMap ?? null
+            }
             draft.step = "preview"
             emitDraft()
         } catch (err) {
@@ -196,7 +208,7 @@
     }
 
     function cancel(): void {
-        const dirty = draft.lyricsText.trim() || draft.sections.length > 0 || draft.audioFileName
+        const dirty = draft.lyricsText.trim() || draft.sections.length > 0 || draft.audioFileName || draft.timingMap
         if (dirty && confirmCancel && !confirmCancel(draft)) return
         dispatch("cancel", { draft })
     }
@@ -407,6 +419,9 @@
         <section class="step-panel preview">
             <h2>Preview structure</h2>
             <p class="summary">{draft.sections.length} sections ready{draft.audioFileName ? ` with ${draft.audioFileName}` : " for manual mode"}.</p>
+            {#if draft.timingMap && typeof draft.timingMap === "object"}
+                <p class="ok">Timing map learned and ready for review.</p>
+            {/if}
             <div class="preview-sections">
                 {#each draft.sections as section}
                     <article>

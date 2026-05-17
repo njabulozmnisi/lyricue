@@ -26,6 +26,7 @@ const { contextBridge, ipcRenderer } = require("electron") as typeof import("ele
 const OPERATOR_STATE_CHANNEL = "lyricue:operator:state"
 const OPERATOR_COMMAND_CHANNEL = "lyricue:operator:command"
 const OPERATOR_READY_EVENT = "lyricue:operator:ready"
+const OPERATOR_LEARN_SONG_CHANNEL = "lyricue:operator:learn-song"
 
 type StateHandler = (payload: unknown) => void
 
@@ -68,6 +69,10 @@ contextBridge.exposeInMainWorld("lyricueOperator", {
         ipcRenderer.send(OPERATOR_COMMAND_CHANNEL, command)
     },
 
+    learnSong(request: unknown): Promise<unknown> {
+        return ipcRenderer.invoke(OPERATOR_LEARN_SONG_CHANNEL, request)
+    },
+
     /**
      * Tell main the renderer has mounted. The main process uses this to flush any
      * buffered state envelopes (states emitted before the renderer was ready).
@@ -82,6 +87,7 @@ declare global {
         lyricueOperator: {
             subscribeState: (handler: StateHandler) => () => void
             sendCommand: (command: unknown) => void
+            learnSong: (request: unknown) => Promise<unknown>
             signalReady: () => void
         }
     }

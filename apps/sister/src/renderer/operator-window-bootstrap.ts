@@ -58,6 +58,13 @@ interface OperatorState {
     }
 }
 
+interface LearnSongDraftForHost {
+    title: string
+    sections: unknown[]
+    audioFileName: string | null
+    audioPath: string | null
+}
+
 const DEFAULT_STATE: OperatorState = {
     projectTitle: "Walking-Skeleton Demo",
     tier: "auto",
@@ -88,6 +95,7 @@ const bridgeCandidate = (
         lyricueOperator?: {
             subscribeState: (handler: (state: unknown) => void) => () => void
             sendCommand: (command: unknown) => void
+            learnSong: (request: unknown) => Promise<unknown>
             signalReady: () => void
         }
     }
@@ -173,7 +181,7 @@ function openLearnSongWizard(): void {
         props: {
             initialDraft: learnSongDraft && typeof learnSongDraft === "object" ? learnSongDraft : undefined,
             confirmCancel: () => window.confirm("Discard the current song-learning draft?"),
-            learnSong: async () => ({ progressLabel: "Manual preview ready" })
+            learnSong: async (draft: LearnSongDraftForHost) => learnSongFromSidecar(draft)
         }
     })
     learnSongWizard.$on("draft-change", (e: CustomEvent<{ draft: unknown }>) => {
@@ -184,6 +192,36 @@ function openLearnSongWizard(): void {
         learnSongDraft = e.detail.draft
         closeLearnSongWizard()
     })
+}
+
+async function learnSongFromSidecar(draft: LearnSongDraftForHost): Promise<{ progressLabel: string; timingMap?: unknown }> {
+    if (!draft.audioPath) return { progressLabel: "Manual preview ready" }
+    const result = await bridge.learnSong({
+        jobId: `operator-${Date.now()}`,
+        showId: slugShowId(draft.title || draft.audioFileName || "learned-song"),
+        title: draft.title,
+        audioPath: draft.audioPath,
+        lyrics: draft.sections,
+        options: {
+            language: "en",
+            detectSections: true
+        }
+    })
+    if (!result || typeof result !== "object") {
+        throw new Error("Song learning returned an invalid response.")
+    }
+    const payload = result as { timingMap?: unknown; diagnostics?: { alignmentMode?: string } }
+    return {
+        progressLabel:
+            payload.diagnostics?.alignmentMode === "deterministic"
+                ? "Timing map ready for review (deterministic alignment)"
+                : "Timing map ready for review",
+        timingMap: payload.timingMap
+    }
+}
+
+function slugShowId(input: string): string {
+    return input.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "learned-song"
 }
 
 function closeLearnSongWizard(): void {
