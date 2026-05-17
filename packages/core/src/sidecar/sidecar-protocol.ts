@@ -56,7 +56,8 @@ export const RpcErrorCode = {
 export const LyriCueRpcErrorCode = {
     MODEL_NOT_FOUND: -32001,
     SIDECAR_BUSY: -32002,
-    PYTHON_RUNTIME: -32003
+    PYTHON_RUNTIME: -32003,
+    AUDIO_DECODE_FAILED: -32010
 } as const
 
 /** Errors thrown from request() when the response is an error. */

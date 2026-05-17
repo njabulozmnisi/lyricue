@@ -6,19 +6,19 @@ stderr is reserved for logging — never used for protocol traffic.
 
 Startup sequence:
   1. Construct the JsonRpcServer.
-  2. Register built-in methods (ping, check_models, shutdown).
+  2. Register built-in methods (ping, check_models, learn_song, shutdown).
   3. Emit the `ready` notification with version + capability info.
   4. Enter the dispatch loop until stdin closes.
 
-Real ML methods (learn_song, segment_rehearsal, transcribe_chunk) register here when
-EP-05 / EP-08 land. The protocol layer is mature now — adding a method is one
-register() call.
+The first EP-05 `learn_song` slice decodes/resamples audio. Later slices extend the
+same RPC through vocal isolation, forced alignment, BPM detection, and TimingMap assembly.
 """
 from __future__ import annotations
 
 import sys
 
 from . import __version__
+from .learning import learn_song_handler
 from .methods import make_check_models_handler, ping_handler, shutdown_handler
 from .protocol import JsonRpcServer
 
@@ -28,6 +28,7 @@ def main() -> int:
 
     server.register("ping", ping_handler)
     server.register("check_models", make_check_models_handler())
+    server.register("learn_song", learn_song_handler)
     server.register("shutdown", shutdown_handler)
 
     # The Electron-side SidecarController.ensureRunning() waits for this notification
@@ -36,8 +37,8 @@ def main() -> int:
         "ready",
         {
             "version": __version__,
-            "phase": "ep04",
-            "methods": ["ping", "check_models", "shutdown"],
+            "phase": "ep05-audio-decode",
+            "methods": ["ping", "check_models", "learn_song", "shutdown"],
         },
     )
 

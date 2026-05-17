@@ -54,6 +54,7 @@ ERROR_INTERNAL = -32603
 ERROR_MODEL_NOT_FOUND = -32001
 ERROR_SIDECAR_BUSY = -32002
 ERROR_PYTHON_RUNTIME = -32003
+ERROR_AUDIO_DECODE_FAILED = -32010
 
 # Public marker so handlers can raise typed errors that propagate as protocol responses.
 class JsonRpcError(Exception):

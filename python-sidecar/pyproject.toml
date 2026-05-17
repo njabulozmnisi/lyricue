@@ -11,10 +11,9 @@ license = { text = "GPL-3.0" }
 requires-python = ">=3.10"
 readme = "README.md"
 
-# Runtime dependencies are intentionally minimal at scaffold time.
-# Demucs / WhisperX / librosa land in EP-05 stories. Adding them here without using them
-# would bloat CI installs and slow PyInstaller experiments down.
-dependencies = []
+dependencies = [
+    "librosa>=0.10,<0.11",
+]
 
 [project.optional-dependencies]
 dev = [
