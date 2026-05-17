@@ -1,0 +1,151 @@
+import { createServer, type Server } from "node:http"
+import { afterEach, describe, expect, it } from "vitest"
+import { DEMO_TIMING_MAP } from "../output/test-utils.js"
+import type { Arrangement, TimingMap } from "../types/timing-map.js"
+import {
+    diffCatalog,
+    downloadBundle,
+    exportBundle,
+    fetchCatalog,
+    importBundle,
+    readBundle,
+    sha256,
+    type LibraryCatalog
+} from "./library-manager.js"
+
+const servers: Server[] = []
+
+function makeMap(showId = "show-1"): TimingMap {
+    return { ...DEMO_TIMING_MAP, showId, learnedFrom: { ...DEMO_TIMING_MAP.learnedFrom } }
+}
+
+function makeCatalog(songs: LibraryCatalog["songs"]): LibraryCatalog {
+    return {
+        $schema: "lyricue-catalog-v1",
+        catalogVersion: "1",
+        generatedAt: "2026-05-17T00:00:00.000Z",
+        songs
+    }
+}
+
+async function serve(routes: Record<string, { status?: number; body: string | Uint8Array; contentType?: string }>): Promise<string> {
+    const server = createServer((req, res) => {
+        const route = routes[req.url ?? ""]
+        if (!route) {
+            res.writeHead(404)
+            res.end("missing")
+            return
+        }
+        res.writeHead(route.status ?? 200, { "content-type": route.contentType ?? "application/octet-stream" })
+        res.end(route.body)
+    })
+    servers.push(server)
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+    const address = server.address()
+    if (!address || typeof address === "string") throw new Error("server did not bind to TCP")
+    return `http://127.0.0.1:${address.port}`
+}
+
+afterEach(async () => {
+    await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))))
+})
+
+describe("library catalog", () => {
+    it("fetches catalog.json and falls back to mirror on primary failure", async () => {
+        const mirrorCatalog = makeCatalog([
+            { songId: "s1", title: "Song One", bundleVersion: "1.0.0", bundleUrl: "https://x/s1.lcbundle", sha256: "abc" }
+        ])
+        const primary = await serve({ "/catalog.json": { status: 500, body: "nope" } })
+        const mirror = await serve({ "/catalog.json": { body: JSON.stringify(mirrorCatalog), contentType: "application/json" } })
+
+        const result = await fetchCatalog(primary, { mirrorUrl: mirror })
+
+        expect(result.usedMirror).toBe(true)
+        expect(result.catalog.songs[0]?.songId).toBe("s1")
+    })
+
+    it("diffs catalog entries by songId and bundleVersion", () => {
+        const remote = makeCatalog([
+            { songId: "new", title: "New", bundleVersion: "1", bundleUrl: "u", sha256: "h" },
+            { songId: "changed", title: "Changed", bundleVersion: "2", bundleUrl: "u", sha256: "h" }
+        ])
+        const local = makeCatalog([
+            { songId: "changed", title: "Changed", bundleVersion: "1", bundleUrl: "u", sha256: "h" },
+            { songId: "removed", title: "Removed", bundleVersion: "1", bundleUrl: "u", sha256: "h" }
+        ])
+
+        expect(diffCatalog(remote, local)).toEqual({
+            added: [remote.songs[0]],
+            updated: [remote.songs[1]],
+            removed: [local.songs[1]]
+        })
+    })
+})
+
+describe("library bundles", () => {
+    it("exports, reads, downloads with SHA256 verification, and imports a bundle", async () => {
+        const timingMap = makeMap("show-1")
+        const arrangement: Arrangement = {
+            id: "default",
+            name: "Default",
+            showId: "show-1",
+            isDefault: true,
+            sequence: [{ sectionId: timingMap.sections[0]!.id }],
+            createdAt: "2026-05-17T00:00:00.000Z",
+            updatedAt: "2026-05-17T00:00:00.000Z"
+        }
+        const bytes = exportBundle({
+            songId: "song-1",
+            title: "Song One",
+            bundleVersion: "1.0.0",
+            show: { id: "show-1", title: "Song One" },
+            timingMap,
+            arrangements: [arrangement],
+            exportedAt: "2026-05-17T00:00:00.000Z"
+        })
+        const decoded = readBundle(bytes)
+        expect(decoded.manifest.songId).toBe("song-1")
+        expect(decoded.timingMap.showId).toBe("show-1")
+
+        const base = await serve({ "/song-1.lcbundle": { body: bytes } })
+        const downloaded = await downloadBundle({
+            songId: "song-1",
+            title: "Song One",
+            bundleVersion: "1.0.0",
+            bundleUrl: `${base}/song-1.lcbundle`,
+            sha256: sha256(bytes)
+        })
+        expect(downloaded.byteLength).toBe(bytes.byteLength)
+
+        const savedMaps: TimingMap[] = []
+        const savedArrangements: Arrangement[][] = []
+        const result = await importBundle(downloaded, {
+            createShow: async () => undefined,
+            saveTimingMap: async (_showId, map) => {
+                savedMaps.push(map)
+            },
+            saveArrangements: async (_showId, arrangements) => {
+                savedArrangements.push(arrangements)
+            }
+        })
+
+        expect(result).toEqual({ songId: "song-1", showId: "show-1", title: "Song One" })
+        expect(savedMaps[0]?.learnedFrom.method).toBe("imported")
+        expect(savedMaps[0]?.learnedFrom.source).toBe("library:song-1@1.0.0")
+        expect(savedArrangements[0]).toHaveLength(1)
+    })
+
+    it("rejects SHA256 mismatches before import", async () => {
+        const base = await serve({ "/bad.lcbundle": { body: new TextEncoder().encode("{}") } })
+
+        await expect(
+            downloadBundle({
+                songId: "bad",
+                title: "Bad",
+                bundleVersion: "1",
+                bundleUrl: `${base}/bad.lcbundle`,
+                sha256: "not-the-hash"
+            })
+        ).rejects.toThrow(/SHA256 mismatch/)
+    })
+})

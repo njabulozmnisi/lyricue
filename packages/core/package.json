@@ -67,6 +67,10 @@
         "./stt": {
             "types": "./dist/stt/index.d.ts",
             "import": "./dist/stt/index.js"
+        },
+        "./library": {
+            "types": "./dist/library/index.d.ts",
+            "import": "./dist/library/index.js"
         }
     },
     "scripts": {
