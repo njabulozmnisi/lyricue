@@ -146,6 +146,7 @@ describe("createSetlistController", () => {
         expect(engine.forceTier).toHaveBeenCalledWith("manual")
         expect(engine.clearSong).toHaveBeenCalled()
         expect(onPassThrough).toHaveBeenCalledWith({ id: "s2", title: "Reading" })
+        expect(controller.snapshot().passThroughShowId).toBe("s2")
     })
 
     it("engages a waiting song when VAD becomes active", async () => {

@@ -132,7 +132,7 @@ describe("SetlistPanel — per-song sync status icons (AC3)", () => {
         cmp.$destroy()
     })
 
-    it("renders — for not-learned songs and marks the row not-clickable", () => {
+    it("renders — for not-learned songs and keeps the row selectable for pass-through", () => {
         const cmp = new SetlistPanel({
             target,
             props: { setlist: [{ id: "x", title: "T", syncStatus: "not-learned", bpm: null }] }
@@ -140,7 +140,7 @@ describe("SetlistPanel — per-song sync status icons (AC3)", () => {
         const icon = target.querySelector('[data-status="not-learned"]')
         expect(icon?.textContent?.trim()).toBe("—")
         const btn = target.querySelector('[data-testid="setlist-item-button"]') as HTMLButtonElement
-        expect(btn.disabled).toBe(true)
+        expect(btn.disabled).toBe(false)
         cmp.$destroy()
     })
 
@@ -194,7 +194,7 @@ describe("SetlistPanel — click any song to jump (AC4)", () => {
         cmp.$destroy()
     })
 
-    it("does NOT dispatch select-song for not-learned songs", () => {
+    it("dispatches select-song for not-learned songs so host can pass through", () => {
         const cmp = new SetlistPanel({ target, props: { setlist: makeSongs() } })
         const events: Array<{ songId: string }> = []
         cmp.$on("select-song", (e: any) => events.push(e.detail))
@@ -203,7 +203,7 @@ describe("SetlistPanel — click any song to jump (AC4)", () => {
             '[data-testid="setlist-item-button"]'
         ) as HTMLButtonElement
         s4Btn.click()
-        expect(events).toEqual([])
+        expect(events).toEqual([{ songId: "s4" }])
         cmp.$destroy()
     })
 })

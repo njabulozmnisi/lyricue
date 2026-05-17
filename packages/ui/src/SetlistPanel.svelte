@@ -96,8 +96,7 @@
         dispatch("learn-song")
     }
 
-    function handleSelectSong(songId: string, song: SetlistSong): void {
-        if (song.syncStatus === "not-learned") return
+    function handleSelectSong(songId: string, _song: SetlistSong): void {
         dispatch("select-song", { songId })
     }
 
@@ -199,7 +198,6 @@
                             type="button"
                             class="song-row"
                             on:click={() => handleSelectSong(song.id, song)}
-                            disabled={isUnlearned}
                             data-testid="setlist-item-button"
                             aria-current={isActive ? "true" : undefined}
                             aria-label="{song.title}{isUnlearned ? ' (not yet learned)' : ''}"

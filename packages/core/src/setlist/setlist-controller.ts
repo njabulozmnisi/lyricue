@@ -34,6 +34,7 @@ export interface SetlistControllerState {
     songs: SetlistSong[]
     activeShowId: string | null
     nextSongTitle: string | null
+    passThroughShowId: string | null
 }
 
 export interface SetlistControllerOptions {
@@ -75,7 +76,8 @@ export function createSetlistController(opts: SetlistControllerOptions): Setlist
         project: null,
         songs: [],
         activeShowId: null,
-        nextSongTitle: null
+        nextSongTitle: null,
+        passThroughShowId: null
     })
     let current = snapshotFromStore()
     let destroyed = false
@@ -86,7 +88,8 @@ export function createSetlistController(opts: SetlistControllerOptions): Setlist
             project: null,
             songs: [],
             activeShowId: null,
-            nextSongTitle: null
+            nextSongTitle: null,
+            passThroughShowId: null
         }
         store.subscribe((v) => (state = v))()
         return state
@@ -114,7 +117,8 @@ export function createSetlistController(opts: SetlistControllerOptions): Setlist
         setState({
             ...current,
             activeShowId: show.id,
-            nextSongTitle: nextTitleFor(project, show.id)
+            nextSongTitle: nextTitleFor(project, show.id),
+            passThroughShowId: map ? null : show.id
         })
 
         if (!map) {
@@ -145,7 +149,8 @@ export function createSetlistController(opts: SetlistControllerOptions): Setlist
             project,
             songs,
             activeShowId: null,
-            nextSongTitle: project?.shows[0]?.title ?? null
+            nextSongTitle: project?.shows[0]?.title ?? null,
+            passThroughShowId: null
         })
     }
 
