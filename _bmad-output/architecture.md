@@ -2549,6 +2549,8 @@ D. **Dual-mode from day one** *(the decision)*. Build OutputAdapter abstraction;
 2. Open a GitHub Discussion in the ChurchApps repo describing the use case and architecture options, as the lower-commitment alternative to a code PR. Use vassbo's response to refine the PR.
 3. Build the OutputAdapter abstraction first in Phase 4; both fork and own-window adapter must work before MVP.
 
+**EP-20 local amendment (2026-05-18):** The upstream package is prepared in `docs/upstream/freeshow-captions-word-highlight.md`: discussion body, minimal PR scope, PR description template, monitoring plan, and fallback language. The discussion/PR is not posted from the local workspace because posting to GitHub or opening an upstream PR crosses the external-mutation boundary and requires explicit operator approval and credentials. Until that approval is given, ADR-16's operational fallback remains `OwnWindowOutputAdapter` for sister mode and fork mode for maximum in-FreeShow fidelity.
+
 ### ADR-17: Single Monorepo Layout
 
 **Status:** Accepted (decided 2026-05-13 by the project owner; records the resolution of readiness item 4 from epics.md §8).
