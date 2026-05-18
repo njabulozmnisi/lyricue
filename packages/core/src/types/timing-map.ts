@@ -44,15 +44,7 @@ export interface TimingLine {
     wordEndIndex: number
 }
 
-export type TimingSectionType =
-    | "verse"
-    | "chorus"
-    | "bridge"
-    | "pre-chorus"
-    | "tag"
-    | "intro"
-    | "outro"
-    | "other"
+export type TimingSectionType = "verse" | "chorus" | "bridge" | "pre-chorus" | "tag" | "intro" | "outro" | "other"
 
 export interface TimingSection {
     /** Stable section ID — e.g., "verse1". References by ArrangementStep.sectionId. */
@@ -107,6 +99,8 @@ export interface TimingMap {
     /** BCP-47 code, e.g. "en", "zu-ZA". */
     language: string
     sections: TimingSection[]
+    /** Optional section-level translation tracks (FR10). */
+    parallel?: ParallelLyricsTrack[]
     metadata: TimingMapMetadata
 }
 

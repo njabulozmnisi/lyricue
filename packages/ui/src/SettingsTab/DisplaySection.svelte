@@ -28,6 +28,13 @@
     function readColor(e: Event): string {
         return (e.currentTarget as HTMLInputElement).value
     }
+    function readOptionalText(e: Event): string | undefined {
+        const value = (e.currentTarget as HTMLInputElement).value.trim()
+        return value.length > 0 ? value : undefined
+    }
+    function onParallelEnabledChange(e: Event): void {
+        patch({ parallelLyricsEnabled: (e.currentTarget as HTMLInputElement).checked })
+    }
 </script>
 
 <section>
@@ -47,14 +54,7 @@
 
     <label>
         Lead time (seconds before section change)
-        <input
-            type="range"
-            min="0"
-            max="5"
-            step="0.5"
-            value={settings.display.leadTimeSeconds}
-            on:input={(e) => patch({ leadTimeSeconds: readNumber(e) })}
-        />
+        <input type="range" min="0" max="5" step="0.5" value={settings.display.leadTimeSeconds} on:input={(e) => patch({ leadTimeSeconds: readNumber(e) })} />
         <span class="value">{settings.display.leadTimeSeconds.toFixed(1)} s</span>
     </label>
 
@@ -62,27 +62,15 @@
         <legend>Colors</legend>
         <label class="row">
             Highlight
-            <input
-                type="color"
-                value={settings.display.highlightColor}
-                on:input={(e) => patch({ highlightColor: readColor(e) })}
-            />
+            <input type="color" value={settings.display.highlightColor} on:input={(e) => patch({ highlightColor: readColor(e) })} />
         </label>
         <label class="row">
             Sung
-            <input
-                type="color"
-                value={settings.display.sungColor}
-                on:input={(e) => patch({ sungColor: readColor(e) })}
-            />
+            <input type="color" value={settings.display.sungColor} on:input={(e) => patch({ sungColor: readColor(e) })} />
         </label>
         <label class="row">
             Upcoming
-            <input
-                type="color"
-                value={settings.display.upcomingColor}
-                on:input={(e) => patch({ upcomingColor: readColor(e) })}
-            />
+            <input type="color" value={settings.display.upcomingColor} on:input={(e) => patch({ upcomingColor: readColor(e) })} />
         </label>
     </fieldset>
 
@@ -106,20 +94,26 @@
 
     <label>
         Font size (px, base)
-        <input
-            type="number"
-            min="12"
-            max="200"
-            step="2"
-            value={settings.display.fontSize}
-            on:input={(e) => patch({ fontSize: readNumber(e) })}
-        />
+        <input type="number" min="12" max="200" step="2" value={settings.display.fontSize} on:input={(e) => patch({ fontSize: readNumber(e) })} />
     </label>
 
-    <p class="hint">
-        Live preview pane lands in EP-06 STORY-06.x once the karaoke renderer is wired up to
-        respond to live setting changes.
-    </p>
+    <fieldset>
+        <legend>Parallel lyrics</legend>
+        <label class="row">
+            Enabled
+            <input type="checkbox" checked={settings.display.parallelLyricsEnabled} on:change={onParallelEnabledChange} />
+        </label>
+        <label>
+            Primary language
+            <input aria-label="Primary lyrics language" placeholder="Timing map language" value={settings.display.primaryLyricsLanguage ?? ""} on:input={(e) => patch({ primaryLyricsLanguage: readOptionalText(e) })} />
+        </label>
+        <label>
+            Preferred secondary language
+            <input aria-label="Secondary lyrics language" placeholder="First available" value={settings.display.parallelLyricsLanguage ?? ""} on:input={(e) => patch({ parallelLyricsLanguage: readOptionalText(e) })} />
+        </label>
+    </fieldset>
+
+    <p class="hint">Live preview pane lands in EP-06 STORY-06.x once the karaoke renderer is wired up to respond to live setting changes.</p>
 </section>
 
 <style>

@@ -79,6 +79,10 @@
         "./arrangements": {
             "types": "./dist/arrangements/index.d.ts",
             "import": "./dist/arrangements/index.js"
+        },
+        "./translations": {
+            "types": "./dist/translations/index.d.ts",
+            "import": "./dist/translations/index.js"
         }
     },
     "scripts": {

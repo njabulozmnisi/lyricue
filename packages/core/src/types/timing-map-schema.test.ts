@@ -1,14 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { SCHEMA_LYRICUE_TIMING_V1 } from "./schema-versions.js"
-import {
-    validateTimingMap,
-    validateArrangement,
-    validateArrangements,
-    validateParallelLyricsTrack,
-    type TimingMap,
-    type Arrangement,
-    type ParallelLyricsTrack
-} from "./timing-map-schema.js"
+import { validateTimingMap, validateArrangement, validateArrangements, validateParallelLyricsTrack, type TimingMap, type Arrangement, type ParallelLyricsTrack } from "./timing-map-schema.js"
 
 /**
  * Tests deliberately exercise EVERY structural error class STORY-03.1 AC3 calls out:
@@ -113,11 +105,19 @@ describe("validateTimingMap — happy path", () => {
         expect(result.ok).toBe(true)
     })
 
+    it("accepts optional parallel lyric tracks on the timing map", () => {
+        const result = validateTimingMap(
+            makeValidMap({
+                parallel: [{ language: "zu-ZA", sections: [{ sectionId: "v1", text: "Akekho ofana noJesu" }] }]
+            })
+        )
+        expect(result.ok).toBe(true)
+        if (result.ok) expect(result.value.parallel?.[0]?.language).toBe("zu-ZA")
+    })
+
     it("accepts null word confidence (WhisperX couldn't align that word)", () => {
         const map = makeValidMap({
-            sections: [
-                { ...VALID_SECTION, words: [{ ...VALID_WORD, confidence: null }] }
-            ]
+            sections: [{ ...VALID_SECTION, words: [{ ...VALID_WORD, confidence: null }] }]
         })
         expect(validateTimingMap(map).ok).toBe(true)
     })
@@ -234,12 +234,7 @@ describe("validateTimingMap — structural errors", () => {
     })
 
     it("rejects negative startMs / endMs / slideIndex / lineIndex", () => {
-        const negatives = [
-            { word: { ...VALID_WORD, startMs: -1 } },
-            { word: { ...VALID_WORD, endMs: -1 } },
-            { word: { ...VALID_WORD, lineIndex: -1 } },
-            { section: { ...VALID_SECTION, slideIndex: -1 } }
-        ]
+        const negatives = [{ word: { ...VALID_WORD, startMs: -1 } }, { word: { ...VALID_WORD, endMs: -1 } }, { word: { ...VALID_WORD, lineIndex: -1 } }, { section: { ...VALID_SECTION, slideIndex: -1 } }]
         for (const fixture of negatives) {
             const sec = fixture.section ?? { ...VALID_SECTION, words: [fixture.word!] }
             const result = validateTimingMap(makeValidMap({ sections: [sec] }))

@@ -456,7 +456,29 @@ describe("KaraokeOutput", () => {
             cmp.$destroy()
         })
 
-        it("scales the parallel font factor per FR10.8 (60% for 2 langs)", async () => {
+        it("scales one secondary track to 60% for two displayed languages", async () => {
+            const settings = writable({
+                highlightColor: "#FFCC00",
+                sungColor: "#666666",
+                upcomingColor: "#CCCCCC",
+                sungWordOpacity: 0.4,
+                fontSize: 48,
+                fontFamily: "Inter",
+                heldNoteAnimation: "pulse" as const,
+                parallelLyricsEnabled: true
+            })
+            const cmp = new KaraokeOutput({
+                target,
+                props: { outputId: "out-1", subscribe: bus.subscribe, displaySettings: settings }
+            })
+            bus.push({ channel: "LC_LOAD_MAP", data: makeLoadMapWithParallel() })
+            await Promise.resolve()
+            const parallel = target.querySelector(".parallel") as HTMLElement
+            expect(parallel.style.fontSize).toContain("0.6")
+            cmp.$destroy()
+        })
+
+        it("renders two secondary tracks at 50% for three displayed languages", async () => {
             const base = makeLoadMap("out-1")
             const payload = {
                 ...base,
@@ -482,8 +504,33 @@ describe("KaraokeOutput", () => {
             bus.push({ channel: "LC_LOAD_MAP", data: payload })
             await Promise.resolve()
             const parallel = target.querySelector(".parallel") as HTMLElement
-            // Inline style: font-size: calc(var(--font-size-base) * 0.6)
-            expect(parallel.style.fontSize).toContain("0.6")
+            expect(parallel.style.fontSize).toContain("0.5")
+            expect(target.querySelectorAll(".parallel-track")).toHaveLength(2)
+            cmp.$destroy()
+        })
+
+        it("reflects a primary-language swap on the next render", async () => {
+            const settings = writable({
+                highlightColor: "#FFCC00",
+                sungColor: "#666666",
+                upcomingColor: "#CCCCCC",
+                sungWordOpacity: 0.4,
+                fontSize: 48,
+                fontFamily: "Inter",
+                heldNoteAnimation: "pulse" as const,
+                parallelLyricsEnabled: true,
+                primaryLyricsLanguage: "zu-ZA"
+            })
+            const cmp = new KaraokeOutput({
+                target,
+                props: { outputId: "out-1", subscribe: bus.subscribe, displaySettings: settings }
+            })
+            bus.push({ channel: "LC_LOAD_MAP", data: makeLoadMapWithParallel() })
+            await Promise.resolve()
+            const primary = target.querySelector(".primary-translation") as HTMLElement
+            expect(primary.dataset.language).toBe("zu-ZA")
+            expect(primary.textContent).toContain("Akekho ofana noJesu")
+            expect(target.querySelector(".parallel-track")?.textContent).toContain("Amazing grace")
             cmp.$destroy()
         })
     })

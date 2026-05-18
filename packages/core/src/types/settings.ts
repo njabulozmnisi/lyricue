@@ -14,17 +14,11 @@
 import { z } from "zod"
 import { SCHEMA_LYRICUE_SETTINGS_V1 } from "./schema-versions.js"
 
-const HexColor = z
-    .string()
-    .regex(/^#[0-9a-fA-F]{6}$/, { message: "color must be 7-char hex like #FFCC00" })
+const HexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, { message: "color must be 7-char hex like #FFCC00" })
 
 const Opacity = z.number().min(0).max(1)
 
-const KeyCode = z
-    .string()
-    .min(1)
-    .max(40)
-    .describe("KeyboardEvent.code value (e.g. 'Space', 'ArrowRight', 'KeyN')")
+const KeyCode = z.string().min(1).max(40).describe("KeyboardEvent.code value (e.g. 'Space', 'ArrowRight', 'KeyN')")
 
 const DisplaySettingsSchema = z.object({
     mode: z.enum(["karaoke", "section", "traditional"]).default("karaoke"),
@@ -46,6 +40,7 @@ const DisplaySettingsSchema = z.object({
     heldNoteAnimation: z.enum(["pulse", "glow", "static"]).default("pulse"),
 
     parallelLyricsEnabled: z.boolean().default(false),
+    primaryLyricsLanguage: z.string().min(2).max(10).optional(), // BCP-47; omitted means timing-map language remains primary.
     parallelLyricsLanguage: z.string().min(2).max(10).optional() // BCP-47 (e.g. "zu-ZA")
 })
 

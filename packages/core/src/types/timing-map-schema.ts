@@ -26,15 +26,7 @@
 
 import { z } from "zod"
 import { SCHEMA_LYRICUE_TIMING_V1 } from "./schema-versions.js"
-import type {
-    TimingMap,
-    TimingSection,
-    TimingWord,
-    TimingLine,
-    Arrangement,
-    ArrangementStep,
-    ParallelLyricsTrack
-} from "./timing-map.js"
+import type { TimingMap, TimingSection, TimingWord, TimingLine, Arrangement, ArrangementStep, ParallelLyricsTrack } from "./timing-map.js"
 
 /**
  * Structured validation error. JSON path follows Zod's `path` array convention but
@@ -52,55 +44,53 @@ export interface ValidationError {
 
 export type Result<T, E> = { ok: true; value: T } | { ok: false; errors: E }
 
-const timingWordSchema = z.object({
-    text: z.string().min(1, "word text cannot be empty"),
-    startMs: z.number().nonnegative("startMs must be >= 0"),
-    endMs: z.number().nonnegative("endMs must be >= 0"),
-    confidence: z.number().min(0).max(1).nullable(),
-    lineIndex: z.number().int().nonnegative(),
-    held: z.boolean().optional()
-}).refine((w) => w.endMs >= w.startMs, {
-    message: "endMs must be >= startMs",
-    path: ["endMs"]
-})
+const timingWordSchema = z
+    .object({
+        text: z.string().min(1, "word text cannot be empty"),
+        startMs: z.number().nonnegative("startMs must be >= 0"),
+        endMs: z.number().nonnegative("endMs must be >= 0"),
+        confidence: z.number().min(0).max(1).nullable(),
+        lineIndex: z.number().int().nonnegative(),
+        held: z.boolean().optional()
+    })
+    .refine((w) => w.endMs >= w.startMs, {
+        message: "endMs must be >= startMs",
+        path: ["endMs"]
+    })
 
-const timingLineSchema = z.object({
-    startMs: z.number().nonnegative(),
-    endMs: z.number().nonnegative(),
-    wordStartIndex: z.number().int().nonnegative(),
-    wordEndIndex: z.number().int().nonnegative()
-}).refine((l) => l.endMs >= l.startMs, {
-    message: "line endMs must be >= startMs",
-    path: ["endMs"]
-}).refine((l) => l.wordEndIndex >= l.wordStartIndex, {
-    message: "wordEndIndex must be >= wordStartIndex",
-    path: ["wordEndIndex"]
-})
+const timingLineSchema = z
+    .object({
+        startMs: z.number().nonnegative(),
+        endMs: z.number().nonnegative(),
+        wordStartIndex: z.number().int().nonnegative(),
+        wordEndIndex: z.number().int().nonnegative()
+    })
+    .refine((l) => l.endMs >= l.startMs, {
+        message: "line endMs must be >= startMs",
+        path: ["endMs"]
+    })
+    .refine((l) => l.wordEndIndex >= l.wordStartIndex, {
+        message: "wordEndIndex must be >= wordStartIndex",
+        path: ["wordEndIndex"]
+    })
 
-const timingSectionTypeSchema = z.enum([
-    "verse",
-    "chorus",
-    "bridge",
-    "pre-chorus",
-    "tag",
-    "intro",
-    "outro",
-    "other"
-])
+const timingSectionTypeSchema = z.enum(["verse", "chorus", "bridge", "pre-chorus", "tag", "intro", "outro", "other"])
 
-const timingSectionSchema = z.object({
-    id: z.string().min(1, "section id cannot be empty"),
-    type: timingSectionTypeSchema,
-    label: z.string().min(1),
-    slideIndex: z.number().int().nonnegative(),
-    startMs: z.number().nonnegative(),
-    endMs: z.number().nonnegative(),
-    words: z.array(timingWordSchema),
-    lines: z.array(timingLineSchema)
-}).refine((s) => s.endMs >= s.startMs, {
-    message: "section endMs must be >= startMs",
-    path: ["endMs"]
-})
+const timingSectionSchema = z
+    .object({
+        id: z.string().min(1, "section id cannot be empty"),
+        type: timingSectionTypeSchema,
+        label: z.string().min(1),
+        slideIndex: z.number().int().nonnegative(),
+        startMs: z.number().nonnegative(),
+        endMs: z.number().nonnegative(),
+        words: z.array(timingWordSchema),
+        lines: z.array(timingLineSchema)
+    })
+    .refine((s) => s.endMs >= s.startMs, {
+        message: "section endMs must be >= startMs",
+        path: ["endMs"]
+    })
 
 const learnedFromSchema = z.object({
     method: z.enum(["studio", "rehearsal", "imported"]),
@@ -119,6 +109,16 @@ const timingMapMetadataSchema = z.object({
     version: z.string().min(1)
 })
 
+const parallelLyricsSectionSchema = z.object({
+    sectionId: z.string().min(1),
+    text: z.string()
+})
+
+export const parallelLyricsTrackSchema = z.object({
+    language: z.string().min(2),
+    sections: z.array(parallelLyricsSectionSchema)
+})
+
 /**
  * Top-level TimingMap schema. The `$schema` literal pins the file to the
  * `lyricue-timing-v1` schema URI so older readers can reject files they don't
@@ -132,6 +132,7 @@ export const timingMapSchema = z.object({
     timeSignature: z.string().optional(),
     language: z.string().min(2, "language must be a BCP-47 code, e.g. 'en'"),
     sections: z.array(timingSectionSchema),
+    parallel: z.array(parallelLyricsTrackSchema).optional(),
     metadata: timingMapMetadataSchema
 })
 
@@ -147,16 +148,6 @@ export const arrangementSchema = z.object({
     sequence: z.array(arrangementStepSchema),
     createdAt: z.string().refine((s) => !Number.isNaN(Date.parse(s))),
     updatedAt: z.string().refine((s) => !Number.isNaN(Date.parse(s)))
-})
-
-const parallelLyricsSectionSchema = z.object({
-    sectionId: z.string().min(1),
-    text: z.string()
-})
-
-export const parallelLyricsTrackSchema = z.object({
-    language: z.string().min(2),
-    sections: z.array(parallelLyricsSectionSchema)
 })
 
 /**
@@ -199,9 +190,7 @@ export function validateArrangements(input: unknown): Result<Arrangement[], Vali
     return { ok: true, value: parsed.data as unknown as Arrangement[] }
 }
 
-export function validateParallelLyricsTrack(
-    input: unknown
-): Result<ParallelLyricsTrack, ValidationError[]> {
+export function validateParallelLyricsTrack(input: unknown): Result<ParallelLyricsTrack, ValidationError[]> {
     const parsed = parallelLyricsTrackSchema.safeParse(input)
     if (!parsed.success) return { ok: false, errors: zodIssuesToValidationErrors(parsed.error) }
     return { ok: true, value: parsed.data as unknown as ParallelLyricsTrack }
@@ -211,12 +200,4 @@ export function validateParallelLyricsTrack(
  * Type re-exports so callers can import everything from this one file. The TS types
  * are authoritative — these aliases just save one import line.
  */
-export type {
-    TimingMap,
-    TimingSection,
-    TimingWord,
-    TimingLine,
-    Arrangement,
-    ArrangementStep,
-    ParallelLyricsTrack
-}
+export type { TimingMap, TimingSection, TimingWord, TimingLine, Arrangement, ArrangementStep, ParallelLyricsTrack }

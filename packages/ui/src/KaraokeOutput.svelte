@@ -55,8 +55,7 @@
      * Returning an unsubscribe function lets the bootstrap clean up on destroy.
      * In unit tests, omitting this prop renders the component with no live data.
      */
-    export let subscribe: ((handler: (envelope: EnvelopeLike) => void) => () => void) | undefined =
-        undefined
+    export let subscribe: ((handler: (envelope: EnvelopeLike) => void) => () => void) | undefined = undefined
 
     /**
      * Display-settings source. Svelte-store-compatible (anything with `subscribe`).
@@ -65,9 +64,7 @@
      * If omitted (e.g. in unit tests), we use the hard-coded defaults below. Production
      * always provides a real store wired to SettingsStore via IPC.
      */
-    export let displaySettings:
-        | { subscribe: (run: (value: DisplaySettingsLike) => void) => () => void }
-        | undefined = undefined
+    export let displaySettings: { subscribe: (run: (value: DisplaySettingsLike) => void) => () => void } | undefined = undefined
 
     /**
      * Envelope shape mirroring the wire format (`@lyricue/core/output`). Kept inline so
@@ -124,7 +121,9 @@
     }
     interface TimingMapLike {
         showId: string
+        language?: string
         sections: TimingSectionLike[]
+        parallel?: ParallelLyricsTrackLike[]
     }
     interface ArrangementLike {
         sequence: { sectionId: string }[]
@@ -144,6 +143,7 @@
         fontFamily: string
         heldNoteAnimation: "pulse" | "glow" | "static"
         parallelLyricsEnabled: boolean
+        primaryLyricsLanguage?: string
         parallelLyricsLanguage?: string
     }
 
@@ -205,7 +205,7 @@
             if (map.outputId !== outputId) return
             timingMap = map.timingMap
             arrangement = map.arrangement
-            parallelLyrics = map.parallelLyrics ?? []
+            parallelLyrics = map.parallelLyrics ?? map.timingMap.parallel ?? []
             // Reset frame state so we don't render stale cursor positions against a new map.
             currentFrame = null
         }
@@ -226,11 +226,7 @@
         if (typeof d.wordProgress !== "number" || !Number.isFinite(d.wordProgress)) return null
         if (d.tier !== "auto" && d.tier !== "timer" && d.tier !== "manual") return null
         if (d.vad !== "active" && d.vad !== "silent") return null
-        if (
-            d.nextSongTitle !== undefined &&
-            d.nextSongTitle !== null &&
-            typeof d.nextSongTitle !== "string"
-        ) {
+        if (d.nextSongTitle !== undefined && d.nextSongTitle !== null && typeof d.nextSongTitle !== "string") {
             return null
         }
         return d as unknown as SyncFrameLike
@@ -264,11 +260,7 @@
      */
     $: activeSection = resolveSection(timingMap, arrangement, currentFrame?.slideIndex ?? 0)
 
-    function resolveSection(
-        map: TimingMapLike | null,
-        arr: ArrangementLike | null,
-        slideIndex: number
-    ): TimingSectionLike | null {
+    function resolveSection(map: TimingMapLike | null, arr: ArrangementLike | null, slideIndex: number): TimingSectionLike | null {
         if (!map) return null
         if (arr) {
             const step = arr.sequence[slideIndex]
@@ -315,10 +307,7 @@
      * Translate a global section-local word index (the index into `section.words`) into
      * the global progress state expected by the CSS — `sung` / `active` / `upcoming`.
      */
-    function wordState(
-        sectionWordIndex: number,
-        currentWordIndex: number
-    ): "sung" | "active" | "upcoming" {
+    function wordState(sectionWordIndex: number, currentWordIndex: number): "sung" | "active" | "upcoming" {
         if (sectionWordIndex < currentWordIndex) return "sung"
         if (sectionWordIndex === currentWordIndex) return "active"
         return "upcoming"
@@ -328,42 +317,63 @@
      * --progress for a given word. The active word uses the current wordProgress;
      * sung words read 1; upcoming words read 0.
      */
-    function wordProgress(
-        sectionWordIndex: number,
-        currentWordIndex: number,
-        currentWordProgress: number
-    ): number {
+    function wordProgress(sectionWordIndex: number, currentWordIndex: number, currentWordProgress: number): number {
         if (sectionWordIndex < currentWordIndex) return 1
         if (sectionWordIndex === currentWordIndex) return Math.max(0, Math.min(1, currentWordProgress))
         return 0
     }
 
-    /**
-     * Resolve the parallel-lyrics text for the active section (STORY-06.7). Returns
-     * the first parallel track when enabled and a track for the active section exists.
-     * Word-level highlight is NOT applied to the parallel track — it advances section-
-     * by-section only (architecture §4.9, FR10.4).
-     */
-    $: parallelLine = resolveParallelText(parallelLyrics, activeSection, style)
+    $: primaryTranslation = resolvePrimaryTranslation(parallelLyrics, activeSection, style)
+    $: parallelLines = resolveParallelTexts(parallelLyrics, activeSection, style, primaryTranslation, timingMap)
 
-    function resolveParallelText(
-        tracks: ParallelLyricsTrackLike[],
-        section: TimingSectionLike | null,
-        styleNow: DisplaySettingsLike
-    ): { text: string; language: string } | null {
-        if (!styleNow.parallelLyricsEnabled) return null
-        if (tracks.length === 0 || !section) return null
-        // If the operator picked a language, prefer that track; else first track.
-        const chosen = styleNow.parallelLyricsLanguage
-            ? tracks.find((t) => t.language === styleNow.parallelLyricsLanguage) ?? tracks[0]!
-            : tracks[0]!
-        const match = chosen.sections.find((s) => s.sectionId === section.id)
-        if (!match) return null
-        return { text: match.text, language: chosen.language }
+    function resolvePrimaryTranslation(tracks: ParallelLyricsTrackLike[], section: TimingSectionLike | null, styleNow: DisplaySettingsLike): { text: string; language: string } | null {
+        if (!styleNow.primaryLyricsLanguage) return null
+        if (styleNow.primaryLyricsLanguage === timingMap?.language) return null
+        const chosen = tracks.find((track) => track.language === styleNow.primaryLyricsLanguage)
+        if (!chosen || !section) return null
+        const match = chosen.sections.find((candidate) => candidate.sectionId === section.id)
+        return match ? { text: match.text, language: chosen.language } : null
     }
 
-    /** Font-size scaling per FR10.8: 60% for 2 langs, 50% for 3+. */
-    $: parallelFontFactor = parallelLyrics.length >= 3 ? 0.5 : parallelLyrics.length === 2 ? 0.6 : 0.75
+    /**
+     * Resolve secondary lyric blocks for the active section. Translations advance by
+     * section only (FR10.4), and up to two secondary tracks can render at once (FR10.8).
+     */
+    function resolveParallelTexts(tracks: ParallelLyricsTrackLike[], section: TimingSectionLike | null, styleNow: DisplaySettingsLike, primary: { text: string; language: string } | null, map: TimingMapLike | null): { text: string; language: string }[] {
+        if (!styleNow.parallelLyricsEnabled) return []
+        if (tracks.length === 0 || !section) return []
+        const lines: { text: string; language: string }[] = []
+
+        if (primary && map) {
+            lines.push({ text: sectionText(section), language: map.language ?? "primary" })
+        }
+
+        const ordered = styleNow.parallelLyricsLanguage ? [...tracks.filter((track) => track.language === styleNow.parallelLyricsLanguage), ...tracks.filter((track) => track.language !== styleNow.parallelLyricsLanguage)] : tracks
+
+        for (const track of ordered) {
+            if (primary && track.language === primary.language) continue
+            const match = track.sections.find((candidate) => candidate.sectionId === section.id)
+            if (match) lines.push({ text: match.text, language: track.language })
+            if (lines.length >= 2) break
+        }
+
+        return lines
+    }
+
+    function sectionText(section: TimingSectionLike): string {
+        if (section.lines.length === 0) return section.words.map((word) => word.text).join(" ")
+        return section.lines
+            .map((line) =>
+                section.words
+                    .slice(line.wordStartIndex, line.wordEndIndex)
+                    .map((word) => word.text)
+                    .join(" ")
+            )
+            .join("\n")
+    }
+
+    /** Font-size scaling per FR10.8: 60% for 2 languages, 50% for 3. */
+    $: parallelFontFactor = parallelLines.length >= 2 ? 0.5 : parallelLines.length === 1 ? 0.6 : 0.75
 
     /**
      * Resolved easing duration for the currently-active word. Recomputed whenever the
@@ -446,46 +456,36 @@
             <div class="placeholder-sub">No active section</div>
         </div>
     {:else}
-        <div class="lines">
-            {#each linesForActiveSection as line, lineIdx (`${activeSection.id}:${lineIdx}`)}
-                {@const isActiveLine = cursor?.lineIdx === lineIdx}
-                <div
-                    class="line"
-                    class:active={isActiveLine}
-                    class:sung-line={cursor !== null && lineIdx < cursor.lineIdx}
-                    class:upcoming-line={cursor !== null && lineIdx > cursor.lineIdx}
-                    use:captureActiveLine={isActiveLine}
-                    in:fly|local={{ y: 40, duration: 250 }}
-                    out:fly|local={{ y: -40, duration: 250 }}
-                >
-                    {#each line as word}
-                        {@const sectionWordIdx = activeSection.words.indexOf(word)}
-                        {@const wState = wordState(sectionWordIdx, currentFrame?.wordIndex ?? 0)}
-                        {@const wProgress = wordProgress(
-                            sectionWordIdx,
-                            currentFrame?.wordIndex ?? 0,
-                            currentFrame?.wordProgress ?? 0
-                        )}
-                        <span
-                            class="word"
-                            class:sung={wState === "sung"}
-                            class:active={wState === "active"}
-                            class:upcoming={wState === "upcoming"}
-                            class:held={word.held === true}
-                            class:silent={currentFrame?.vad === "silent"}
-                            data-held-anim={style.heldNoteAnimation}
-                            style="--progress: {wProgress}"
-                            >{word.text}</span
-                        >
-                    {/each}
-                </div>
-            {/each}
-        </div>
+        {#if primaryTranslation}
+            <div class="lines primary-translation" data-language={primaryTranslation.language}>
+                {#each primaryTranslation.text.split("\n") as translatedLine}
+                    <div class="line active">{translatedLine}</div>
+                {/each}
+            </div>
+        {:else}
+            <div class="lines">
+                {#each linesForActiveSection as line, lineIdx (`${activeSection.id}:${lineIdx}`)}
+                    {@const isActiveLine = cursor?.lineIdx === lineIdx}
+                    <div class="line" class:active={isActiveLine} class:sung-line={cursor !== null && lineIdx < cursor.lineIdx} class:upcoming-line={cursor !== null && lineIdx > cursor.lineIdx} use:captureActiveLine={isActiveLine} in:fly|local={{ y: 40, duration: 250 }} out:fly|local={{ y: -40, duration: 250 }}>
+                        {#each line as word}
+                            {@const sectionWordIdx = activeSection.words.indexOf(word)}
+                            {@const wState = wordState(sectionWordIdx, currentFrame?.wordIndex ?? 0)}
+                            {@const wProgress = wordProgress(sectionWordIdx, currentFrame?.wordIndex ?? 0, currentFrame?.wordProgress ?? 0)}
+                            <span class="word" class:sung={wState === "sung"} class:active={wState === "active"} class:upcoming={wState === "upcoming"} class:held={word.held === true} class:silent={currentFrame?.vad === "silent"} data-held-anim={style.heldNoteAnimation} style="--progress: {wProgress}">{word.text}</span>
+                        {/each}
+                    </div>
+                {/each}
+            </div>
+        {/if}
 
-        {#if parallelLine}
-            <div class="parallel" style="font-size: calc(var(--font-size-base) * {parallelFontFactor})" data-language={parallelLine.language}>
-                {#each parallelLine.text.split("\n") as ptLine}
-                    <div class="parallel-line">{ptLine}</div>
+        {#if parallelLines.length > 0}
+            <div class="parallel" style="font-size: calc(var(--font-size-base) * {parallelFontFactor})">
+                {#each parallelLines as line}
+                    <div class="parallel-track" data-language={line.language}>
+                        {#each line.text.split("\n") as ptLine}
+                            <div class="parallel-line">{ptLine}</div>
+                        {/each}
+                    </div>
                 {/each}
             </div>
         {/if}
@@ -563,6 +563,9 @@
     .line.upcoming-line {
         opacity: 0.7;
     }
+    .primary-translation {
+        text-align: center;
+    }
 
     /* STORY-06.6: when a single line exceeds container width, horizontal-pan layout. */
     .line.active {
@@ -587,11 +590,7 @@
        AND the opacity/colour handoff so word-to-word transitions feel like one motion. */
     .word {
         position: relative;
-        background: linear-gradient(
-            to right,
-            var(--highlight-color) calc(var(--progress, 0) * 100%),
-            var(--upcoming-color) calc(var(--progress, 0) * 100%)
-        );
+        background: linear-gradient(to right, var(--highlight-color) calc(var(--progress, 0) * 100%), var(--upcoming-color) calc(var(--progress, 0) * 100%));
         background-clip: text;
         -webkit-background-clip: text;
         color: transparent;
@@ -602,11 +601,7 @@
     }
 
     .word.sung {
-        background: linear-gradient(
-            to right,
-            var(--sung-color) 100%,
-            var(--sung-color) 100%
-        );
+        background: linear-gradient(to right, var(--sung-color) 100%, var(--sung-color) 100%);
         background-clip: text;
         -webkit-background-clip: text;
         opacity: var(--sung-opacity, 0.4);
@@ -665,6 +660,9 @@
         line-height: 1.3;
         color: var(--upcoming-color, #cccccc);
         max-width: 95%;
+    }
+    .parallel-track + .parallel-track {
+        margin-top: 0.25em;
     }
     .parallel-line {
         padding: 0.1em 0;
