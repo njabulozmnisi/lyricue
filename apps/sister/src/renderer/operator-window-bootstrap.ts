@@ -22,6 +22,8 @@ import TierChangeBanner from "@lyricue/ui/TierChangeBanner.svelte"
 import LearnSongWizard from "@lyricue/ui/LearnSongWizard.svelte"
 import ArrangementBuilder from "@lyricue/ui/ArrangementBuilder.svelte"
 import TranslationEditor from "@lyricue/ui/TranslationEditor.svelte"
+import RehearsalModePanel from "@lyricue/ui/RehearsalModePanel.svelte"
+import RehearsalSummary from "@lyricue/ui/RehearsalSummary.svelte"
 import { createShortcutHandler } from "@lyricue/core/sync"
 import type { Arrangement, TimingMap } from "@lyricue/core/types"
 import { shouldBypassOperatorShortcutTarget } from "./operator-shortcuts.js"
@@ -138,6 +140,11 @@ let arrangementBuilder: ArrangementBuilder | null = null
 let arrangementOverlay: HTMLElement | null = null
 let translationEditor: TranslationEditor | null = null
 let translationOverlay: HTMLElement | null = null
+let rehearsalPanel: RehearsalModePanel | null = null
+let rehearsalSummary: RehearsalSummary | null = null
+let rehearsalOverlay: HTMLElement | null = null
+let rehearsalTimer: number | null = null
+let rehearsalStartedAt = 0
 let learnSongDraft: unknown = null
 
 const banner = new TierChangeBanner({
@@ -178,7 +185,7 @@ function mountPanel(): SetlistPanel {
     panel.$on("publish-song", (e: CustomEvent<{ songId: string }>) =>
         bridge.sendCommand({ kind: "publishSong", songId: e.detail.songId })
     )
-    panel.$on("toggle-rehearsal", () => bridge.sendCommand({ kind: "toggleRehearsal" }))
+    panel.$on("toggle-rehearsal", () => openRehearsalPanel())
     return panel
 }
 
@@ -223,6 +230,59 @@ function openTranslationEditor(): void {
             timingMap: currentState.activeTimingMap,
             language: "zu-ZA",
             onSave: (timingMap: TimingMap) => bridge.sendCommand({ kind: "saveTranslation", timingMap })
+        }
+    })
+}
+
+function openRehearsalPanel(): void {
+    if (rehearsalPanel) return
+    const { overlay, body } = openToolOverlay("Rehearsal")
+    rehearsalOverlay = overlay
+    const summarySlot = document.createElement("div")
+    summarySlot.style.marginTop = "1rem"
+
+    rehearsalPanel = new RehearsalModePanel({
+        target: body,
+        props: {
+            elapsedMs: 0,
+            level: 0,
+            recording: false,
+            onStart: () => startRehearsalPreview(),
+            onStop: () => stopRehearsalPreview(summarySlot)
+        }
+    })
+    body.appendChild(summarySlot)
+}
+
+function startRehearsalPreview(): void {
+    rehearsalStartedAt = Date.now()
+    rehearsalPanel?.$set({ recording: true, elapsedMs: 0, level: 0.18 })
+    if (rehearsalTimer !== null) window.clearInterval(rehearsalTimer)
+    rehearsalTimer = window.setInterval(() => {
+        const elapsedMs = Date.now() - rehearsalStartedAt
+        const level = 0.18 + Math.abs(Math.sin(elapsedMs / 420)) * 0.62
+        rehearsalPanel?.$set({ elapsedMs, level, recording: true })
+    }, 250)
+}
+
+function stopRehearsalPreview(summarySlot: HTMLElement): void {
+    if (rehearsalTimer !== null) {
+        window.clearInterval(rehearsalTimer)
+        rehearsalTimer = null
+    }
+    const elapsedMs = rehearsalStartedAt ? Date.now() - rehearsalStartedAt : 0
+    rehearsalPanel?.$set({ recording: false, elapsedMs, level: 0 })
+    rehearsalSummary?.$destroy()
+    rehearsalSummary = new RehearsalSummary({
+        target: summarySlot,
+        props: {
+            segments: currentState.setlist.slice(0, 3).map((song, index) => ({
+                index,
+                title: song.title,
+                status: song.syncStatus === "learned" ? "matched" : song.syncStatus === "partial" ? "review" : "failed",
+                confidence: song.syncStatus === "learned" ? 0.72 : song.syncStatus === "partial" ? 0.38 : 0.1
+            })),
+            onReview: () => window.alert("Rehearsal review opens in the timing preview workflow.")
         }
     })
 }
@@ -295,6 +355,25 @@ function closeToolOverlays(): void {
     translationEditor = null
     translationOverlay?.remove()
     translationOverlay = null
+
+    if (rehearsalTimer !== null) {
+        window.clearInterval(rehearsalTimer)
+        rehearsalTimer = null
+    }
+    try {
+        rehearsalSummary?.$destroy()
+    } catch {
+        // already destroyed
+    }
+    rehearsalSummary = null
+    try {
+        rehearsalPanel?.$destroy()
+    } catch {
+        // already destroyed
+    }
+    rehearsalPanel = null
+    rehearsalOverlay?.remove()
+    rehearsalOverlay = null
 }
 
 function openLearnSongWizard(): void {
