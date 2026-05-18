@@ -40,7 +40,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { dirname, resolve, join } from "node:path"
 import { DEPLOYMENT_MODE } from "@lyricue/core/types"
-import { DEMO_TIMING_MAP, DemoSyncEngine } from "@lyricue/core/output/test-utils"
+import { DEMO_TIMING_MAP, DemoSyncEngine, generateFrameSequence } from "@lyricue/core/output/test-utils"
 import {
     createDiagnosticsObserver,
     type DiagnosticsObserverState,
@@ -80,6 +80,7 @@ if (DEPLOYMENT_MODE !== "sister") {
 }
 
 const DEMO_MODE = process.env.LC_DEMO_MODE === "1"
+const RENDERER_PERF_MODE = process.env.LC_RENDERER_PERF_MODE === "1"
 /**
  * End-to-end mode (LC_E2E_MODE=1). Replaces DemoSyncEngine with the real composition:
  *   SyntheticAudioDriver (BpmEstimator + VadDetector) → SyncEngine → OutputAdapter.
@@ -224,7 +225,10 @@ async function startSisterMode(): Promise<void> {
     }
     log(`adapter.start() OK; running=${adapter.health.running}`)
 
-    if (E2E_MODE) {
+    if (RENDERER_PERF_MODE) {
+        startRendererPerfMode()
+        log("renderer perf mode: frame pump started")
+    } else if (E2E_MODE) {
         // End-to-end mode: real SyncEngine driven by synthetic 120 BPM audio features.
         // Composition proves EP-07 + EP-08.1 + EP-09 + EP-06 + EP-02 compose end-to-end.
         startE2EMode()
@@ -365,6 +369,54 @@ function startE2EMode(): void {
     // 6. Boot the SyncEngine's tick loop. From here, every 16ms tick advances the
     //    cursor, emits a SyncFrame, and the OutputAdapter ships it to the renderer.
     syncEngine.start()
+}
+
+function startRendererPerfMode(): void {
+    if (!adapter) return
+
+    const totalFrames = 1000
+    const targetFps = 60
+    const thresholdFps = 30
+    const frameIntervalMs = 1000 / targetFps
+    const frames = generateFrameSequence({
+        outputId: OUTPUT_ID,
+        wordCount: DEMO_TIMING_MAP.sections[0]?.words.length ?? 1,
+        msPerWord: 500,
+        fps: targetFps
+    })
+    const sequence = Array.from({ length: totalFrames }, (_value, index) => frames[index % frames.length]!)
+
+    adapter.loadTimingMap(DEMO_TIMING_MAP, null)
+
+    setTimeout(() => {
+        if (!adapter) return
+        const startDelivered = adapter.health.framesDelivered
+        const startDropped = adapter.health.framesDropped
+        const startedAt = performance.now()
+        let frameIndex = 0
+
+        const timer = setInterval(() => {
+            const frame = sequence[frameIndex]
+            if (frame) adapter?.pushSyncFrame(frame)
+            frameIndex += 1
+
+            if (frameIndex < totalFrames) return
+            clearInterval(timer)
+
+            setTimeout(() => {
+                const elapsedMs = performance.now() - startedAt
+                const delivered = (adapter?.health.framesDelivered ?? 0) - startDelivered
+                const dropped = (adapter?.health.framesDropped ?? 0) - startDropped
+                const fps = delivered / (elapsedMs / 1000)
+                const passed = delivered >= totalFrames && dropped === 0 && fps >= thresholdFps
+                log(
+                    `renderer-perf frames=${totalFrames} delivered=${delivered} dropped=${dropped} elapsedMs=${elapsedMs.toFixed(1)} fps=${fps.toFixed(1)} threshold=${thresholdFps} result=${passed ? "pass" : "fail"}`
+                )
+                if (!passed) process.exitCode = 1
+                app.quit()
+            }, 250)
+        }, frameIntervalMs)
+    }, 500)
 }
 
 /**

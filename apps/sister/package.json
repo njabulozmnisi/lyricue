@@ -13,6 +13,7 @@
         "build": "npm run build:main && npm run build:preload && npm run build:renderer",
         "dev": "echo 'sister-mode dev runner not yet wired (post-MVP polish)' && exit 0",
         "demo:walking-skeleton": "node --experimental-strip-types scripts/demo.ts",
+        "test:renderer-perf": "node --experimental-strip-types scripts/karaoke-renderer-perf.ts",
         "test": "vitest run"
     },
     "dependencies": {
