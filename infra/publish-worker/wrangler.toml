@@ -16,3 +16,14 @@ compatibility_date = "2026-01-01"
 # [[kv_namespaces]]
 # binding = "CREDENTIALS"
 # id = "<populated-by-setup-script>"
+
+# Optional per-credential hourly publish counters.
+# [[kv_namespaces]]
+# binding = "RATE_LIMITS"
+# id = "<populated-by-setup-script>"
+
+# Optional GitHub mirror. Token is stored with `wrangler secret put GITHUB_MIRROR_TOKEN`.
+# [vars]
+# GITHUB_MIRROR_REPO = "org/lyricue-library"
+# GITHUB_MIRROR_BRANCH = "main"
+# RATE_LIMIT_WRITES_PER_HOUR = "60"
