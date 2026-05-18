@@ -3,20 +3,39 @@
 
     export let identity: InstallIdentity
     export let onChange: (next: InstallIdentity) => void
+    export let onCampusChange: (() => void) | undefined = undefined
 
     let isAnonymous = identity.user?.isAnonymous ?? true
     let displayName = identity.user?.displayName ?? ""
+    let orgName = identity.org.name
+    let orgId = identity.org.id
+    let campusName = identity.campus.name
+    let campusId = identity.campus.id
 
     function commit(): void {
-        onChange({
+        const next = {
             ...identity,
+            org: { id: slug(orgId || orgName || "local"), name: orgName.trim() || "Local" },
+            campus: { id: slug(campusId || campusName || "default"), name: campusName.trim() || "Default" },
             user: isAnonymous
                 ? { isAnonymous: true }
                 : {
                       isAnonymous: false,
                       displayName: displayName.trim() || undefined
                   }
-        })
+        }
+        onChange(next)
+        if (next.campus.id !== identity.campus.id) onCampusChange?.()
+    }
+
+    function slug(value: string): string {
+        return (
+            value
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-")
+                .replace(/^-+|-+$/g, "") || "default"
+        )
     }
 </script>
 
@@ -25,15 +44,22 @@
         <h2>Identity</h2>
     </header>
 
-    <div class="info">
-        <strong>Organisation</strong>
-        <span class="value">{identity.org.name} <code>({identity.org.id})</code></span>
-    </div>
-
-    <div class="info">
-        <strong>Campus</strong>
-        <span class="value">{identity.campus.name} <code>({identity.campus.id})</code></span>
-    </div>
+    <label>
+        Organisation
+        <input type="text" bind:value={orgName} on:blur={commit} />
+    </label>
+    <label>
+        Organisation ID
+        <input type="text" bind:value={orgId} on:blur={commit} />
+    </label>
+    <label>
+        Campus
+        <input type="text" bind:value={campusName} on:blur={commit} />
+    </label>
+    <label>
+        Campus ID
+        <input type="text" bind:value={campusId} on:blur={commit} />
+    </label>
 
     <fieldset>
         <legend>Display name</legend>
@@ -65,11 +91,7 @@
         {/if}
     </fieldset>
 
-    <p class="hint">
-        Org and campus are set during the first-run wizard. Changing them is a re-setup
-        operation that lands in EP-15 STORY-15.7 (it triggers a library re-fetch since
-        campus filters may differ).
-    </p>
+    <p class="hint">Changing campus should trigger a library catalog refresh in the host.</p>
 </section>
 
 <style>
@@ -82,19 +104,11 @@
         margin: 0;
         font-size: 1.1rem;
     }
-    .info {
+    label {
         display: flex;
-        gap: 0.5rem;
+        flex-direction: column;
+        gap: 0.25rem;
         font-size: 0.9rem;
-        align-items: baseline;
-    }
-    .info strong {
-        min-width: 120px;
-    }
-    code {
-        font-family: ui-monospace, monospace;
-        font-size: 0.8rem;
-        color: #666;
     }
     fieldset {
         border: 1px solid #e3e3e3;

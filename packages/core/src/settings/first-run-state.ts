@@ -15,7 +15,9 @@
  */
 
 import { z } from "zod"
+import { SCHEMA_LYRICUE_LIBRARY_CONFIG_V1 } from "../types/schema-versions.js"
 import { type InstallIdentity, KebabIdSchema } from "../types/identity.js"
+import type { LibraryConfig, SecretRef } from "../types/library-config.js"
 
 export const WIZARD_STEPS = ["welcome", "audio", "library", "identity", "publish", "done"] as const
 export type WizardStep = (typeof WIZARD_STEPS)[number]
@@ -35,6 +37,8 @@ export const WizardDraftSchema = z.object({
      * Used to pre-fill org name in step 4. Real catalog fetch lands in EP-13.
      */
     detectedOrgName: z.string().nullable().default(null),
+    detectedOrgId: KebabIdSchema.nullable().default(null),
+    catalogCampuses: z.array(z.object({ id: KebabIdSchema, name: z.string().min(1).max(200) })).default([]),
 
     /** Step 4 — campus picker. Either an existing id from the catalog or a freshly entered one. */
     campusId: KebabIdSchema.optional(),
@@ -45,9 +49,21 @@ export const WizardDraftSchema = z.object({
     isAnonymous: z.boolean().default(true),
 
     /** Step 5 — optional. Test button result is a stub in EP-01. */
-    publishCredentialEntered: z.boolean().default(false)
+    publishCredentialEntered: z.boolean().default(false),
+    publishCredentialKeyId: z.string().min(1).max(80).optional()
 })
 export type WizardDraft = z.infer<typeof WizardDraftSchema>
+
+export interface LibraryConnectResult {
+    orgId?: string
+    orgName: string
+    campuses?: Array<{ id: string; name: string }>
+}
+
+export interface CredentialTestResult {
+    ok: boolean
+    keyId?: string
+}
 
 /** Returns the initial draft for a fresh first-run. */
 export function newWizardDraft(): WizardDraft {
@@ -76,7 +92,7 @@ export function prevStep(current: WizardStep): WizardStep {
  * outcome (the operator may have skipped library and identity steps entirely).
  */
 export function draftToIdentity(draft: WizardDraft): InstallIdentity {
-    const orgId = draft.detectedOrgName ? slug(draft.detectedOrgName) : "local"
+    const orgId = draft.detectedOrgId ?? (draft.detectedOrgName ? slug(draft.detectedOrgName) : "local")
     const orgName = draft.detectedOrgName ?? "Local"
 
     const campusId = draft.campusId ?? "default"
@@ -92,6 +108,26 @@ export function draftToIdentity(draft: WizardDraft): InstallIdentity {
                   isAnonymous: false,
                   displayName: draft.userDisplayName.trim() || undefined
               }
+    }
+}
+
+export function draftToLibraryConfig(draft: WizardDraft, secretRef?: SecretRef): LibraryConfig {
+    const enabled = draft.libraryUrl.trim().length > 0
+    const publishCredential = secretRef
+        ? {
+              type: "cloudflare-worker-token" as const,
+              ...(draft.publishCredentialKeyId ? { keyId: draft.publishCredentialKeyId } : {}),
+              secretRef
+          }
+        : undefined
+    return {
+        $schema: SCHEMA_LYRICUE_LIBRARY_CONFIG_V1,
+        enabled,
+        primaryUrl: enabled ? draft.libraryUrl : null,
+        mirrorUrl: null,
+        trustedPublicKeys: [],
+        catalogCacheTtlSeconds: 0,
+        ...(publishCredential ? { publishCredential } : {})
     }
 }
 

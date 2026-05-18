@@ -37,6 +37,7 @@
     export let settingsStore: SettingsStore
     export let identityStore: IdentityStore
     export let libraryConfigStore: LibraryConfigStore
+    export let onCatalogRefresh: (() => void) | undefined = undefined
 
     let settings: LyriCueSettings = settingsStore.get()
     let identity: InstallIdentity = identityStore.get()
@@ -141,7 +142,7 @@
         {:else if active === "library"}
             <LibrarySection {libraryConfig} onChange={onLibraryChange} />
         {:else if active === "identity"}
-            <IdentitySection {identity} onChange={onIdentityChange} />
+            <IdentitySection {identity} onChange={onIdentityChange} onCampusChange={onCatalogRefresh} />
         {:else if active === "sidecar"}
             <SidecarSection
                 {settings}

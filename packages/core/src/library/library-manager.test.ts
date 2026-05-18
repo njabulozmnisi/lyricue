@@ -1,5 +1,5 @@
 import { createServer, type Server } from "node:http"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { DEMO_TIMING_MAP } from "../output/test-utils.js"
 import type { Arrangement, TimingMap } from "../types/timing-map.js"
 import {
@@ -8,8 +8,10 @@ import {
     exportBundle,
     fetchCatalog,
     importBundle,
+    publishBundle,
     readBundle,
     sha256,
+    testPublishCredential,
     type LibraryCatalog
 } from "./library-manager.js"
 
@@ -148,5 +150,58 @@ describe("library bundles", () => {
                 sha256: "not-the-hash"
             })
         ).rejects.toThrow(/SHA256 mismatch/)
+    })
+})
+
+describe("library publishing", () => {
+    it("tests a publish credential with the Worker whoami endpoint", async () => {
+        const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+            expect(String(url)).toBe("https://worker.example/publish/whoami")
+            expect(init?.headers).toMatchObject({ "X-LC-Credential": "secret" })
+            return new Response(
+                JSON.stringify({
+                    ok: true,
+                    credential: { orgId: "hillside", campusId: "central", role: "central", keyId: "central-1" }
+                }),
+                { status: 200, headers: { "content-type": "application/json" } }
+            )
+        }) as typeof fetch
+
+        await expect(testPublishCredential("https://worker.example/", "secret", { fetchImpl })).resolves.toEqual({
+            orgId: "hillside",
+            campusId: "central",
+            role: "central",
+            keyId: "central-1"
+        })
+    })
+
+    it("publishes a bundle with identity and credential headers", async () => {
+        const bytes = new Uint8Array([1, 2, 3])
+        const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+            expect(init?.method).toBe("PUT")
+            expect(init?.headers).toMatchObject({
+                "content-type": "application/vnd.lyricue.bundle+zip",
+                "X-LC-Org": "hillside",
+                "X-LC-Campus": "central",
+                "X-LC-Credential": "secret",
+                "X-LC-Target": "central"
+            })
+            expect(new Uint8Array(init?.body as ArrayBuffer)).toEqual(bytes)
+            return new Response(
+                JSON.stringify({ ok: true, songId: "song-1", bundleUrl: "https://cdn/s.lcbundle", catalogVersion: "v1" }),
+                { status: 200, headers: { "content-type": "application/json" } }
+            )
+        }) as typeof fetch
+
+        await expect(
+            publishBundle(bytes, {
+                workerUrl: "https://worker.example",
+                credential: "secret",
+                orgId: "hillside",
+                campusId: "central",
+                target: "central",
+                fetchImpl
+            })
+        ).resolves.toMatchObject({ ok: true, songId: "song-1" })
     })
 })

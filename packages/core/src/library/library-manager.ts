@@ -50,6 +50,20 @@ export interface CatalogDiff {
     removed: LibraryCatalogEntry[]
 }
 
+export interface PublishCredentialInfo {
+    orgId: string
+    campusId: string
+    role: "central" | "campus"
+    keyId: string | null
+}
+
+export interface PublishBundleResult {
+    ok: true
+    songId: string
+    bundleUrl: string
+    catalogVersion: string
+}
+
 export async function fetchCatalog(
     libraryUrl: string,
     opts: { mirrorUrl?: string | null; fetchImpl?: typeof fetch } = {}
@@ -83,6 +97,54 @@ export function diffCatalog(remote: LibraryCatalog, local: LibraryCatalog | null
         if (!remoteBySong.has(entry.songId)) removed.push(entry)
     }
     return { added, updated, removed }
+}
+
+export async function testPublishCredential(
+    workerUrl: string,
+    credential: string,
+    opts: { fetchImpl?: typeof fetch } = {}
+): Promise<PublishCredentialInfo> {
+    const response = await (opts.fetchImpl ?? fetch)(`${workerUrl.replace(/\/+$/, "")}/publish/whoami`, {
+        headers: { "X-LC-Credential": credential }
+    })
+    const body = (await response.json()) as { ok?: boolean; credential?: PublishCredentialInfo; message?: string }
+    if (!response.ok || !body.ok || !body.credential) {
+        throw new Error(body.message ?? `Publish credential check failed: ${response.status}`)
+    }
+    return body.credential
+}
+
+export async function publishBundle(
+    bundle: Uint8Array,
+    opts: {
+        workerUrl: string
+        credential: string
+        orgId: string
+        campusId: string
+        target: "central" | "campus"
+        fetchImpl?: typeof fetch
+    }
+): Promise<PublishBundleResult> {
+    const response = await (opts.fetchImpl ?? fetch)(`${opts.workerUrl.replace(/\/+$/, "")}/publish`, {
+        method: "PUT",
+        headers: {
+            "content-type": "application/vnd.lyricue.bundle+zip",
+            "X-LC-Org": opts.orgId,
+            "X-LC-Campus": opts.campusId,
+            "X-LC-Credential": opts.credential,
+            "X-LC-Target": opts.target
+        },
+        body: arrayBufferFromBytes(bundle)
+    })
+    const body = (await response.json()) as PublishBundleResult | { message?: string }
+    if (!response.ok) throw new Error("message" in body && body.message ? body.message : `Publish failed: ${response.status}`)
+    return body as PublishBundleResult
+}
+
+function arrayBufferFromBytes(bytes: Uint8Array): ArrayBuffer {
+    const copy = new Uint8Array(bytes.byteLength)
+    copy.set(bytes)
+    return copy.buffer
 }
 
 export async function downloadBundle(

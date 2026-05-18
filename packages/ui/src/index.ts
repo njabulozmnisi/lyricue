@@ -11,6 +11,8 @@ import ModeIndicator from "./ModeIndicator.svelte"
 import TierChangeBanner from "./TierChangeBanner.svelte"
 import SetlistPanel from "./SetlistPanel.svelte"
 import LearnSongWizard from "./LearnSongWizard.svelte"
+import LibraryPublishDialog from "./LibraryPublishDialog.svelte"
+import LibraryBrowser from "./LibraryBrowser.svelte"
 
 export {
     FirstRunWizard,
@@ -21,5 +23,7 @@ export {
     ModeIndicator,
     TierChangeBanner,
     SetlistPanel,
-    LearnSongWizard
+    LearnSongWizard,
+    LibraryPublishDialog,
+    LibraryBrowser
 }

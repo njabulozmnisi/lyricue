@@ -24,6 +24,8 @@
         newWizardDraft,
         nextStep,
         prevStep,
+        type CredentialTestResult,
+        type LibraryConnectResult,
         type WizardDraft,
         type WizardStep
     } from "@lyricue/core/settings"
@@ -39,12 +41,12 @@
      * STORY-01.5 stub: returns null and the wizard treats it as "not connected, but proceed."
      * EP-13 STORY-13.1 replaces with a real catalog fetch.
      */
-    export let onLibraryConnect: ((url: string) => Promise<string | null>) | undefined = undefined
+    export let onLibraryConnect: ((url: string) => Promise<string | LibraryConnectResult | null>) | undefined = undefined
 
     /**
      * Publish credential validation. Stub in STORY-01.5; real in EP-15 STORY-15.3.
      */
-    export let onCredentialTest: ((credential: string) => Promise<boolean>) | undefined = undefined
+    export let onCredentialTest: ((credential: string) => Promise<boolean | CredentialTestResult>) | undefined = undefined
 
     /** Called when the operator finishes the wizard. Host persists the result. */
     export let onComplete: (draft: WizardDraft) => void
@@ -75,8 +77,21 @@
         connecting = true
         connectError = ""
         try {
-            const orgName = onLibraryConnect ? await onLibraryConnect(draft.libraryUrl) : null
-            draft.detectedOrgName = orgName
+            const result = onLibraryConnect ? await onLibraryConnect(draft.libraryUrl) : null
+            if (typeof result === "string" || result === null) {
+                draft.detectedOrgName = result
+                draft.detectedOrgId = null
+                draft.catalogCampuses = []
+            } else {
+                draft.detectedOrgName = result.orgName
+                draft.detectedOrgId = result.orgId ?? null
+                draft.catalogCampuses = result.campuses ?? []
+                const firstCampus = draft.catalogCampuses[0]
+                if (firstCampus) {
+                    draft.campusId = firstCampus.id
+                    draft.campusName = firstCampus.name
+                }
+            }
             goNext()
         } catch (err) {
             connectError = (err as Error).message || "Could not reach that URL."
@@ -92,9 +107,11 @@
         }
         testingCred = true
         try {
-            const ok = onCredentialTest ? await onCredentialTest(credentialDraft) : true
-            credResult = ok ? "ok" : "fail"
-            draft.publishCredentialEntered = ok
+            const result = onCredentialTest ? await onCredentialTest(credentialDraft) : true
+            const normalized = typeof result === "boolean" ? { ok: result } : result
+            credResult = normalized.ok ? "ok" : "fail"
+            draft.publishCredentialEntered = normalized.ok
+            draft.publishCredentialKeyId = normalized.keyId
         } catch {
             credResult = "fail"
         } finally {
@@ -121,6 +138,13 @@
             .replace(/[^a-z0-9-]/g, "-")
             .replace(/^-+|-+$/g, "")
         draft.campusId = id || undefined
+    }
+
+    function onCampusSelect(e: Event): void {
+        const id = (e.currentTarget as HTMLSelectElement).value
+        const campus = draft.catalogCampuses.find((candidate) => candidate.id === id)
+        draft.campusId = campus?.id
+        draft.campusName = campus?.name
     }
 
     $: stepIndex = ["welcome", "audio", "library", "identity", "publish", "done"].indexOf(draft.currentStep)
@@ -198,10 +222,24 @@
                     <p>Running local-only — no organisation configured.</p>
                 {/if}
 
-                <label>
-                    Campus / venue / location
-                    <input type="text" placeholder="e.g. pretoria-north" on:input={onCampusInput} />
-                </label>
+                {#if draft.catalogCampuses.length > 0}
+                    <label>
+                        Campus / venue / location
+                        <select aria-label="Campus" value={draft.campusId ?? ""} on:change={onCampusSelect}>
+                            {#each draft.catalogCampuses as campus}
+                                <option value={campus.id}>{campus.name}</option>
+                            {/each}
+                            <option value="">Create new campus...</option>
+                        </select>
+                    </label>
+                {/if}
+
+                {#if draft.catalogCampuses.length === 0 || !draft.campusId}
+                    <label>
+                        Campus / venue / location
+                        <input type="text" placeholder="e.g. pretoria-north" value={draft.campusName ?? ""} on:input={onCampusInput} />
+                    </label>
+                {/if}
                 <p class="hint">Used purely as an attribution tag — not a login.</p>
 
                 <fieldset class="anon">

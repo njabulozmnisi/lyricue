@@ -1,8 +1,10 @@
 <script lang="ts">
     import type { LibraryConfig } from "@lyricue/core"
+    import { createEventDispatcher } from "svelte"
 
     export let libraryConfig: LibraryConfig
     export let onChange: (next: LibraryConfig) => void
+    const dispatch = createEventDispatcher()
 
     function patch(partial: Partial<LibraryConfig>): void {
         onChange({ ...libraryConfig, ...partial })
@@ -55,14 +57,11 @@
             <strong>Publish credential</strong>
             {#if libraryConfig.publishCredential}
                 <span class="value">Configured ({libraryConfig.publishCredential.keyId ?? "unnamed"})</span>
-                <button>Manage</button>
+                <button on:click={() => dispatch("credentialManage")}>Manage</button>
             {:else}
                 <span class="value">Not configured</span>
-                <button>Add</button>
+                <button on:click={() => dispatch("credentialManage")}>Add</button>
             {/if}
-            <p class="hint">
-                Publish credential management lands in EP-15 STORY-15.3 (paste + Test, stored via OS keychain).
-            </p>
         </div>
 
         <div class="info">
@@ -71,9 +70,13 @@
                 {libraryConfig.trustedPublicKeys.length} public
                 key{libraryConfig.trustedPublicKeys.length === 1 ? "" : "s"} trusted
             </span>
-            <p class="hint">
-                Signing key import / rotation lands in EP-15 STORY-15.6.
-            </p>
+            <button on:click={() => dispatch("signingEnable")}>Enable Signing</button>
+        </div>
+
+        <div class="info">
+            <strong>Catalog</strong>
+            <span class="value">Manual refresh</span>
+            <button on:click={() => dispatch("libraryBrowse")}>Browse</button>
         </div>
     {/if}
 </section>
@@ -100,12 +103,6 @@
         align-items: center;
         gap: 0.5rem;
         font-size: 0.9rem;
-    }
-    .info p.hint {
-        grid-column: 1 / -1;
-        color: #666;
-        font-size: 0.8rem;
-        margin: 0;
     }
     .value {
         color: #444;
