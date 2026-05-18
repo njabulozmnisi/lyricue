@@ -536,6 +536,12 @@ function handleOperatorCommand(command: unknown): void {
         case "prevSection":
             handlePrevSection()
             break
+        case "editArrangement":
+        case "publishSong":
+        case "toggleRehearsal":
+            log(`operator command: ${c.kind} acknowledged; host service wiring pending`)
+            broadcastOperatorState()
+            break
         default:
             log(`operator command: unknown kind=${c.kind}`)
     }

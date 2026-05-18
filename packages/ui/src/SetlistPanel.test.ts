@@ -56,6 +56,14 @@ describe("SetlistPanel — layout (AC1)", () => {
         cmp.$destroy()
     })
 
+    it("renders extended operator action commands", () => {
+        const cmp = new SetlistPanel({ target })
+        expect(target.querySelector('[data-testid="edit-arrangement"]')?.textContent).toContain("Arrange")
+        expect(target.querySelector('[data-testid="publish-song"]')?.textContent).toContain("Publish")
+        expect(target.querySelector('[data-testid="toggle-rehearsal"]')?.textContent).toContain("Rehearsal")
+        cmp.$destroy()
+    })
+
     it("renders the audio device picker", () => {
         const cmp = new SetlistPanel({
             target,
@@ -223,6 +231,63 @@ describe("SetlistPanel — Learn Song command", () => {
         const events: void[] = []
         cmp.$on("learn-song", () => events.push(undefined))
         ;(target.querySelector('[data-testid="learn-song"]') as HTMLButtonElement).click()
+        expect(events).toHaveLength(1)
+        cmp.$destroy()
+    })
+})
+
+describe("SetlistPanel — extended operator action commands", () => {
+    let target: HTMLElement
+    beforeEach(() => {
+        target = document.createElement("div")
+        document.body.appendChild(target)
+    })
+    afterEach(() => {
+        document.body.removeChild(target)
+    })
+
+    it("dispatches edit-arrangement for the active learned song", () => {
+        const cmp = new SetlistPanel({
+            target,
+            props: { setlist: makeSongs(), activeSongId: "s1" }
+        })
+        const events: Array<{ songId: string }> = []
+        cmp.$on("edit-arrangement", (e: any) => events.push(e.detail))
+        ;(target.querySelector('[data-testid="edit-arrangement"]') as HTMLButtonElement).click()
+        expect(events).toEqual([{ songId: "s1" }])
+        cmp.$destroy()
+    })
+
+    it("disables edit-arrangement when the active song is not learned", () => {
+        const cmp = new SetlistPanel({
+            target,
+            props: { setlist: makeSongs(), activeSongId: "s4" }
+        })
+        const btn = target.querySelector('[data-testid="edit-arrangement"]') as HTMLButtonElement
+        expect(btn.disabled).toBe(true)
+        cmp.$destroy()
+    })
+
+    it("dispatches publish-song for the active song and disables without an active song", async () => {
+        const cmp = new SetlistPanel({ target, props: { setlist: makeSongs(), activeSongId: null } })
+        const btn = target.querySelector('[data-testid="publish-song"]') as HTMLButtonElement
+        expect(btn.disabled).toBe(true)
+
+        const events: Array<{ songId: string }> = []
+        cmp.$on("publish-song", (e: any) => events.push(e.detail))
+        cmp.$set({ activeSongId: "s2" })
+        await Promise.resolve()
+        expect(btn.disabled).toBe(false)
+        btn.click()
+        expect(events).toEqual([{ songId: "s2" }])
+        cmp.$destroy()
+    })
+
+    it("dispatches toggle-rehearsal when clicked", () => {
+        const cmp = new SetlistPanel({ target })
+        const events: void[] = []
+        cmp.$on("toggle-rehearsal", () => events.push(undefined))
+        ;(target.querySelector('[data-testid="toggle-rehearsal"]') as HTMLButtonElement).click()
         expect(events).toHaveLength(1)
         cmp.$destroy()
     })

@@ -74,10 +74,12 @@
      *   - no song is selected (activeSongId is null)
      *   - the active song is not-learned
      */
+    $: activeSong = activeSongId ? setlist.find((s) => s.id === activeSongId) ?? null : null
     $: canStart =
         selectedDeviceId !== null &&
-        activeSongId !== null &&
-        setlist.find((s) => s.id === activeSongId)?.syncStatus !== "not-learned"
+        activeSong !== null &&
+        activeSong.syncStatus !== "not-learned"
+    $: canEditArrangement = activeSong?.syncStatus === "learned"
 
     const dispatch = createEventDispatcher<{
         "start-sync": void
@@ -85,6 +87,9 @@
         "select-song": { songId: string }
         "change-device": { deviceId: string }
         "force-tier": { tier: SyncTier }
+        "edit-arrangement": { songId: string }
+        "publish-song": { songId: string }
+        "toggle-rehearsal": void
     }>()
 
     function handleStartSync(): void {
@@ -94,6 +99,20 @@
 
     function handleLearnSong(): void {
         dispatch("learn-song")
+    }
+
+    function handleEditArrangement(): void {
+        if (!activeSongId || !canEditArrangement) return
+        dispatch("edit-arrangement", { songId: activeSongId })
+    }
+
+    function handlePublishSong(): void {
+        if (!activeSongId) return
+        dispatch("publish-song", { songId: activeSongId })
+    }
+
+    function handleToggleRehearsal(): void {
+        dispatch("toggle-rehearsal")
     }
 
     function handleSelectSong(songId: string, _song: SetlistSong): void {
@@ -139,6 +158,35 @@
                 aria-label="Learn song"
             >
                 Learn Song
+            </button>
+            <button
+                type="button"
+                class="secondary-action-btn"
+                on:click={handleEditArrangement}
+                disabled={!canEditArrangement}
+                data-testid="edit-arrangement"
+                aria-label="Edit active arrangement"
+            >
+                Arrange
+            </button>
+            <button
+                type="button"
+                class="secondary-action-btn"
+                on:click={handlePublishSong}
+                disabled={!activeSongId}
+                data-testid="publish-song"
+                aria-label="Publish active song"
+            >
+                Publish
+            </button>
+            <button
+                type="button"
+                class="secondary-action-btn"
+                on:click={handleToggleRehearsal}
+                data-testid="toggle-rehearsal"
+                aria-label="Toggle rehearsal mode"
+            >
+                Rehearsal
             </button>
             <ModeIndicator {tier} {lastTransition} on:force-tier={handleForceTier} />
         </div>
@@ -239,6 +287,7 @@
 
 <style>
     .setlist-panel {
+        box-sizing: border-box;
         display: flex;
         flex-direction: column;
         gap: 0.85rem;
@@ -248,12 +297,14 @@
         background: #111;
         border-radius: 8px;
         min-width: 480px;
+        width: 100%;
     }
 
     .panel-header {
         display: flex;
+        flex-wrap: wrap;
         justify-content: space-between;
-        align-items: center;
+        align-items: flex-start;
         gap: 1rem;
         padding-bottom: 0.6rem;
         border-bottom: 1px solid #2a2a2a;
@@ -265,6 +316,8 @@
         display: flex;
         align-items: center;
         gap: 0.45rem;
+        flex: 1 1 13rem;
+        min-width: 0;
     }
     .brand {
         color: #f0f0f0;
@@ -275,13 +328,20 @@
     .project {
         color: #aaa;
         font-weight: 500;
+        overflow-wrap: anywhere;
     }
     .header-right {
         display: flex;
         align-items: center;
-        gap: 0.6rem;
+        justify-content: flex-end;
+        flex: 1 1 19rem;
+        min-width: 0;
+        max-width: 100%;
+        gap: 0.45rem;
+        flex-wrap: wrap;
     }
-    .learn-song-btn {
+    .learn-song-btn,
+    .secondary-action-btn {
         background: #2b2b2b;
         color: #f0f0f0;
         border: 1px solid #444;
@@ -292,8 +352,13 @@
         cursor: pointer;
         white-space: nowrap;
     }
-    .learn-song-btn:hover {
+    .learn-song-btn:hover,
+    .secondary-action-btn:hover:not(:disabled) {
         background: #353535;
+    }
+    .secondary-action-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
     }
 
     .control-row {

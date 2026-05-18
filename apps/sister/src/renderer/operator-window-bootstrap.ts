@@ -160,6 +160,13 @@ function mountPanel(): SetlistPanel {
     panel.$on("force-tier", (e: CustomEvent<{ tier: "auto" | "timer" | "manual" }>) =>
         bridge.sendCommand({ kind: "forceTier", tier: e.detail.tier })
     )
+    panel.$on("edit-arrangement", (e: CustomEvent<{ songId: string }>) =>
+        bridge.sendCommand({ kind: "editArrangement", songId: e.detail.songId })
+    )
+    panel.$on("publish-song", (e: CustomEvent<{ songId: string }>) =>
+        bridge.sendCommand({ kind: "publishSong", songId: e.detail.songId })
+    )
+    panel.$on("toggle-rehearsal", () => bridge.sendCommand({ kind: "toggleRehearsal" }))
     return panel
 }
 
