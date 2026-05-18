@@ -59,6 +59,7 @@ describe("SetlistPanel — layout (AC1)", () => {
     it("renders extended operator action commands", () => {
         const cmp = new SetlistPanel({ target })
         expect(target.querySelector('[data-testid="edit-arrangement"]')?.textContent).toContain("Arrange")
+        expect(target.querySelector('[data-testid="translate-song"]')?.textContent).toContain("Translate")
         expect(target.querySelector('[data-testid="publish-song"]')?.textContent).toContain("Publish")
         expect(target.querySelector('[data-testid="toggle-rehearsal"]')?.textContent).toContain("Rehearsal")
         cmp.$destroy()
@@ -264,6 +265,28 @@ describe("SetlistPanel — extended operator action commands", () => {
             props: { setlist: makeSongs(), activeSongId: "s4" }
         })
         const btn = target.querySelector('[data-testid="edit-arrangement"]') as HTMLButtonElement
+        expect(btn.disabled).toBe(true)
+        cmp.$destroy()
+    })
+
+    it("dispatches translate-song for the active learned song", () => {
+        const cmp = new SetlistPanel({
+            target,
+            props: { setlist: makeSongs(), activeSongId: "s1" }
+        })
+        const events: Array<{ songId: string }> = []
+        cmp.$on("translate-song", (e: any) => events.push(e.detail))
+        ;(target.querySelector('[data-testid="translate-song"]') as HTMLButtonElement).click()
+        expect(events).toEqual([{ songId: "s1" }])
+        cmp.$destroy()
+    })
+
+    it("disables translate-song when the active song is not learned", () => {
+        const cmp = new SetlistPanel({
+            target,
+            props: { setlist: makeSongs(), activeSongId: "s4" }
+        })
+        const btn = target.querySelector('[data-testid="translate-song"]') as HTMLButtonElement
         expect(btn.disabled).toBe(true)
         cmp.$destroy()
     })

@@ -20,7 +20,10 @@
 import SetlistPanel from "@lyricue/ui/SetlistPanel.svelte"
 import TierChangeBanner from "@lyricue/ui/TierChangeBanner.svelte"
 import LearnSongWizard from "@lyricue/ui/LearnSongWizard.svelte"
+import ArrangementBuilder from "@lyricue/ui/ArrangementBuilder.svelte"
+import TranslationEditor from "@lyricue/ui/TranslationEditor.svelte"
 import { createShortcutHandler } from "@lyricue/core/sync"
+import type { Arrangement, TimingMap } from "@lyricue/core/types"
 import { shouldBypassOperatorShortcutTarget } from "./operator-shortcuts.js"
 
 /**
@@ -40,6 +43,9 @@ interface OperatorState {
         bpm: number | null
         artist?: string
     }>
+    activeTimingMap: TimingMap | null
+    activeArrangements: Arrangement[]
+    activeArrangementId: string | null
     selectedDeviceId: string | null
     audioDevices: Array<{ deviceId: string; label: string; kind: "audioinput"; groupId: string }>
     lastTransition: {
@@ -72,6 +78,9 @@ const DEFAULT_STATE: OperatorState = {
     activeSongId: null,
     nextSongTitle: null,
     setlist: [],
+    activeTimingMap: null,
+    activeArrangements: [],
+    activeArrangementId: null,
     selectedDeviceId: null,
     audioDevices: [],
     lastTransition: null,
@@ -125,6 +134,10 @@ root.appendChild(panelSlot)
 let currentState: OperatorState = DEFAULT_STATE
 let panel: SetlistPanel | null = null
 let learnSongWizard: LearnSongWizard | null = null
+let arrangementBuilder: ArrangementBuilder | null = null
+let arrangementOverlay: HTMLElement | null = null
+let translationEditor: TranslationEditor | null = null
+let translationOverlay: HTMLElement | null = null
 let learnSongDraft: unknown = null
 
 const banner = new TierChangeBanner({
@@ -160,14 +173,128 @@ function mountPanel(): SetlistPanel {
     panel.$on("force-tier", (e: CustomEvent<{ tier: "auto" | "timer" | "manual" }>) =>
         bridge.sendCommand({ kind: "forceTier", tier: e.detail.tier })
     )
-    panel.$on("edit-arrangement", (e: CustomEvent<{ songId: string }>) =>
-        bridge.sendCommand({ kind: "editArrangement", songId: e.detail.songId })
-    )
+    panel.$on("edit-arrangement", () => openArrangementBuilder())
+    panel.$on("translate-song", () => openTranslationEditor())
     panel.$on("publish-song", (e: CustomEvent<{ songId: string }>) =>
         bridge.sendCommand({ kind: "publishSong", songId: e.detail.songId })
     )
     panel.$on("toggle-rehearsal", () => bridge.sendCommand({ kind: "toggleRehearsal" }))
     return panel
+}
+
+function openArrangementBuilder(): void {
+    if (arrangementBuilder) return
+    if (!currentState.activeTimingMap) {
+        window.alert("Select a learned song before editing an arrangement.")
+        return
+    }
+
+    const { overlay, body } = openToolOverlay("Arrangement")
+    arrangementOverlay = overlay
+    arrangementBuilder = new ArrangementBuilder({
+        target: body,
+        props: {
+            timingMap: currentState.activeTimingMap,
+            arrangements: currentState.activeArrangements,
+            activeArrangementId: currentState.activeArrangementId,
+            onSave: (arrangement: Arrangement) => bridge.sendCommand({ kind: "saveArrangement", arrangement }),
+            onSelectArrangement: (arrangement: Arrangement | null) =>
+                bridge.sendCommand({
+                    kind: "selectArrangement",
+                    showId: currentState.activeTimingMap?.showId ?? null,
+                    arrangementId: arrangement?.id ?? null
+                })
+        }
+    })
+}
+
+function openTranslationEditor(): void {
+    if (translationEditor) return
+    if (!currentState.activeTimingMap) {
+        window.alert("Select a learned song before editing translations.")
+        return
+    }
+
+    const { overlay, body } = openToolOverlay("Translation")
+    translationOverlay = overlay
+    translationEditor = new TranslationEditor({
+        target: body,
+        props: {
+            timingMap: currentState.activeTimingMap,
+            language: "zu-ZA",
+            onSave: (timingMap: TimingMap) => bridge.sendCommand({ kind: "saveTranslation", timingMap })
+        }
+    })
+}
+
+function openToolOverlay(title: string): { overlay: HTMLElement; body: HTMLElement } {
+    const overlay = document.createElement("div")
+    overlay.className = "operator-tool-overlay"
+    overlay.style.position = "fixed"
+    overlay.style.inset = "0"
+    overlay.style.zIndex = "110"
+    overlay.style.overflow = "auto"
+    overlay.style.background = "rgba(0, 0, 0, 0.76)"
+    overlay.style.padding = "1rem"
+
+    const shell = document.createElement("section")
+    shell.className = "operator-tool-shell"
+    shell.style.margin = "0 auto"
+    shell.style.maxWidth = "980px"
+    shell.style.borderRadius = "8px"
+    shell.style.background = "#f8fafc"
+    shell.style.color = "#0f172a"
+    shell.style.padding = "1rem"
+    shell.style.boxShadow = "0 20px 60px rgba(0, 0, 0, 0.45)"
+
+    const header = document.createElement("header")
+    header.style.display = "flex"
+    header.style.alignItems = "center"
+    header.style.justifyContent = "space-between"
+    header.style.gap = "1rem"
+    header.style.marginBottom = "1rem"
+
+    const heading = document.createElement("h2")
+    heading.textContent = title
+    heading.style.margin = "0"
+    heading.style.fontSize = "1rem"
+
+    const close = document.createElement("button")
+    close.type = "button"
+    close.textContent = "Close"
+    close.style.font = "inherit"
+    close.style.padding = "0.45rem 0.7rem"
+    close.style.border = "1px solid #94a3b8"
+    close.style.borderRadius = "6px"
+    close.style.background = "#fff"
+    close.addEventListener("click", () => closeToolOverlays())
+
+    const body = document.createElement("div")
+    header.append(heading, close)
+    shell.append(header, body)
+    overlay.appendChild(shell)
+    document.body.appendChild(overlay)
+    return { overlay, body }
+}
+
+function closeToolOverlays(): void {
+    try {
+        arrangementBuilder?.$destroy()
+    } catch {
+        // already destroyed
+    }
+    arrangementBuilder = null
+    arrangementOverlay?.remove()
+    arrangementOverlay = null
+
+    try {
+        translationEditor?.$destroy()
+    } catch {
+        // already destroyed
+    }
+    translationEditor = null
+    translationOverlay?.remove()
+    translationOverlay = null
 }
 
 function openLearnSongWizard(): void {
@@ -303,6 +430,14 @@ const stateUnsub = bridge.subscribeState((raw) => {
         syncActive: next.syncActive,
         selectedDeviceId: next.selectedDeviceId
     })
+    if (next.activeTimingMap) {
+        arrangementBuilder?.$set({
+            timingMap: next.activeTimingMap,
+            arrangements: next.activeArrangements,
+            activeArrangementId: next.activeArrangementId
+        })
+        translationEditor?.$set({ timingMap: next.activeTimingMap })
+    }
 
     // Fire the banner only when the transition actually changed identity AND it's
     // not the very first state push (boot doesn't count as a transition).
@@ -328,6 +463,7 @@ window.addEventListener("beforeunload", () => {
         // already destroyed
     }
     closeLearnSongWizard()
+    closeToolOverlays()
     try {
         banner.$destroy()
     } catch {

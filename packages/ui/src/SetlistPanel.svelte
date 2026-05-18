@@ -88,6 +88,7 @@
         "change-device": { deviceId: string }
         "force-tier": { tier: SyncTier }
         "edit-arrangement": { songId: string }
+        "translate-song": { songId: string }
         "publish-song": { songId: string }
         "toggle-rehearsal": void
     }>()
@@ -109,6 +110,11 @@
     function handlePublishSong(): void {
         if (!activeSongId) return
         dispatch("publish-song", { songId: activeSongId })
+    }
+
+    function handleTranslateSong(): void {
+        if (!activeSongId) return
+        dispatch("translate-song", { songId: activeSongId })
     }
 
     function handleToggleRehearsal(): void {
@@ -168,6 +174,16 @@
                 aria-label="Edit active arrangement"
             >
                 Arrange
+            </button>
+            <button
+                type="button"
+                class="secondary-action-btn"
+                on:click={handleTranslateSong}
+                disabled={!canEditArrangement}
+                data-testid="translate-song"
+                aria-label="Translate active song"
+            >
+                Translate
             </button>
             <button
                 type="button"

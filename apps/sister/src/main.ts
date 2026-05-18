@@ -39,7 +39,7 @@ import { app, BrowserWindow, ipcMain } from "electron"
 import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { dirname, resolve, join } from "node:path"
-import { DEPLOYMENT_MODE } from "@lyricue/core/types"
+import { DEPLOYMENT_MODE, validateArrangement, validateTimingMap, type Arrangement, type TimingMap } from "@lyricue/core/types"
 import { DEMO_TIMING_MAP, DemoSyncEngine, generateFrameSequence } from "@lyricue/core/output/test-utils"
 import {
     createDiagnosticsObserver,
@@ -156,6 +156,8 @@ const DEMO_TIMING_MAPS = new Map([
     [DEMO_TIMING_MAP.showId, DEMO_TIMING_MAP],
     [DEMO_REPRISE_TIMING_MAP.showId, DEMO_REPRISE_TIMING_MAP]
 ])
+const DEMO_ARRANGEMENTS = new Map<string, Arrangement[]>()
+const DEMO_ACTIVE_ARRANGEMENT_IDS = new Map<string, string | null>()
 
 /**
  * The karaoke output adapter and the demo engine that drives it (when demo mode is on).
@@ -329,7 +331,7 @@ function startE2EMode(): void {
         timingMaps: {
             exists: async (showId) => DEMO_TIMING_MAPS.has(showId),
             load: async (showId) => DEMO_TIMING_MAPS.get(showId) ?? null,
-            loadArrangement: async () => null
+            loadArrangement: async (showId) => activeDemoArrangement(showId)
         }
     })
     setlistControllerUnsub = setlistController.state.subscribe(() => broadcastOperatorState())
@@ -594,9 +596,81 @@ function handleOperatorCommand(command: unknown): void {
             log(`operator command: ${c.kind} acknowledged; host service wiring pending`)
             broadcastOperatorState()
             break
+        case "saveArrangement":
+            saveDemoArrangement(c.arrangement)
+            break
+        case "selectArrangement":
+            selectDemoArrangement(c.showId, c.arrangementId)
+            break
+        case "saveTranslation":
+            saveDemoTranslation(c.timingMap)
+            break
         default:
             log(`operator command: unknown kind=${c.kind}`)
     }
+}
+
+function activeDemoArrangement(showId: string): Arrangement | null {
+    const arrangements = DEMO_ARRANGEMENTS.get(showId) ?? []
+    const activeId = DEMO_ACTIVE_ARRANGEMENT_IDS.get(showId)
+    if (activeId) return arrangements.find((arrangement) => arrangement.id === activeId) ?? null
+    return arrangements.find((arrangement) => arrangement.isDefault) ?? arrangements[0] ?? null
+}
+
+function saveDemoArrangement(input: unknown): void {
+    const result = validateArrangement(input)
+    if (!result.ok) {
+        log(`operator arrangement save rejected: ${result.errors[0]?.message ?? "invalid arrangement"}`)
+        return
+    }
+    const arrangement = result.value
+    if (!DEMO_TIMING_MAPS.has(arrangement.showId)) {
+        log(`operator arrangement save rejected: unknown showId=${arrangement.showId}`)
+        return
+    }
+
+    const current = DEMO_ARRANGEMENTS.get(arrangement.showId) ?? []
+    const next = current.some((candidate) => candidate.id === arrangement.id)
+        ? current.map((candidate) => (candidate.id === arrangement.id ? arrangement : candidate))
+        : [...current, arrangement]
+    DEMO_ARRANGEMENTS.set(arrangement.showId, next)
+    DEMO_ACTIVE_ARRANGEMENT_IDS.set(arrangement.showId, arrangement.id)
+    reloadActiveDemoSong(arrangement.showId)
+    broadcastOperatorState()
+}
+
+function selectDemoArrangement(showId: unknown, arrangementId: unknown): void {
+    if (typeof showId !== "string" || !DEMO_TIMING_MAPS.has(showId)) return
+    if (arrangementId !== null && typeof arrangementId !== "string") return
+    DEMO_ACTIVE_ARRANGEMENT_IDS.set(showId, arrangementId)
+    reloadActiveDemoSong(showId)
+    broadcastOperatorState()
+}
+
+function saveDemoTranslation(input: unknown): void {
+    const result = validateTimingMap(input)
+    if (!result.ok) {
+        log(`operator translation save rejected: ${result.errors[0]?.message ?? "invalid timing map"}`)
+        return
+    }
+    const map = result.value
+    if (!DEMO_TIMING_MAPS.has(map.showId)) {
+        log(`operator translation save rejected: unknown showId=${map.showId}`)
+        return
+    }
+    DEMO_TIMING_MAPS.set(map.showId, map)
+    reloadActiveDemoSong(map.showId)
+    broadcastOperatorState()
+}
+
+function reloadActiveDemoSong(showId: string): void {
+    const setlistState = setlistController?.snapshot() ?? null
+    if (setlistState?.activeShowId !== showId) return
+    const map = DEMO_TIMING_MAPS.get(showId)
+    if (!map) return
+    const arrangement = activeDemoArrangement(showId)
+    syncEngine?.loadSong({ map, arrangement, showId })
+    adapter?.loadTimingMap(map, arrangement, map.parallel)
 }
 
 function handleNextSection(): void {
@@ -643,6 +717,10 @@ function broadcastOperatorState(): void {
     lastOperatorStateBroadcastAt = performance.now()
     const seState = syncEngine?.snapshot() ?? null
     const setlistState = setlistController?.snapshot() ?? null
+    const activeShowId = setlistState?.activeShowId ?? seState?.activeShowId ?? null
+    const activeTimingMap = activeShowId ? DEMO_TIMING_MAPS.get(activeShowId) ?? null : null
+    const activeArrangements = activeShowId ? DEMO_ARRANGEMENTS.get(activeShowId) ?? [] : []
+    const activeArrangement = activeShowId ? activeDemoArrangement(activeShowId) : null
     detectTierTransition(seState)
     const setlist =
         setlistState?.songs.map((song) => ({
@@ -654,9 +732,12 @@ function broadcastOperatorState(): void {
         projectTitle: setlistState?.project?.title ?? "Walking-Skeleton Demo",
         tier: seState?.tier ?? "auto",
         syncActive: seState?.runState === "running",
-        activeSongId: setlistState?.activeShowId ?? seState?.activeShowId ?? null,
+        activeSongId: activeShowId,
         nextSongTitle: setlistState?.nextSongTitle ?? null,
         setlist,
+        activeTimingMap,
+        activeArrangements,
+        activeArrangementId: activeArrangement?.id ?? null,
         selectedDeviceId: operatorSelectedDeviceId,
         audioDevices: [
             // Synthetic placeholder; EP-07 wiring will replace with enumerated devices.
@@ -852,8 +933,53 @@ async function captureEp06Evidence(): Promise<void> {
             }
         }
     }
+    if (E2E_MODE && process.env.LC_CAPTURE_OPERATOR_TOOLS === "1") {
+        const opWindow = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : null
+        if (opWindow) {
+            await captureOperatorTool(opWindow, operatorDir, "05-arrangement-builder-operator", "[data-testid=\"edit-arrangement\"]")
+            await captureOperatorTool(opWindow, operatorDir, "06-translation-editor-operator", "[data-testid=\"translate-song\"]")
+        } else {
+            log("[capture] operator tool capture skipped: operator window missing")
+        }
+    }
     log("[capture] evidence run complete; quitting")
     setTimeout(() => app.quit(), 500)
+}
+
+async function captureOperatorTool(
+    opWindow: BrowserWindow,
+    operatorDir: string,
+    label: string,
+    selector: string
+): Promise<void> {
+    try {
+        const opened = await opWindow.webContents.executeJavaScript(`
+            (() => {
+                const button = document.querySelector(${JSON.stringify(selector)});
+                if (!(button instanceof HTMLButtonElement)) return "missing-button";
+                button.click();
+                return document.querySelector(".operator-tool-overlay") ? "opened" : "missing-overlay";
+            })()
+        `)
+        if (opened !== "opened") {
+            log(`[capture] ${label} failed to open: ${opened}`)
+            return
+        }
+        await new Promise<void>((r) => setTimeout(r, 500))
+        const image = await opWindow.webContents.capturePage()
+        const path = join(operatorDir, `${label}.png`)
+        writeFileSync(path, image.toPNG())
+        log(`[capture] wrote ${path}`)
+        await opWindow.webContents.executeJavaScript(`
+            (() => {
+                const close = document.querySelector(".operator-tool-shell header button");
+                if (close instanceof HTMLButtonElement) close.click();
+            })()
+        `)
+        await new Promise<void>((r) => setTimeout(r, 250))
+    } catch (err) {
+        log(`[capture] ${label} failed: ${(err as Error).message}`)
+    }
 }
 
 function stopTimers(): void {
