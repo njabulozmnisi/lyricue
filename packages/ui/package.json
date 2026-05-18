@@ -22,7 +22,8 @@
     },
     "dependencies": {
         "@lyricue/core": "*",
-        "svelte": "^3.59.2"
+        "svelte": "^3.59.2",
+        "svelte-dnd-action": "^0.9.69"
     },
     "devDependencies": {
         "@sveltejs/vite-plugin-svelte": "^2.5.3",
