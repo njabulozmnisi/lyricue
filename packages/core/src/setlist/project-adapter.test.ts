@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { createMemoryProjectAdapter, createRestProjectAdapter } from "./project-adapter.js"
+import { createMemoryProjectAdapter, createRestProjectAdapter, forkProject, markProjectDiverged, projectFromPlan } from "./project-adapter.js"
 
 describe("createMemoryProjectAdapter", () => {
     it("publishes active project updates", () => {
@@ -10,6 +10,46 @@ describe("createMemoryProjectAdapter", () => {
         unsubscribe()
         expect(seen).toEqual([null, "p1"])
         expect(adapter.getActiveProject()?.title).toBe("Sunday")
+    })
+})
+
+describe("project plans", () => {
+    it("converts central project plans into linked local projects", () => {
+        const project = projectFromPlan(
+            {
+                id: "sunday-2026-05-24",
+                name: "Sunday Morning",
+                date: "2026-05-24",
+                songs: [{ songId: "song-1", bundleVersion: "1.0.0", arrangementId: "default" }]
+            },
+            (song) => ({ id: `show-${song.songId}`, title: "Song One" })
+        )
+
+        expect(project).toEqual({
+            id: "sunday-2026-05-24",
+            title: "Sunday Morning",
+            date: "2026-05-24",
+            source: { kind: "central", planId: "sunday-2026-05-24", diverged: false },
+            shows: [
+                {
+                    id: "show-song-1",
+                    title: "Song One",
+                    songId: "song-1",
+                    bundleVersion: "1.0.0",
+                    arrangementId: "default"
+                }
+            ]
+        })
+    })
+
+    it("tracks central divergence and can fork back to fully local", () => {
+        const linked = projectFromPlan({ id: "p1", name: "Plan", songs: [] }, () => ({ id: "s1", title: "Song" }))
+        expect(markProjectDiverged(linked).source).toMatchObject({ kind: "central", diverged: true })
+        expect(forkProject(linked, { id: "local-1", title: "Local Plan" })).toMatchObject({
+            id: "local-1",
+            title: "Local Plan",
+            source: { kind: "local" }
+        })
     })
 })
 

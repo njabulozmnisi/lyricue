@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 import { inflateRawSync } from "node:zlib"
+import type { ProjectPlan } from "../setlist/project-adapter.js"
 import type { TimingMap, Arrangement } from "../types/timing-map.js"
 import { validateArrangements, validateTimingMap } from "../types/timing-map-schema.js"
 import { SCHEMA_LYRICUE_BUNDLE_V1, SCHEMA_LYRICUE_CATALOG_V1 } from "../types/schema-versions.js"
@@ -62,6 +63,11 @@ export interface PublishBundleResult {
     songId: string
     bundleUrl: string
     catalogVersion: string
+}
+
+export interface ProjectPlanFilter {
+    scope?: "central" | "campus"
+    campusId?: string
 }
 
 export async function fetchCatalog(
@@ -145,6 +151,55 @@ function arrayBufferFromBytes(bytes: Uint8Array): ArrayBuffer {
     const copy = new Uint8Array(bytes.byteLength)
     copy.set(bytes)
     return copy.buffer
+}
+
+export async function listProjects(
+    libraryUrl: string,
+    filter: ProjectPlanFilter = {},
+    opts: { fetchImpl?: typeof fetch } = {}
+): Promise<ProjectPlan[]> {
+    const response = await (opts.fetchImpl ?? fetch)(projectIndexUrl(libraryUrl, filter))
+    if (!response.ok) throw new Error(`Project list fetch failed: ${response.status} ${response.statusText}`.trim())
+    const body = (await response.json()) as { projects?: ProjectPlan[] } | ProjectPlan[]
+    return Array.isArray(body) ? body.map(validateProjectPlan) : (body.projects ?? []).map(validateProjectPlan)
+}
+
+export async function fetchProject(
+    libraryUrl: string,
+    id: string,
+    filter: ProjectPlanFilter = {},
+    opts: { fetchImpl?: typeof fetch } = {}
+): Promise<ProjectPlan> {
+    const response = await (opts.fetchImpl ?? fetch)(projectPlanUrl(libraryUrl, id, filter))
+    if (!response.ok) throw new Error(`Project fetch failed: ${response.status} ${response.statusText}`.trim())
+    return validateProjectPlan(await response.json())
+}
+
+export async function publishProjectPlan(
+    plan: ProjectPlan,
+    opts: {
+        workerUrl: string
+        credential: string
+        orgId: string
+        campusId: string
+        target: "central" | "campus"
+        fetchImpl?: typeof fetch
+    }
+): Promise<{ ok: true; projectId: string; projectUrl: string }> {
+    const response = await (opts.fetchImpl ?? fetch)(`${opts.workerUrl.replace(/\/+$/, "")}/publish/project`, {
+        method: "PUT",
+        headers: {
+            "content-type": "application/json",
+            "X-LC-Org": opts.orgId,
+            "X-LC-Campus": opts.campusId,
+            "X-LC-Credential": opts.credential,
+            "X-LC-Target": opts.target
+        },
+        body: JSON.stringify(validateProjectPlan(plan))
+    })
+    const body = (await response.json()) as { ok: true; projectId: string; projectUrl: string } | { message?: string }
+    if (!response.ok) throw new Error("message" in body && body.message ? body.message : `Project publish failed: ${response.status}`)
+    return body as { ok: true; projectId: string; projectUrl: string }
 }
 
 export async function downloadBundle(
@@ -257,6 +312,36 @@ export function sha256Text(text: string): string {
 
 function catalogUrl(base: string): string {
     return `${base.replace(/\/+$/, "")}/catalog.json`
+}
+
+function projectIndexUrl(base: string, filter: ProjectPlanFilter): string {
+    return `${projectScopeBase(base, filter)}/index.json`
+}
+
+function projectPlanUrl(base: string, id: string, filter: ProjectPlanFilter): string {
+    return `${projectScopeBase(base, filter)}/${encodeURIComponent(id)}.json`
+}
+
+function projectScopeBase(base: string, filter: ProjectPlanFilter): string {
+    const root = `${base.replace(/\/+$/, "")}/projects`
+    if (filter.scope === "campus") return `${root}/campuses/${encodeURIComponent(filter.campusId ?? "default")}`
+    return `${root}/central`
+}
+
+function validateProjectPlan(input: unknown): ProjectPlan {
+    if (!input || typeof input !== "object") throw new Error("Project plan must be an object")
+    const plan = input as ProjectPlan
+    if (typeof plan.id !== "string" || plan.id.trim() === "") throw new Error("Project plan id must be a non-empty string")
+    if (typeof plan.name !== "string" || plan.name.trim() === "") throw new Error("Project plan name must be a non-empty string")
+    if (!Array.isArray(plan.songs)) throw new Error("Project plan songs must be an array")
+    for (const [index, song] of plan.songs.entries()) {
+        if (!song || typeof song !== "object") throw new Error(`Project plan songs[${index}] must be an object`)
+        if (typeof song.songId !== "string" || song.songId.trim() === "") throw new Error(`Project plan songs[${index}].songId must be a string`)
+        if (typeof song.bundleVersion !== "string" || song.bundleVersion.trim() === "") {
+            throw new Error(`Project plan songs[${index}].bundleVersion must be a string`)
+        }
+    }
+    return plan
 }
 
 async function fetchJson(fetchImpl: typeof fetch, url: string): Promise<unknown> {

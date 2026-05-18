@@ -45,6 +45,13 @@ interface BundleManifest {
     bundleVersion: string
 }
 
+interface ProjectPlan {
+    id: string
+    name: string
+    date?: string
+    songs: Array<{ songId: string; bundleVersion: string; arrangementId?: string }>
+}
+
 export default {
     async fetch(request: Request, env: Env): Promise<Response> {
         const url = new URL(request.url)
@@ -56,12 +63,30 @@ export default {
             if (request.method === "PUT" && url.pathname === "/publish") {
                 return await publish(request, env)
             }
+            if (request.method === "PUT" && url.pathname === "/publish/project") {
+                return await publishProject(request, env)
+            }
             return json({ error: "not_found" }, 404)
         } catch (err) {
             const status = err instanceof HttpError ? err.status : 500
             return json({ error: status === 500 ? "internal_error" : "request_failed", message: (err as Error).message }, status)
         }
     }
+}
+
+async function publishProject(request: Request, env: Env): Promise<Response> {
+    const { token, credential } = await requireCredential(request, env)
+    await enforceRateLimit(token, env)
+    const plan = validateProjectPlan(await request.json())
+    const target = request.headers.get("X-LC-Target") ?? "central"
+    if (target === "central" && credential.role !== "central") {
+        throw new HttpError(403, "Only central credentials can publish central project plans.")
+    }
+    const scope = target === "campus" ? `campuses/${credential.campusId}` : "central"
+    const key = `projects/${scope}/${plan.id}.json`
+    await putLibraryObject(env, key, JSON.stringify(plan, null, 2), "application/json", `publish-project(${plan.id}): by ${credential.campusId}`)
+    await regenerateProjectIndex(env, scope)
+    return json({ ok: true, projectId: plan.id, projectUrl: publicUrl(env, key) })
 }
 
 async function publish(request: Request, env: Env): Promise<Response> {
@@ -138,6 +163,18 @@ async function appendPublishLog(env: Env, entry: Record<string, unknown>): Promi
     await putLibraryObject(env, key, `${prior}${JSON.stringify(entry)}\n`, "application/x-ndjson", "publish: append audit log")
 }
 
+async function regenerateProjectIndex(env: Env, scope: string): Promise<void> {
+    const listed = await env.LIBRARY.list({ prefix: `projects/${scope}/` })
+    const projects: ProjectPlan[] = []
+    for (const object of listed.objects.filter((item) => item.key.endsWith(".json") && !item.key.endsWith("/index.json"))) {
+        const body = await env.LIBRARY.get(object.key)
+        if (!body) continue
+        projects.push(validateProjectPlan(JSON.parse(await body.text())))
+    }
+    projects.sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.name.localeCompare(b.name))
+    await putLibraryObject(env, `projects/${scope}/index.json`, JSON.stringify({ projects }, null, 2), "application/json", "publish-project: regenerate index")
+}
+
 async function requireCredential(request: Request, env: Env): Promise<{ token: string; credential: Credential }> {
     const token = request.headers.get("X-LC-Credential")
     if (!token) throw new HttpError(401, "X-LC-Credential is required.")
@@ -212,6 +249,20 @@ function readBundleManifest(bytes: Uint8Array): BundleManifest {
     const parsed = JSON.parse(new TextDecoder().decode(bytes)) as { manifest?: BundleManifest }
     if (!parsed.manifest) throw new HttpError(400, "Bundle manifest is missing.")
     return parsed.manifest
+}
+
+function validateProjectPlan(input: unknown): ProjectPlan {
+    if (!input || typeof input !== "object") throw new HttpError(400, "Project plan must be an object.")
+    const plan = input as ProjectPlan
+    if (!plan.id || !plan.name || !Array.isArray(plan.songs)) {
+        throw new HttpError(400, "Project plan must include id, name, and songs.")
+    }
+    for (const [index, song] of plan.songs.entries()) {
+        if (!song.songId || !song.bundleVersion) {
+            throw new HttpError(400, `Project plan song ${index} must include songId and bundleVersion.`)
+        }
+    }
+    return plan
 }
 
 function readZipTextEntry(bytes: Uint8Array, targetName: string): string {

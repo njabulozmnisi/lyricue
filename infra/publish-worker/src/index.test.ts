@@ -238,4 +238,26 @@ describe("publish worker", () => {
 
         expect(response.status).toBe(403)
     })
+
+    it("publishes a campus project plan and regenerates its project index", async () => {
+        const env = makeEnv()
+        const response = await worker.fetch(
+            new Request("https://worker.test/publish/project", {
+                method: "PUT",
+                headers: { "X-LC-Credential": "central-token", "X-LC-Target": "campus" },
+                body: JSON.stringify({
+                    id: "regional-conference",
+                    name: "Regional Conference",
+                    songs: [{ songId: "song-1", bundleVersion: "1.0.0" }]
+                })
+            }),
+            env
+        )
+
+        expect(response.status).toBe(200)
+        expect(env.objects.has("projects/campuses/central/regional-conference.json")).toBe(true)
+        const index = JSON.parse(new TextDecoder().decode(env.objects.get("projects/campuses/central/index.json")!))
+        expect(index.projects).toHaveLength(1)
+        expect(index.projects[0]).toMatchObject({ id: "regional-conference", name: "Regional Conference" })
+    })
 })

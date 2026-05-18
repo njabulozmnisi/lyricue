@@ -8,7 +8,10 @@ import {
     exportBundle,
     fetchCatalog,
     importBundle,
+    fetchProject,
+    listProjects,
     publishBundle,
+    publishProjectPlan,
     readBundle,
     sha256,
     testPublishCredential,
@@ -203,5 +206,50 @@ describe("library publishing", () => {
                 fetchImpl
             })
         ).resolves.toMatchObject({ ok: true, songId: "song-1" })
+    })
+})
+
+describe("library project plans", () => {
+    it("lists and fetches central project plans from library project paths", async () => {
+        const project = { id: "sunday", name: "Sunday", songs: [{ songId: "song-1", bundleVersion: "1.0.0" }] }
+        const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+            if (String(url).endsWith("/projects/central/index.json")) {
+                return new Response(JSON.stringify({ projects: [project] }), { status: 200, headers: { "content-type": "application/json" } })
+            }
+            return new Response(JSON.stringify(project), { status: 200, headers: { "content-type": "application/json" } })
+        }) as typeof fetch
+
+        await expect(listProjects("https://library.example", {}, { fetchImpl })).resolves.toEqual([project])
+        await expect(fetchProject("https://library.example", "sunday", {}, { fetchImpl })).resolves.toEqual(project)
+        expect(fetchImpl).toHaveBeenCalledWith("https://library.example/projects/central/sunday.json")
+    })
+
+    it("publishes campus project plans to the Worker", async () => {
+        const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+            expect(init?.method).toBe("PUT")
+            expect(init?.headers).toMatchObject({
+                "X-LC-Campus": "pretoria-north",
+                "X-LC-Target": "campus"
+            })
+            expect(JSON.parse(String(init?.body))).toMatchObject({ id: "conference", name: "Conference" })
+            return new Response(JSON.stringify({ ok: true, projectId: "conference", projectUrl: "https://cdn/projects/conference.json" }), {
+                status: 200,
+                headers: { "content-type": "application/json" }
+            })
+        }) as typeof fetch
+
+        await expect(
+            publishProjectPlan(
+                { id: "conference", name: "Conference", songs: [{ songId: "song-1", bundleVersion: "1.0.0" }] },
+                {
+                    workerUrl: "https://worker.example",
+                    credential: "secret",
+                    orgId: "hillside",
+                    campusId: "pretoria-north",
+                    target: "campus",
+                    fetchImpl
+                }
+            )
+        ).resolves.toMatchObject({ ok: true, projectId: "conference" })
     })
 })

@@ -13,6 +13,7 @@ import SetlistPanel from "./SetlistPanel.svelte"
 import LearnSongWizard from "./LearnSongWizard.svelte"
 import LibraryPublishDialog from "./LibraryPublishDialog.svelte"
 import LibraryBrowser from "./LibraryBrowser.svelte"
+import ProjectSourcePicker from "./ProjectSourcePicker.svelte"
 
 export {
     FirstRunWizard,
@@ -25,5 +26,6 @@ export {
     SetlistPanel,
     LearnSongWizard,
     LibraryPublishDialog,
-    LibraryBrowser
+    LibraryBrowser,
+    ProjectSourcePicker
 }

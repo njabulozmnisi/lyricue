@@ -4,12 +4,37 @@ export interface ProjectShowRef {
     id: string
     title: string
     artist?: string
+    songId?: string
+    bundleVersion?: string
+    arrangementId?: string
 }
 
 export interface Project {
     id: string
     title: string
     shows: ProjectShowRef[]
+    date?: string
+    source?: ProjectSource
+}
+
+export interface ProjectSource {
+    kind: "local" | "central" | "campus"
+    planId?: string
+    campusId?: string
+    diverged?: boolean
+}
+
+export interface ProjectPlanSong {
+    songId: string
+    bundleVersion: string
+    arrangementId?: string
+}
+
+export interface ProjectPlan {
+    id: string
+    name: string
+    date?: string
+    songs: ProjectPlanSong[]
 }
 
 export interface ProjectAdapter {
@@ -67,6 +92,39 @@ export function createRestProjectAdapter(opts: RestProjectAdapterOptions): Proje
         activeProject: { subscribe: (run) => store.subscribe(run) },
         getActiveProject: () => current,
         refresh
+    }
+}
+
+export function projectFromPlan(
+    plan: ProjectPlan,
+    resolveShow: (song: ProjectPlanSong) => ProjectShowRef
+): Project {
+    return {
+        id: plan.id,
+        title: plan.name,
+        ...(plan.date ? { date: plan.date } : {}),
+        source: { kind: "central", planId: plan.id, diverged: false },
+        shows: plan.songs.map((song) => ({
+            ...resolveShow(song),
+            songId: song.songId,
+            bundleVersion: song.bundleVersion,
+            ...(song.arrangementId ? { arrangementId: song.arrangementId } : {})
+        }))
+    }
+}
+
+export function markProjectDiverged(project: Project): Project {
+    return project.source && project.source.kind !== "local"
+        ? { ...project, source: { ...project.source, diverged: true } }
+        : project
+}
+
+export function forkProject(project: Project, opts: { id: string; title?: string }): Project {
+    return {
+        ...project,
+        id: opts.id,
+        title: opts.title ?? project.title,
+        source: { kind: "local" }
     }
 }
 
