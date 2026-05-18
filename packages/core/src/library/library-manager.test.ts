@@ -103,6 +103,7 @@ describe("library bundles", () => {
             arrangements: [arrangement],
             exportedAt: "2026-05-17T00:00:00.000Z"
         })
+        expect([...bytes.slice(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04])
         const decoded = readBundle(bytes)
         expect(decoded.manifest.songId).toBe("song-1")
         expect(decoded.timingMap.showId).toBe("show-1")
