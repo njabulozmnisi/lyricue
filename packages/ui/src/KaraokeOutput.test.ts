@@ -70,6 +70,23 @@ function makeLoadMap(outputId: string) {
                         { startMs: 0, endMs: 2000, wordStartIndex: 0, wordEndIndex: 2 },
                         { startMs: 2000, endMs: 3000, wordStartIndex: 2, wordEndIndex: 4 }
                     ]
+                },
+                {
+                    id: "c1",
+                    type: "chorus",
+                    label: "Chorus",
+                    slideIndex: 1,
+                    startMs: 3000,
+                    endMs: 6000,
+                    words: [
+                        { text: "Then", startMs: 3000, endMs: 3800, confidence: 0.9, lineIndex: 0 },
+                        { text: "sings", startMs: 3800, endMs: 4600, confidence: 0.9, lineIndex: 0 },
+                        { text: "my", startMs: 4600, endMs: 5100, confidence: 0.9, lineIndex: 0 },
+                        { text: "soul", startMs: 5100, endMs: 6000, confidence: 0.9, lineIndex: 0, held: true }
+                    ],
+                    lines: [
+                        { startMs: 3000, endMs: 6000, wordStartIndex: 0, wordEndIndex: 4 }
+                    ]
                 }
             ],
             metadata: { schemaVersion: "1", version: "1.0.0" }
@@ -650,6 +667,45 @@ describe("KaraokeOutput", () => {
             const words = Array.from(target.querySelectorAll(".word"))
             expect(words[0]!.classList.contains("active")).toBe(true)
             expect(target.querySelector(".next-song-hint")).toBeNull()
+            cmp.$destroy()
+        })
+    })
+
+    describe("EP-06.5 — next-section preview", () => {
+        it("fades in the next section first line inside the configured lead time", async () => {
+            const cmp = new KaraokeOutput({
+                target,
+                props: { outputId: "out-1", subscribe: bus.subscribe }
+            })
+            bus.push({ channel: "LC_LOAD_MAP", data: makeLoadMap("out-1") })
+            bus.push({
+                channel: "LC_SYNC_FRAME",
+                data: makeFrame({ wordIndex: 2, wordProgress: 0.5 })
+            })
+            await Promise.resolve()
+
+            const preview = target.querySelector(".section-preview")
+            expect(preview?.textContent).toContain("Chorus")
+            expect(preview?.textContent).toContain("Then sings my soul")
+            cmp.$destroy()
+        })
+
+        it("hides the next-section preview before the lead window", async () => {
+            const settings = writable({
+                leadTimeSeconds: 0.25
+            })
+            const cmp = new KaraokeOutput({
+                target,
+                props: { outputId: "out-1", subscribe: bus.subscribe, displaySettings: settings }
+            })
+            bus.push({ channel: "LC_LOAD_MAP", data: makeLoadMap("out-1") })
+            bus.push({
+                channel: "LC_SYNC_FRAME",
+                data: makeFrame({ wordIndex: 2, wordProgress: 0.5 })
+            })
+            await Promise.resolve()
+
+            expect(target.querySelector(".section-preview")).toBeNull()
             cmp.$destroy()
         })
     })

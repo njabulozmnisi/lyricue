@@ -139,6 +139,7 @@
         sungColor: string
         upcomingColor: string
         sungWordOpacity: number
+        leadTimeSeconds: number
         fontSize: number
         fontFamily: string
         heldNoteAnimation: "pulse" | "glow" | "static"
@@ -158,6 +159,7 @@
         sungColor: "#666666",
         upcomingColor: "#CCCCCC",
         sungWordOpacity: 0.4,
+        leadTimeSeconds: 2.0,
         fontSize: 48,
         fontFamily: "Inter",
         heldNoteAnimation: "pulse",
@@ -374,6 +376,35 @@
 
     /** Font-size scaling per FR10.8: 60% for 2 languages, 50% for 3. */
     $: parallelFontFactor = parallelLines.length >= 2 ? 0.5 : parallelLines.length === 1 ? 0.6 : 0.75
+    $: nextSectionPreview = resolveNextSectionPreview(timingMap, arrangement, activeSection, currentFrame, style.leadTimeSeconds)
+
+    function resolveNextSectionPreview(map: TimingMapLike | null, arr: ArrangementLike | null, section: TimingSectionLike | null, frame: SyncFrameLike | null, leadTimeSeconds: number): { label: string; line: string } | null {
+        if (!map || !section || !frame) return null
+        const currentRefMs = estimateCurrentRefMs(section, frame)
+        if (currentRefMs === null) return null
+        const msUntilEnd = section.endMs - currentRefMs
+        if (msUntilEnd <= 0 || msUntilEnd > Math.max(0, leadTimeSeconds) * 1000) return null
+        const next = resolveSection(map, arr, frame.slideIndex + 1)
+        if (!next || next.id === section.id) return null
+        const line = firstLineText(next)
+        return line ? { label: next.label, line } : null
+    }
+
+    function estimateCurrentRefMs(section: TimingSectionLike, frame: SyncFrameLike): number | null {
+        const word = section.words[frame.wordIndex]
+        if (!word) return null
+        const progress = Math.max(0, Math.min(1, frame.wordProgress))
+        return word.startMs + (word.endMs - word.startMs) * progress
+    }
+
+    function firstLineText(section: TimingSectionLike): string {
+        const first = section.lines[0]
+        if (!first) return section.words.map((word) => word.text).join(" ")
+        return section.words
+            .slice(first.wordStartIndex, first.wordEndIndex)
+            .map((word) => word.text)
+            .join(" ")
+    }
 
     /**
      * Resolved easing duration for the currently-active word. Recomputed whenever the
@@ -487,6 +518,13 @@
                         {/each}
                     </div>
                 {/each}
+            </div>
+        {/if}
+
+        {#if nextSectionPreview}
+            <div class="section-preview" role="status" aria-live="polite" in:fly|local={{ y: 16, duration: 200 }} out:fly|local={{ y: 16, duration: 150 }}>
+                <span class="section-preview-label">{nextSectionPreview.label}</span>
+                <span class="section-preview-line">{nextSectionPreview.line}</span>
             </div>
         {/if}
 
@@ -666,6 +704,38 @@
     }
     .parallel-line {
         padding: 0.1em 0;
+    }
+
+    .section-preview {
+        position: absolute;
+        left: 50%;
+        bottom: 14vmin;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.18em;
+        max-width: 86%;
+        color: var(--upcoming-color, #cccccc);
+        font-size: clamp(1.25rem, 3.2vmin, 3.4rem);
+        font-weight: 700;
+        line-height: 1.08;
+        opacity: 0.72;
+        text-align: center;
+        pointer-events: none;
+    }
+    .section-preview-label {
+        color: var(--highlight-color, #ffcc00);
+        font-size: 0.42em;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+    .section-preview-line,
+    .section-preview-label {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .next-song-hint {
