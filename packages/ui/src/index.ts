@@ -14,6 +14,8 @@ import LearnSongWizard from "./LearnSongWizard.svelte"
 import LibraryPublishDialog from "./LibraryPublishDialog.svelte"
 import LibraryBrowser from "./LibraryBrowser.svelte"
 import ProjectSourcePicker from "./ProjectSourcePicker.svelte"
+import RehearsalModePanel from "./RehearsalModePanel.svelte"
+import RehearsalSummary from "./RehearsalSummary.svelte"
 
 export {
     FirstRunWizard,
@@ -27,5 +29,7 @@ export {
     LearnSongWizard,
     LibraryPublishDialog,
     LibraryBrowser,
-    ProjectSourcePicker
+    ProjectSourcePicker,
+    RehearsalModePanel,
+    RehearsalSummary
 }

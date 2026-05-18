@@ -71,6 +71,10 @@
         "./library": {
             "types": "./dist/library/index.d.ts",
             "import": "./dist/library/index.js"
+        },
+        "./rehearsal": {
+            "types": "./dist/rehearsal/index.d.ts",
+            "import": "./dist/rehearsal/index.js"
         }
     },
     "scripts": {

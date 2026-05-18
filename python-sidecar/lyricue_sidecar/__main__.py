@@ -21,6 +21,7 @@ from .jobs import cancel_job_handler
 from .learning import learn_song_handler
 from .methods import make_check_models_handler, ping_handler, shutdown_handler
 from .protocol import JsonRpcServer
+from .rehearsal import segment_rehearsal_handler
 
 
 def main() -> int:
@@ -29,6 +30,7 @@ def main() -> int:
     server.register("ping", ping_handler)
     server.register("check_models", make_check_models_handler())
     server.register("learn_song", learn_song_handler)
+    server.register("segment_rehearsal", segment_rehearsal_handler)
     server.register("cancel_job", cancel_job_handler)
     server.register("shutdown", shutdown_handler)
 
@@ -38,8 +40,8 @@ def main() -> int:
         "ready",
         {
             "version": __version__,
-            "phase": "ep05-learning-pipeline",
-            "methods": ["ping", "check_models", "learn_song", "cancel_job", "shutdown"],
+            "phase": "ep17-rehearsal-mode",
+            "methods": ["ping", "check_models", "learn_song", "segment_rehearsal", "cancel_job", "shutdown"],
         },
     )
 
