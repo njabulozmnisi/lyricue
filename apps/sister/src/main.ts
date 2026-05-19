@@ -136,6 +136,7 @@ const OPERATOR_STATE_CHANNEL = "lyricue:operator:state"
 const OPERATOR_COMMAND_CHANNEL = "lyricue:operator:command"
 const OPERATOR_READY_EVENT = "lyricue:operator:ready"
 const OPERATOR_LEARN_SONG_CHANNEL = "lyricue:operator:learn-song"
+const OPERATOR_LEARN_SONG_PROGRESS_CHANNEL = "lyricue:operator:learn-song-progress"
 const OPERATOR_REHEARSAL_START_CHANNEL = "lyricue:operator:rehearsal-start"
 const OPERATOR_REHEARSAL_CHUNK_CHANNEL = "lyricue:operator:rehearsal-chunk"
 const OPERATOR_REHEARSAL_STOP_CHANNEL = "lyricue:operator:rehearsal-stop"
@@ -991,7 +992,13 @@ async function handleOperatorLearnSong(request: unknown): Promise<unknown> {
 
     const controller = getSidecarController()
     await controller.ensureRunning()
-    return controller.request("learn_song", payload, { timeoutMs: 120_000 })
+    return controller.request("learn_song", payload, {
+        timeoutMs: 120_000,
+        onProgress: (notification) => {
+            if (!operatorWindow || operatorWindow.isDestroyed()) return
+            operatorWindow.webContents.send(OPERATOR_LEARN_SONG_PROGRESS_CHANNEL, notification.params ?? {})
+        }
+    })
 }
 
 async function handleRehearsalStart(request: unknown): Promise<unknown> {

@@ -53,12 +53,12 @@ def learn_song_handler(params: Optional[Mapping[str, Any]], context: RequestCont
     except ValueError as err:
         raise JsonRpcError(ERROR_INVALID_PARAMS, str(err)) from err
 
-    _progress(context, "decode", message="Decoding and resampling audio")
+    _progress(context, job_id, "decode", message="Decoding and resampling audio")
     jobs.checkpoint(job_id)
     decoded = decode_audio_file(audio_path)
     jobs.checkpoint(job_id)
 
-    _progress(context, "bpm", message="Estimating reference BPM")
+    _progress(context, job_id, "bpm", message="Estimating reference BPM")
     bpm = detect_bpm(decoded.samples, decoded.sample_rate)
     jobs.checkpoint(job_id)
 
@@ -67,13 +67,13 @@ def learn_song_handler(params: Optional[Mapping[str, Any]], context: RequestCont
 
     vocals_diagnostics: dict[str, Any] | None = None
     if alignment_mode == "production":
-        _progress(context, "demucs", message="Isolating vocal stem", model=demucs_model)
+        _progress(context, job_id, "demucs", message="Isolating vocal stem", model=demucs_model)
         debug_path = opts.get("debugVocalsPath")
         if debug_path is not None and not isinstance(debug_path, str):
             raise JsonRpcError(ERROR_INVALID_PARAMS, "params.options.debugVocalsPath must be a string if present")
         vocals = isolate_vocals(decoded, model_name=demucs_model, debug_path=debug_path)
         jobs.checkpoint(job_id)
-        _progress(context, "whisperx", message="Aligning vocals against known lyrics", model=whisperx_model, language=language.strip())
+        _progress(context, job_id, "whisperx", message="Aligning vocals against known lyrics", model=whisperx_model, language=language.strip())
         aligned = align_vocals(vocals, sections, language=language.strip(), model_name=whisperx_model)
         aligned_words = aligned.words
         vocals_diagnostics = {
@@ -82,14 +82,14 @@ def learn_song_handler(params: Optional[Mapping[str, Any]], context: RequestCont
             **({"debugPath": vocals.debug_path} if vocals.debug_path else {}),
         }
     else:
-        _progress(context, "alignment", message="Building deterministic timing alignment")
+        _progress(context, job_id, "alignment", message="Building deterministic timing alignment")
         try:
             aligned_words = deterministic_align(sections, decoded.duration_seconds)
         except ValueError as err:
             raise JsonRpcError(ERROR_INVALID_PARAMS, str(err)) from err
     jobs.checkpoint(job_id)
 
-    _progress(context, "timing_map", message="Assembling timing map")
+    _progress(context, job_id, "timing_map", message="Assembling timing map")
     timing_map = assemble_timing_map(
         show_id=show_id.strip(),
         sections=sections,
@@ -119,14 +119,14 @@ def learn_song_handler(params: Optional[Mapping[str, Any]], context: RequestCont
         },
     }
     if opts.get("detectSections") is True:
-        _progress(context, "section_detection", message="Proposing section types")
+        _progress(context, job_id, "section_detection", message="Proposing section types")
         result["proposedSections"] = propose_sections(
             sections,
             aligned_words=aligned_words,
             samples=decoded.samples,
             sample_rate=decoded.sample_rate,
         )
-    _progress(context, "complete", message="Song learning complete")
+    _progress(context, job_id, "complete", message="Song learning complete")
     return {
         **result,
     }
@@ -137,6 +137,8 @@ def _string_option(options: Mapping[str, Any], key: str, fallback: str) -> str:
     return value.strip() if isinstance(value, str) and value.strip() else fallback
 
 
-def _progress(context: RequestContext | None, stage: str, **params: Any) -> None:
+def _progress(context: RequestContext | None, job_id: str | None, stage: str, **params: Any) -> None:
     if context is not None:
+        if job_id is not None:
+            params["jobId"] = job_id
         context.progress(stage, **params)

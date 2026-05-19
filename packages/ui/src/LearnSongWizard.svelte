@@ -40,7 +40,7 @@
     export let searchLyrics: ((query: string) => Promise<LyricSearchResult[]>) | undefined = undefined
     export let readFileText: ((file: File) => Promise<string>) | undefined = undefined
     export let learnSong:
-        | ((draft: LearnSongDraft) => Promise<{ progressLabel?: string; timingMap?: unknown } | void>)
+        | ((draft: LearnSongDraft, onProgress: (label: string) => void) => Promise<{ progressLabel?: string; timingMap?: unknown } | void>)
         | undefined = undefined
     export let confirmCancel: ((draft: LearnSongDraft) => boolean) | undefined = undefined
 
@@ -191,7 +191,7 @@
         draft.progressLabel = "Learning song"
         emitDraft()
         try {
-            const result = learnSong ? await learnSong(draft) : { progressLabel: "Preview ready" }
+            const result = learnSong ? await learnSong(draft, updateProgressLabel) : { progressLabel: "Preview ready" }
             draft.progressLabel = result?.progressLabel ?? "Preview ready"
             if (result && "timingMap" in result) {
                 draft.timingMap = (result as { timingMap?: unknown }).timingMap ?? null
@@ -205,6 +205,12 @@
         } finally {
             learning = false
         }
+    }
+
+    function updateProgressLabel(label: string): void {
+        if (!label.trim()) return
+        draft.progressLabel = label
+        emitDraft()
     }
 
     function cancel(): void {

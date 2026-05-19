@@ -27,6 +27,7 @@ const OPERATOR_STATE_CHANNEL = "lyricue:operator:state"
 const OPERATOR_COMMAND_CHANNEL = "lyricue:operator:command"
 const OPERATOR_READY_EVENT = "lyricue:operator:ready"
 const OPERATOR_LEARN_SONG_CHANNEL = "lyricue:operator:learn-song"
+const OPERATOR_LEARN_SONG_PROGRESS_CHANNEL = "lyricue:operator:learn-song-progress"
 const OPERATOR_REHEARSAL_START_CHANNEL = "lyricue:operator:rehearsal-start"
 const OPERATOR_REHEARSAL_CHUNK_CHANNEL = "lyricue:operator:rehearsal-chunk"
 const OPERATOR_REHEARSAL_STOP_CHANNEL = "lyricue:operator:rehearsal-stop"
@@ -77,6 +78,18 @@ contextBridge.exposeInMainWorld("lyricueOperator", {
         return ipcRenderer.invoke(OPERATOR_LEARN_SONG_CHANNEL, request)
     },
 
+    subscribeLearnSongProgress(handler: (progress: unknown) => void): () => void {
+        const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+            try {
+                handler(payload)
+            } catch (err) {
+                console.error("[lyricue:operator:preload] learn-song progress handler threw:", err)
+            }
+        }
+        ipcRenderer.on(OPERATOR_LEARN_SONG_PROGRESS_CHANNEL, wrapped)
+        return () => ipcRenderer.off(OPERATOR_LEARN_SONG_PROGRESS_CHANNEL, wrapped)
+    },
+
     startRehearsalCapture(request: unknown): Promise<unknown> {
         return ipcRenderer.invoke(OPERATOR_REHEARSAL_START_CHANNEL, request)
     },
@@ -108,6 +121,7 @@ declare global {
             subscribeState: (handler: StateHandler) => () => void
             sendCommand: (command: unknown) => void
             learnSong: (request: unknown) => Promise<unknown>
+            subscribeLearnSongProgress: (handler: (progress: unknown) => void) => () => void
             startRehearsalCapture: (request: unknown) => Promise<unknown>
             writeRehearsalChunk: (request: unknown) => Promise<unknown>
             stopRehearsalCapture: () => Promise<unknown>

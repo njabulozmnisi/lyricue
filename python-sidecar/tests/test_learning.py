@@ -148,6 +148,7 @@ def test_learn_song_emits_progress_notifications(monkeypatch: pytest.MonkeyPatch
         "complete",
     ]
     assert all(params["request_id"] == 7 for method, params in notifications if method == "progress")
+    assert all(params["jobId"] == "job-progress" for method, params in notifications if method == "progress")
 
 
 def test_learn_song_production_mode_uses_vocal_isolation_and_forced_alignment(monkeypatch: pytest.MonkeyPatch):

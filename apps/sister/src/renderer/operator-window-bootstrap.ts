@@ -128,6 +128,7 @@ const bridgeCandidate = (
             subscribeState: (handler: (state: unknown) => void) => () => void
             sendCommand: (command: unknown) => void
             learnSong: (request: unknown) => Promise<unknown>
+            subscribeLearnSongProgress: (handler: (progress: unknown) => void) => () => void
             startRehearsalCapture: (request: unknown) => Promise<unknown>
             writeRehearsalChunk: (request: unknown) => Promise<unknown>
             stopRehearsalCapture: () => Promise<unknown>
@@ -614,7 +615,7 @@ function openLearnSongWizard(): void {
         props: {
             initialDraft: learnSongDraft && typeof learnSongDraft === "object" ? learnSongDraft : undefined,
             confirmCancel: () => window.confirm("Discard the current song-learning draft?"),
-            learnSong: async (draft: LearnSongDraftForHost) => learnSongFromSidecar(draft)
+            learnSong: async (draft: LearnSongDraftForHost, onProgress: (label: string) => void) => learnSongFromSidecar(draft, onProgress)
         }
     })
     learnSongWizard.$on("draft-change", (e: CustomEvent<{ draft: unknown }>) => {
@@ -627,19 +628,29 @@ function openLearnSongWizard(): void {
     })
 }
 
-async function learnSongFromSidecar(draft: LearnSongDraftForHost): Promise<{ progressLabel: string; timingMap?: unknown }> {
+async function learnSongFromSidecar(draft: LearnSongDraftForHost, onProgress: (label: string) => void): Promise<{ progressLabel: string; timingMap?: unknown }> {
     if (!draft.audioPath) return { progressLabel: "Manual preview ready" }
-    const result = await bridge.learnSong({
-        jobId: `operator-${Date.now()}`,
-        showId: slugShowId(draft.title || draft.audioFileName || "learned-song"),
-        title: draft.title,
-        audioPath: draft.audioPath,
-        lyrics: draft.sections,
-        options: {
-            language: "en",
-            detectSections: true
-        }
+    const jobId = `operator-${Date.now()}`
+    const unsubscribe = bridge.subscribeLearnSongProgress((progress) => {
+        const label = learnSongProgressLabel(progress, jobId)
+        if (label) onProgress(label)
     })
+    let result: unknown
+    try {
+        result = await bridge.learnSong({
+            jobId,
+            showId: slugShowId(draft.title || draft.audioFileName || "learned-song"),
+            title: draft.title,
+            audioPath: draft.audioPath,
+            lyrics: draft.sections,
+            options: {
+                language: "en",
+                detectSections: true
+            }
+        })
+    } finally {
+        unsubscribe()
+    }
     if (!result || typeof result !== "object") {
         throw new Error("Song learning returned an invalid response.")
     }
@@ -650,6 +661,33 @@ async function learnSongFromSidecar(draft: LearnSongDraftForHost): Promise<{ pro
                 ? "Timing map ready for review (deterministic alignment)"
                 : "Timing map ready for review",
         timingMap: payload.timingMap
+    }
+}
+
+function learnSongProgressLabel(progress: unknown, jobId: string): string | null {
+    if (!progress || typeof progress !== "object") return null
+    const payload = progress as { jobId?: unknown; stage?: unknown; message?: unknown; model?: unknown }
+    if (typeof payload.jobId === "string" && payload.jobId !== jobId) return null
+    if (typeof payload.message === "string" && payload.message.trim()) return payload.message
+    switch (payload.stage) {
+        case "decode":
+            return "Decoding and resampling audio"
+        case "bpm":
+            return "Estimating reference BPM"
+        case "demucs":
+            return typeof payload.model === "string" ? `Isolating vocal stem (${payload.model})` : "Isolating vocal stem"
+        case "whisperx":
+            return typeof payload.model === "string" ? `Aligning vocals (${payload.model})` : "Aligning vocals"
+        case "alignment":
+            return "Building timing alignment"
+        case "timing_map":
+            return "Assembling timing map"
+        case "section_detection":
+            return "Proposing section types"
+        case "complete":
+            return "Song learning complete"
+        default:
+            return null
     }
 }
 

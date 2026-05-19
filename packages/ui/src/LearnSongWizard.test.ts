@@ -137,4 +137,36 @@ describe("LearnSongWizard", () => {
         expect(onComplete).toHaveBeenCalledOnce()
         cmp.$destroy()
     })
+
+    it("updates the progress label from the injected learning callback", async () => {
+        const learnSong = vi.fn(async (_draft, onProgress: (label: string) => void) => {
+            onProgress("Decoding and resampling audio")
+            await settle()
+            onProgress("Assembling timing map")
+            return { progressLabel: "Timing map ready for review", timingMap: { showId: "demo" } }
+        })
+        const cmp = new LearnSongWizard({
+            target,
+            props: {
+                initialDraft: {
+                    step: "progress",
+                    title: "Progress Song",
+                    lyricsText: "[Verse 1]\nLine one",
+                    sections: [{ id: "v1", type: "verse", label: "Verse 1", text: "Line one", lines: ["Line one"] }],
+                    audioFileName: "song.wav",
+                    audioFileSize: 1024,
+                    audioPath: "/tmp/song.wav"
+                },
+                learnSong
+            }
+        })
+
+        click(buttonByText(target, "Start learning"))
+        await waitForText(target, "Decoding and resampling audio")
+        await waitForText(target, "Assembling timing map")
+        await waitForText(target, "Timing map learned and ready for review.")
+
+        expect(learnSong).toHaveBeenCalledOnce()
+        cmp.$destroy()
+    })
 })
