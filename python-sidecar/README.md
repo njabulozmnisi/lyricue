@@ -7,8 +7,9 @@ ML pipeline for LyriCue, packaged via PyInstaller per ADR-14.
 EP-05 in progress. The sidecar exposes `ready`, `ping`, `check_models`, `learn_song`,
 `cancel_job`, and `shutdown`. `learn_song` validates, decodes, and resamples
 MP3/WAV/FLAC/OGG audio to 16 kHz mono via `librosa`, estimates BPM, deterministically
-aligns structured lyrics, and returns a schema-compatible TimingMap. Production
-Demucs/WhisperX alignment replaces the deterministic aligner once model distribution is ready.
+aligns structured lyrics, returns a schema-compatible TimingMap, and proposes section
+types from repeated lyrics plus `librosa.feature.rms` energy contours when requested.
+Production Demucs/WhisperX alignment replaces the deterministic aligner once model distribution is ready.
 
 ## Local development
 
@@ -36,7 +37,7 @@ See [architecture.md §4.2 and §6.5](../_bmad-output/architecture.md) for the f
 | `ready` | sidecar → host | ✅ EP-04 |
 | `ping` | host → sidecar | ✅ EP-04 STORY-04.2 |
 | `check_models` | host → sidecar | ✅ EP-04 STORY-04.2 |
-| `learn_song` | host → sidecar | Partial: ✅ EP-05 05.1, 05.4, 05.5 deterministic TimingMap |
+| `learn_song` | host → sidecar | Partial: ✅ EP-05 05.1, 05.4, 05.5 deterministic TimingMap, 05.6 section proposals |
 | `segment_rehearsal` | host → sidecar | Partial: ✅ EP-17 silence segmentation + deterministic lyric matching hook |
 | `progress` | sidecar → host (notification) | ⬜ EP-05 |
 | `cancel_job` | host → sidecar | Partial: ✅ EP-05 STORY-05.7 checkpoint cancellation |

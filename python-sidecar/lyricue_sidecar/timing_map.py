@@ -158,17 +158,90 @@ def assemble_timing_map(
     }
 
 
-def propose_sections(sections: list[InputSection]) -> list[dict[str, Any]]:
+def propose_sections(
+    sections: list[InputSection],
+    *,
+    aligned_words: list[AlignedWord] | None = None,
+    samples: Any = None,
+    sample_rate: int | None = None,
+) -> list[dict[str, Any]]:
+    """Return best-effort section-type proposals from lyric repetition and audio energy."""
+
     counts: dict[str, int] = {}
     for section in sections:
         normalized = "\n".join(line.lower().strip() for line in section.lines)
         counts[normalized] = counts.get(normalized, 0) + 1
+
+    energy_scores = _section_energy_scores(aligned_words, samples, sample_rate)
     proposals: list[dict[str, Any]] = []
-    for section in sections:
+    for section_index, section in enumerate(sections):
         normalized = "\n".join(line.lower().strip() for line in section.lines)
+        reasons: list[str] = []
         if counts.get(normalized, 0) >= 2 and section.type != "chorus":
-            proposals.append({"sectionId": section.id, "suggestedType": "chorus", "reason": "repeated_lyrics"})
+            reasons.append("repeated_lyrics")
+        if energy_scores.get(section_index, 0.0) >= 1.35 and section.type in {"other", "verse", "tag"}:
+            reasons.append("energy_spike")
+        if reasons:
+            proposals.append(
+                {
+                    "sectionId": section.id,
+                    "suggestedType": "chorus",
+                    "reason": "+".join(reasons),
+                    **({"energyScore": round(energy_scores[section_index], 3)} if section_index in energy_scores else {}),
+                }
+            )
     return proposals
+
+
+def _section_energy_scores(
+    aligned_words: list[AlignedWord] | None,
+    samples: Any,
+    sample_rate: int | None,
+) -> dict[int, float]:
+    if not aligned_words or samples is None or not isinstance(sample_rate, int) or sample_rate <= 0:
+        return {}
+
+    try:
+        import librosa  # type: ignore[import-not-found]
+        import numpy as np  # type: ignore[import-not-found]
+    except Exception:
+        return {}
+
+    try:
+        arr = np.asarray(samples, dtype=float)
+        if arr.size == 0:
+            return {}
+        hop_length = 512
+        rms = librosa.feature.rms(y=arr, frame_length=2048, hop_length=hop_length)[0]
+        if len(rms) == 0:
+            return {}
+        times_ms = librosa.frames_to_time(range(len(rms)), sr=sample_rate, hop_length=hop_length) * 1000
+    except Exception:
+        return {}
+
+    section_ranges: dict[int, tuple[int, int]] = {}
+    for word in aligned_words:
+        existing = section_ranges.get(word.section_index)
+        if existing is None:
+            section_ranges[word.section_index] = (word.start_ms, word.end_ms)
+        else:
+            section_ranges[word.section_index] = (min(existing[0], word.start_ms), max(existing[1], word.end_ms))
+
+    raw_scores: dict[int, float] = {}
+    for section_index, (start_ms, end_ms) in section_ranges.items():
+        if end_ms <= start_ms:
+            continue
+        mask = (times_ms >= start_ms) & (times_ms <= end_ms)
+        if not mask.any():
+            continue
+        raw_scores[section_index] = float(np.mean(rms[mask]))
+
+    if not raw_scores:
+        return {}
+    baseline = float(np.median(list(raw_scores.values())))
+    if baseline <= 0:
+        return {}
+    return {section_index: score / baseline for section_index, score in raw_scores.items()}
 
 
 def _non_empty_string(value: Any, field: str) -> str:

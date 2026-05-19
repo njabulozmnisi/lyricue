@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -10,6 +12,7 @@ from lyricue_sidecar.audio_decode import DecodedAudio, TARGET_SAMPLE_RATE
 from lyricue_sidecar.jobs import cancel_job_handler
 from lyricue_sidecar.learning import learn_song_handler
 from lyricue_sidecar.protocol import ERROR_INVALID_PARAMS, ERROR_JOB_CANCELLED, JsonRpcError
+from lyricue_sidecar.timing_map import deterministic_align, parse_input_sections, propose_sections
 
 
 def test_learn_song_requires_params():
@@ -114,3 +117,76 @@ def test_cancelled_job_stops_at_checkpoint(monkeypatch: pytest.MonkeyPatch):
         )
 
     assert exc.value.code == ERROR_JOB_CANCELLED
+
+
+def test_detect_sections_uses_audio_energy_contours(monkeypatch: pytest.MonkeyPatch):
+    np = pytest.importorskip("numpy")
+
+    samples = np.concatenate(
+        [
+            np.full(16_000, 0.05, dtype=float),
+            np.full(16_000, 0.8, dtype=float),
+            np.full(16_000, 0.05, dtype=float),
+        ]
+    )
+
+    def fake_decode(audio_path: str):
+        return DecodedAudio(
+            path=Path(audio_path),
+            samples=samples,
+            sample_rate=TARGET_SAMPLE_RATE,
+            duration_seconds=3.0,
+            sample_count=len(samples),
+            byte_size=4096,
+        )
+
+    monkeypatch.setattr(learning, "decode_audio_file", fake_decode)
+    monkeypatch.setattr(learning, "detect_bpm", lambda _samples, _sample_rate: 120)
+
+    result = learn_song_handler(
+        {
+            "jobId": "job-energy",
+            "showId": "show-energy",
+            "audioPath": "/tmp/song.wav",
+            "lyrics": [
+                {"id": "v1", "type": "verse", "label": "Verse 1", "text": "quiet start", "lines": ["quiet start"]},
+                {"id": "lift", "type": "other", "label": "Lift", "text": "loud refrain", "lines": ["loud refrain"]},
+                {"id": "v2", "type": "verse", "label": "Verse 2", "text": "quiet end", "lines": ["quiet end"]},
+            ],
+            "options": {"detectSections": True},
+        }
+    )
+
+    energy_proposals = [p for p in result["proposedSections"] if p["sectionId"] == "lift"]
+    assert energy_proposals
+    assert "energy_spike" in energy_proposals[0]["reason"]
+    assert energy_proposals[0]["energyScore"] > 1.35
+
+
+def test_detect_sections_is_best_effort_when_energy_analysis_fails(monkeypatch: pytest.MonkeyPatch):
+    def raising_rms(**_kwargs):
+        raise RuntimeError("rms unavailable")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "librosa",
+        SimpleNamespace(
+            feature=SimpleNamespace(rms=raising_rms),
+            frames_to_time=lambda *_args, **_kwargs: [],
+        ),
+    )
+
+    sections = parse_input_sections(
+        [
+            {"id": "a", "type": "verse", "label": "Verse A", "text": "same line", "lines": ["same line"]},
+            {"id": "b", "type": "verse", "label": "Verse B", "text": "same line", "lines": ["same line"]},
+        ]
+    )
+    aligned = deterministic_align(sections, 2.0)
+
+    proposals = propose_sections(sections, aligned_words=aligned, samples=[0.1] * 32_000, sample_rate=TARGET_SAMPLE_RATE)
+
+    assert proposals == [
+        {"sectionId": "a", "suggestedType": "chorus", "reason": "repeated_lyrics"},
+        {"sectionId": "b", "suggestedType": "chorus", "reason": "repeated_lyrics"},
+    ]

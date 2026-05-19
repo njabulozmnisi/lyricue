@@ -90,7 +90,12 @@ def learn_song_handler(params: Optional[Mapping[str, Any]]) -> dict[str, Any]:
         },
     }
     if opts.get("detectSections") is True:
-        result["proposedSections"] = propose_sections(sections)
+        result["proposedSections"] = propose_sections(
+            sections,
+            aligned_words=aligned_words,
+            samples=decoded.samples,
+            sample_rate=decoded.sample_rate,
+        )
     return {
         **result,
     }
