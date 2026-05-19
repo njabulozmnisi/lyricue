@@ -9,6 +9,9 @@
     import type { ParsedLyricsSection } from "@lyricue/core/lyrics"
 
     export type LearnSongStep = "source" | "sections" | "audio" | "progress" | "preview"
+    export type LearnSongAlignmentMode = "deterministic" | "production"
+    export type LearnSongDemucsModel = "htdemucs" | "htdemucs_ft" | "mdx_extra"
+    export type LearnSongWhisperxModel = "tiny" | "base" | "small" | "medium"
 
     export interface LearnSongDraft {
         step: LearnSongStep
@@ -21,6 +24,9 @@
         progressLabel: string
         warnings: string[]
         timingMap: unknown | null
+        alignmentMode: LearnSongAlignmentMode
+        demucsModel: LearnSongDemucsModel
+        whisperxModel: LearnSongWhisperxModel
     }
 
     export interface LyricSearchResult {
@@ -73,7 +79,10 @@
         audioPath: initialDraft?.audioPath ?? null,
         progressLabel: initialDraft?.progressLabel ?? "Ready to learn",
         warnings: initialDraft?.warnings ?? [],
-        timingMap: initialDraft?.timingMap ?? null
+        timingMap: initialDraft?.timingMap ?? null,
+        alignmentMode: initialDraft?.alignmentMode ?? "deterministic",
+        demucsModel: initialDraft?.demucsModel ?? "htdemucs",
+        whisperxModel: initialDraft?.whisperxModel ?? "small"
     }
 
     let searchQuery = ""
@@ -181,6 +190,24 @@
         draft.audioFileName = file.name
         draft.audioFileSize = file.size
         draft.audioPath = typeof filePath === "string" && filePath.length > 0 ? filePath : null
+        draft.timingMap = null
+        emitDraft()
+    }
+
+    function onAlignmentModeChange(event: Event): void {
+        draft.alignmentMode = (event.currentTarget as HTMLSelectElement).value as LearnSongAlignmentMode
+        draft.timingMap = null
+        emitDraft()
+    }
+
+    function onDemucsModelChange(event: Event): void {
+        draft.demucsModel = (event.currentTarget as HTMLSelectElement).value as LearnSongDemucsModel
+        draft.timingMap = null
+        emitDraft()
+    }
+
+    function onWhisperxModelChange(event: Event): void {
+        draft.whisperxModel = (event.currentTarget as HTMLSelectElement).value as LearnSongWhisperxModel
         draft.timingMap = null
         emitDraft()
     }
@@ -408,6 +435,39 @@
             {:else}
                 <p class="hint">Skip for now to save this song for manual setup.</p>
             {/if}
+            {#if draft.audioFileName}
+                <div class="learning-mode-panel">
+                    <label>
+                        Learning mode
+                        <select aria-label="Learning mode" value={draft.alignmentMode} on:change={onAlignmentModeChange}>
+                            <option value="deterministic">Fast deterministic alignment</option>
+                            <option value="production">Production Demucs + WhisperX</option>
+                        </select>
+                    </label>
+                    {#if draft.alignmentMode === "production"}
+                        <div class="model-grid">
+                            <label>
+                                Demucs model
+                                <select aria-label="Demucs model" value={draft.demucsModel} on:change={onDemucsModelChange}>
+                                    <option value="htdemucs">htdemucs</option>
+                                    <option value="htdemucs_ft">htdemucs_ft</option>
+                                    <option value="mdx_extra">mdx_extra</option>
+                                </select>
+                            </label>
+                            <label>
+                                WhisperX model
+                                <select aria-label="WhisperX model" value={draft.whisperxModel} on:change={onWhisperxModelChange}>
+                                    <option value="tiny">tiny</option>
+                                    <option value="base">base</option>
+                                    <option value="small">small</option>
+                                    <option value="medium">medium</option>
+                                </select>
+                            </label>
+                        </div>
+                        <p class="hint">Production mode uses the configured model manifest and may download model weights on first use.</p>
+                    {/if}
+                </div>
+            {/if}
         </section>
     {:else if draft.step === "progress"}
         <section class="step-panel">
@@ -580,6 +640,20 @@
         display: flex;
         flex-direction: column;
         gap: 0.65rem;
+    }
+    .learning-mode-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+        padding: 0.85rem;
+        border: 1px solid #303030;
+        border-radius: 8px;
+        background: #181818;
+    }
+    .model-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
     }
     .section-tools {
         align-items: end;

@@ -14,6 +14,12 @@ function input(el: Element | null, value: string): void {
     el.dispatchEvent(new Event("input", { bubbles: true }))
 }
 
+function select(el: Element | null, value: string): void {
+    if (!(el instanceof HTMLSelectElement)) throw new Error("Expected select")
+    el.value = value
+    el.dispatchEvent(new Event("change", { bubbles: true }))
+}
+
 function buttonByText(target: HTMLElement, text: string): HTMLButtonElement {
     const btn = Array.from(target.querySelectorAll("button")).find((b) => b.textContent?.includes(text))
     if (!(btn instanceof HTMLButtonElement)) throw new Error(`Button not found: ${text}`)
@@ -164,6 +170,43 @@ describe("LearnSongWizard", () => {
         click(buttonByText(target, "Start learning"))
         await waitForText(target, "Decoding and resampling audio")
         await waitForText(target, "Assembling timing map")
+        await waitForText(target, "Timing map learned and ready for review.")
+
+        expect(learnSong).toHaveBeenCalledOnce()
+        cmp.$destroy()
+    })
+
+    it("passes production model choices to the learning callback", async () => {
+        const learnSong = vi.fn(async (draft) => {
+            expect(draft.alignmentMode).toBe("production")
+            expect(draft.demucsModel).toBe("mdx_extra")
+            expect(draft.whisperxModel).toBe("base")
+            return { progressLabel: "Timing map ready", timingMap: { showId: "prod" } }
+        })
+        const cmp = new LearnSongWizard({
+            target,
+            props: {
+                initialDraft: {
+                    step: "audio",
+                    title: "Production Song",
+                    lyricsText: "[Verse 1]\nLine one",
+                    sections: [{ id: "v1", type: "verse", label: "Verse 1", text: "Line one", lines: ["Line one"] }],
+                    audioFileName: "song.wav",
+                    audioFileSize: 1024,
+                    audioPath: "/tmp/song.wav"
+                },
+                learnSong
+            }
+        })
+
+        select(target.querySelector('select[aria-label="Learning mode"]'), "production")
+        await settle()
+        select(target.querySelector('select[aria-label="Demucs model"]'), "mdx_extra")
+        select(target.querySelector('select[aria-label="WhisperX model"]'), "base")
+        await settle()
+        click(buttonByText(target, "Next"))
+        await settle()
+        click(buttonByText(target, "Start learning"))
         await waitForText(target, "Timing map learned and ready for review.")
 
         expect(learnSong).toHaveBeenCalledOnce()

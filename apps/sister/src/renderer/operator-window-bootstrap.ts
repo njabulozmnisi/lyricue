@@ -27,6 +27,7 @@ import RehearsalSummary from "@lyricue/ui/RehearsalSummary.svelte"
 import RehearsalReviewPanel from "@lyricue/ui/RehearsalReviewPanel.svelte"
 import { createShortcutHandler } from "@lyricue/core/sync"
 import type { Arrangement, TimingMap } from "@lyricue/core/types"
+import { learnSongProgressLabel } from "./learn-song-progress.js"
 import { shouldBypassOperatorShortcutTarget } from "./operator-shortcuts.js"
 
 /**
@@ -74,6 +75,9 @@ interface LearnSongDraftForHost {
     sections: unknown[]
     audioFileName: string | null
     audioPath: string | null
+    alignmentMode?: "deterministic" | "production"
+    demucsModel?: string
+    whisperxModel?: string
 }
 
 interface RehearsalSegmentForUi {
@@ -644,6 +648,9 @@ async function learnSongFromSidecar(draft: LearnSongDraftForHost, onProgress: (l
             audioPath: draft.audioPath,
             lyrics: draft.sections,
             options: {
+                alignmentMode: draft.alignmentMode ?? "deterministic",
+                demucsModel: draft.demucsModel ?? "htdemucs",
+                whisperxModel: draft.whisperxModel ?? "small",
                 language: "en",
                 detectSections: true
             }
@@ -661,33 +668,6 @@ async function learnSongFromSidecar(draft: LearnSongDraftForHost, onProgress: (l
                 ? "Timing map ready for review (deterministic alignment)"
                 : "Timing map ready for review",
         timingMap: payload.timingMap
-    }
-}
-
-function learnSongProgressLabel(progress: unknown, jobId: string): string | null {
-    if (!progress || typeof progress !== "object") return null
-    const payload = progress as { jobId?: unknown; stage?: unknown; message?: unknown; model?: unknown }
-    if (typeof payload.jobId === "string" && payload.jobId !== jobId) return null
-    if (typeof payload.message === "string" && payload.message.trim()) return payload.message
-    switch (payload.stage) {
-        case "decode":
-            return "Decoding and resampling audio"
-        case "bpm":
-            return "Estimating reference BPM"
-        case "demucs":
-            return typeof payload.model === "string" ? `Isolating vocal stem (${payload.model})` : "Isolating vocal stem"
-        case "whisperx":
-            return typeof payload.model === "string" ? `Aligning vocals (${payload.model})` : "Aligning vocals"
-        case "alignment":
-            return "Building timing alignment"
-        case "timing_map":
-            return "Assembling timing map"
-        case "section_detection":
-            return "Proposing section types"
-        case "complete":
-            return "Song learning complete"
-        default:
-            return null
     }
 }
 
