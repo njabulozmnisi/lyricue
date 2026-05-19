@@ -203,6 +203,64 @@ def test_learn_song_production_mode_uses_vocal_isolation_and_forced_alignment(mo
     assert [word["confidence"] for word in timing_map["sections"][0]["words"]] == [0.92, 0.88]
 
 
+def test_learn_song_production_mode_ensures_required_models(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    from lyricue_sidecar.timing_map import AlignedWord
+
+    digest = "a" * 64
+    ensured: dict[str, object] = {}
+
+    def fake_decode(audio_path: str):
+        return DecodedAudio(
+            path=Path(audio_path),
+            samples=[0.2] * 48_000,
+            sample_rate=TARGET_SAMPLE_RATE,
+            duration_seconds=3.0,
+            sample_count=48_000,
+            byte_size=4096,
+        )
+
+    def fake_ensure(specs, *, models_dir, mirror_url=None, context=None):
+        ensured["specs"] = list(specs)
+        ensured["models_dir"] = models_dir
+        ensured["mirror_url"] = mirror_url
+        ensured["context"] = context
+        return []
+
+    monkeypatch.setattr(learning, "decode_audio_file", fake_decode)
+    monkeypatch.setattr(learning, "detect_bpm", lambda _samples, _sample_rate: 100)
+    monkeypatch.setattr(learning, "ensure_models", fake_ensure)
+    monkeypatch.setattr(learning, "resolve_models_dir", lambda: tmp_path)
+    monkeypatch.setattr(learning, "isolate_vocals", lambda decoded, *, model_name, debug_path=None: IsolatedVocals(samples=[0.1] * 48_000, sample_rate=decoded.sample_rate, model_name=model_name, rms=0.12, debug_path=debug_path))
+    monkeypatch.setattr(
+        learning,
+        "align_vocals",
+        lambda _vocals, _sections, *, language, model_name: SimpleNamespace(words=[AlignedWord("Siyabonga", 0, 700, 0.92, 0, 0)]),
+    )
+    context, notifications = progress_context("learn-models")
+
+    learn_song_handler(
+        {
+            "jobId": "job-models",
+            "showId": "show-prod",
+            "audioPath": "/tmp/song.wav",
+            "lyrics": [{"id": "v1", "type": "verse", "label": "Verse 1", "text": "Siyabonga", "lines": ["Siyabonga"]}],
+            "options": {
+                "alignmentMode": "production",
+                "requiredModels": [{"name": "htdemucs", "version": "v1", "sha256": digest}],
+                "modelMirrorUrl": "https://mirror.example/models",
+            },
+        },
+        context,
+    )
+
+    specs = ensured["specs"]
+    assert specs[0].cache_key == "htdemucs-v1"
+    assert ensured["models_dir"] == tmp_path
+    assert ensured["mirror_url"] == "https://mirror.example/models"
+    assert ensured["context"] is context
+    assert "models" in [params["stage"] for method, params in notifications if method == "progress"]
+
+
 def test_learn_song_rejects_unknown_alignment_mode():
     with pytest.raises(JsonRpcError) as exc:
         learn_song_handler(

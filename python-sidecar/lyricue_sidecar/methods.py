@@ -12,10 +12,10 @@ Method conventions:
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
+from .model_download import resolve_models_dir
 from .protocol import ERROR_INVALID_PARAMS, ERROR_MODEL_NOT_FOUND, JsonRpcError
 
 
@@ -40,14 +40,7 @@ def make_check_models_handler(models_dir: Optional[Path] = None):
     """
 
     def resolve_dir() -> Path:
-        if models_dir is not None:
-            return models_dir
-        from_env = os.environ.get("LYRICUE_MODELS_DIR")
-        if from_env:
-            return Path(from_env)
-        # Fallback: ~/.lyricue/models. Production deployments will always have
-        # LYRICUE_MODELS_DIR set explicitly by Electron's SidecarController.
-        return Path.home() / ".lyricue" / "models"
+        return resolve_models_dir(models_dir)
 
     def handler(params: Optional[Mapping[str, Any]]) -> list[dict[str, Any]]:
         expected: list[str] = []

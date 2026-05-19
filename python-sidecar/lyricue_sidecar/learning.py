@@ -7,6 +7,7 @@ from .audio_decode import decode_audio_file
 from .bpm import detect_bpm
 from .forced_alignment import DEFAULT_WHISPERX_MODEL, align_vocals
 from .jobs import jobs
+from .model_download import ensure_models, parse_ensure_models_params, resolve_models_dir
 from .protocol import ERROR_INVALID_PARAMS, JsonRpcError, RequestContext
 from .timing_map import assemble_timing_map, deterministic_align, parse_input_sections, propose_sections
 from .vocal_isolation import DEFAULT_DEMUCS_MODEL, isolate_vocals
@@ -67,6 +68,21 @@ def learn_song_handler(params: Optional[Mapping[str, Any]], context: RequestCont
 
     vocals_diagnostics: dict[str, Any] | None = None
     if alignment_mode == "production":
+        raw_required_models = opts.get("requiredModels")
+        if raw_required_models is not None:
+            if not isinstance(raw_required_models, list):
+                raise JsonRpcError(ERROR_INVALID_PARAMS, "params.options.requiredModels must be a list if present")
+            model_params: dict[str, Any] = {"models": raw_required_models}
+            mirror_url = opts.get("modelMirrorUrl")
+            if mirror_url is not None:
+                if not isinstance(mirror_url, str) or mirror_url.strip() == "":
+                    raise JsonRpcError(ERROR_INVALID_PARAMS, "params.options.modelMirrorUrl must be a non-empty string if present")
+                model_params["mirrorUrl"] = mirror_url
+            specs, resolved_mirror_url = parse_ensure_models_params(model_params)
+            _progress(context, job_id, "models", message="Checking required model cache")
+            ensure_models(specs, models_dir=resolve_models_dir(), mirror_url=resolved_mirror_url, context=context)
+            jobs.checkpoint(job_id)
+
         _progress(context, job_id, "demucs", message="Isolating vocal stem", model=demucs_model)
         debug_path = opts.get("debugVocalsPath")
         if debug_path is not None and not isinstance(debug_path, str):

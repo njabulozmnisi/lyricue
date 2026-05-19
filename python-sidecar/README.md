@@ -4,13 +4,14 @@ ML pipeline for LyriCue, packaged via PyInstaller per ADR-14.
 
 ## Status
 
-EP-05 in progress. The sidecar exposes `ready`, `ping`, `check_models`, `learn_song`,
+EP-05 in progress. The sidecar exposes `ready`, `ping`, `check_models`, `ensure_models`, `learn_song`,
 `cancel_job`, and `shutdown`. `learn_song` validates, decodes, and resamples
 MP3/WAV/FLAC/OGG audio to 16 kHz mono via `librosa`, estimates BPM, deterministically
 aligns structured lyrics, returns a schema-compatible TimingMap, and proposes section
 types from repeated lyrics plus `librosa.feature.rms` energy contours when requested.
 `options.alignmentMode: "production"` routes through the Demucs and WhisperX stage
-contracts; install `.[ml]` plus the required model cache before using that path.
+contracts. If `options.requiredModels` is supplied, production learning verifies or downloads
+those model artifacts into the local cache before Demucs/WhisperX run.
 
 ## Local development
 
@@ -40,6 +41,7 @@ See [architecture.md §4.2 and §6.5](../_bmad-output/architecture.md) for the f
 | `ready` | sidecar → host | ✅ EP-04 |
 | `ping` | host → sidecar | ✅ EP-04 STORY-04.2 |
 | `check_models` | host → sidecar | ✅ EP-04 STORY-04.2 |
+| `ensure_models` | host → sidecar | ✅ EP-04 STORY-04.6 model cache/download manager |
 | `learn_song` | host → sidecar | Partial: ✅ EP-05 05.1–05.6 stage contracts; production ML path requires `.[ml]` + model cache |
 | `segment_rehearsal` | host → sidecar | Partial: ✅ EP-17 silence segmentation + deterministic lyric matching hook |
 | `progress` | sidecar → host (notification) | ✅ EP-05 tagged stage progress for `learn_song` |

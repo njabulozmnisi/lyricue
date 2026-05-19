@@ -33,7 +33,7 @@ def test_sidecar_emits_ready_then_handles_ping():
     stdout_data, _stderr_data = proc.communicate(timeout=10)
     exit_code = proc.returncode
 
-    lines = [json.loads(l) for l in stdout_data.splitlines() if l.strip()]
+    lines = [json.loads(line) for line in stdout_data.splitlines() if line.strip()]
 
     # Expected sequence:
     #   1. ready notification (no id)
@@ -110,7 +110,7 @@ def test_sidecar_learn_song_emits_progress_then_timing_map(tmp_path: Path):
         proc.kill()
         proc.communicate(timeout=5)
         raise
-    lines = [json.loads(l) for l in stdout_data.splitlines() if l.strip()]
+    lines = [json.loads(line) for line in stdout_data.splitlines() if line.strip()]
 
     assert lines[0]["method"] == "ready"
     progress = [line for line in lines if line.get("method") == "progress"]

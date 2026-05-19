@@ -5,8 +5,6 @@ import io
 import json
 from typing import Any
 
-import pytest
-
 from lyricue_sidecar.protocol import (
     ERROR_INTERNAL,
     ERROR_INVALID_PARAMS,
@@ -159,7 +157,7 @@ class TestServeLoop:
 
         server.serve()
 
-        lines = [json.loads(l) for l in out_stream.getvalue().splitlines() if l]
+        lines = [json.loads(line) for line in out_stream.getvalue().splitlines() if line]
         assert lines == [
             {"jsonrpc": "2.0", "id": 1, "result": {"v": 1}},
             {"jsonrpc": "2.0", "id": 2, "result": {"v": 2}},
@@ -186,7 +184,7 @@ class TestServeLoop:
         server = JsonRpcServer(input_stream=in_stream, output_stream=out_stream)
         server.register("ping", lambda _p: "pong")
         server.serve()
-        lines = [l for l in out_stream.getvalue().splitlines() if l]
+        lines = [line for line in out_stream.getvalue().splitlines() if line]
         assert len(lines) == 1
         assert json.loads(lines[0])["result"] == "pong"
 
@@ -209,7 +207,7 @@ class TestServeLoop:
         server.register_with_context("work", handler)
         server.serve()
 
-        lines = [json.loads(l) for l in out_stream.getvalue().splitlines() if l]
+        lines = [json.loads(line) for line in out_stream.getvalue().splitlines() if line]
         assert lines == [
             {"jsonrpc": "2.0", "method": "progress", "params": {"request_id": 42, "stage": "stage-a", "value": 1}},
             {"jsonrpc": "2.0", "id": 42, "result": {"ok": True}},
