@@ -11,9 +11,18 @@ from lyricue_sidecar import learning
 from lyricue_sidecar.audio_decode import DecodedAudio, TARGET_SAMPLE_RATE
 from lyricue_sidecar.jobs import cancel_job_handler
 from lyricue_sidecar.learning import learn_song_handler
-from lyricue_sidecar.protocol import ERROR_INVALID_PARAMS, ERROR_JOB_CANCELLED, JsonRpcError
+from lyricue_sidecar.protocol import ERROR_INVALID_PARAMS, ERROR_JOB_CANCELLED, JsonRpcError, RequestContext
 from lyricue_sidecar.timing_map import deterministic_align, parse_input_sections, propose_sections
 from lyricue_sidecar.vocal_isolation import IsolatedVocals
+
+
+def progress_context(request_id="req-1"):
+    notifications: list[tuple[str, dict]] = []
+
+    def notify(method, params=None):
+        notifications.append((method, dict(params or {})))
+
+    return RequestContext(request_id=request_id, notify=notify), notifications
 
 
 def test_learn_song_requires_params():
@@ -102,6 +111,43 @@ def test_learn_song_returns_timing_map(monkeypatch: pytest.MonkeyPatch):
         {"startMs": 0, "endMs": 2983, "wordStartIndex": 0, "wordEndIndex": 2},
         {"startMs": 4166, "endMs": 11315, "wordStartIndex": 2, "wordEndIndex": 6},
     ]
+
+
+def test_learn_song_emits_progress_notifications(monkeypatch: pytest.MonkeyPatch):
+    def fake_decode(audio_path: str):
+        return DecodedAudio(
+            path=Path(audio_path),
+            samples=[0.1] * 32_000,
+            sample_rate=TARGET_SAMPLE_RATE,
+            duration_seconds=2.0,
+            sample_count=32_000,
+            byte_size=4096,
+        )
+
+    monkeypatch.setattr(learning, "decode_audio_file", fake_decode)
+    monkeypatch.setattr(learning, "detect_bpm", lambda _samples, _sample_rate: 120)
+    context, notifications = progress_context(7)
+
+    learn_song_handler(
+        {
+            "jobId": "job-progress",
+            "showId": "show-progress",
+            "audioPath": "/tmp/song.wav",
+            "lyrics": [{"id": "v1", "type": "verse", "label": "Verse 1", "text": "Line one", "lines": ["Line one"]}],
+            "options": {"detectSections": True},
+        },
+        context,
+    )
+
+    assert [params["stage"] for method, params in notifications if method == "progress"] == [
+        "decode",
+        "bpm",
+        "alignment",
+        "timing_map",
+        "section_detection",
+        "complete",
+    ]
+    assert all(params["request_id"] == 7 for method, params in notifications if method == "progress")
 
 
 def test_learn_song_production_mode_uses_vocal_isolation_and_forced_alignment(monkeypatch: pytest.MonkeyPatch):

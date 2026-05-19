@@ -29,7 +29,7 @@ def main() -> int:
 
     server.register("ping", ping_handler)
     server.register("check_models", make_check_models_handler())
-    server.register("learn_song", learn_song_handler)
+    server.register_with_context("learn_song", learn_song_handler)
     server.register("segment_rehearsal", segment_rehearsal_handler)
     server.register("cancel_job", cancel_job_handler)
     server.register("shutdown", shutdown_handler)

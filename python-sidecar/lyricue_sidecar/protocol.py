@@ -41,6 +41,7 @@ import json
 import logging
 import sys
 import traceback
+from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Mapping, MutableMapping, Optional, Union
 
 # Standard JSON-RPC 2.0 error codes
@@ -77,6 +78,18 @@ class JsonRpcError(Exception):
 
 HandlerResult = Any
 Handler = Callable[[Optional[Mapping[str, Any]]], Union[HandlerResult, Awaitable[HandlerResult]]]
+ContextHandler = Callable[[Optional[Mapping[str, Any]], "RequestContext"], Union[HandlerResult, Awaitable[HandlerResult]]]
+
+
+@dataclass(frozen=True)
+class RequestContext:
+    request_id: Any
+    notify: Callable[[str, Optional[Mapping[str, Any]]], None]
+
+    def progress(self, stage: str, **params: Any) -> None:
+        payload: dict[str, Any] = {"request_id": self.request_id, "stage": stage}
+        payload.update(params)
+        self.notify("progress", payload)
 
 
 # Configure stderr-only logging. The sidecar must NEVER write to stdout outside of the
@@ -105,13 +118,20 @@ class JsonRpcServer:
         input_stream: Any = None,
         output_stream: Any = None,
     ) -> None:
-        self._handlers: MutableMapping[str, Handler] = {}
+        self._handlers: MutableMapping[str, Handler | ContextHandler] = {}
+        self._context_handlers: set[str] = set()
         self._input = input_stream if input_stream is not None else sys.stdin
         self._output = output_stream if output_stream is not None else sys.stdout
 
     def register(self, method: str, handler: Handler) -> None:
         """Bind a method name to a handler callable. Replaces any prior binding."""
         self._handlers[method] = handler
+        self._context_handlers.discard(method)
+
+    def register_with_context(self, method: str, handler: ContextHandler) -> None:
+        """Bind a method handler that receives request metadata and can emit progress."""
+        self._handlers[method] = handler
+        self._context_handlers.add(method)
 
     def emit_notification(self, method: str, params: Optional[Mapping[str, Any]] = None) -> None:
         """Send a protocol notification (no id, no response expected)."""
@@ -160,7 +180,11 @@ class JsonRpcServer:
             return _error_response(request_id, ERROR_METHOD_NOT_FOUND, f"Method '{method}' not found")
 
         try:
-            result = handler(params if isinstance(params, dict) else None)
+            if method in self._context_handlers:
+                context = RequestContext(request_id=request_id, notify=self.emit_notification)
+                result = handler(params if isinstance(params, dict) else None, context)  # type: ignore[misc]
+            else:
+                result = handler(params if isinstance(params, dict) else None)  # type: ignore[misc]
         except JsonRpcError as err:
             log.warning("Handler '%s' raised JsonRpcError(%d): %s", method, err.code, err.message)
             if is_notification:

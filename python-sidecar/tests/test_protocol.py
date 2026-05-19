@@ -197,6 +197,24 @@ class TestServeLoop:
         payload = json.loads(out_stream.getvalue().strip())
         assert payload == {"jsonrpc": "2.0", "method": "ready", "params": {"version": "1.2.3"}}
 
+    def test_context_handler_can_emit_tagged_progress_before_response(self):
+        in_stream = io.StringIO(json.dumps({"jsonrpc": "2.0", "id": 42, "method": "work", "params": {"x": 1}}) + "\n")
+        out_stream = io.StringIO()
+        server = JsonRpcServer(input_stream=in_stream, output_stream=out_stream)
+
+        def handler(params, context):
+            context.progress("stage-a", value=params["x"])
+            return {"ok": True}
+
+        server.register_with_context("work", handler)
+        server.serve()
+
+        lines = [json.loads(l) for l in out_stream.getvalue().splitlines() if l]
+        assert lines == [
+            {"jsonrpc": "2.0", "method": "progress", "params": {"request_id": 42, "stage": "stage-a", "value": 1}},
+            {"jsonrpc": "2.0", "id": 42, "result": {"ok": True}},
+        ]
+
 
 class TestRegisterSemantics:
     def test_register_replaces_prior_binding(self):

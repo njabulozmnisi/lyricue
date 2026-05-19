@@ -42,6 +42,6 @@ See [architecture.md §4.2 and §6.5](../_bmad-output/architecture.md) for the f
 | `check_models` | host → sidecar | ✅ EP-04 STORY-04.2 |
 | `learn_song` | host → sidecar | Partial: ✅ EP-05 05.1–05.6 stage contracts; production ML path requires `.[ml]` + model cache |
 | `segment_rehearsal` | host → sidecar | Partial: ✅ EP-17 silence segmentation + deterministic lyric matching hook |
-| `progress` | sidecar → host (notification) | ⬜ EP-05 |
+| `progress` | sidecar → host (notification) | ✅ EP-05 tagged stage progress for `learn_song` |
 | `cancel_job` | host → sidecar | Partial: ✅ EP-05 STORY-05.7 checkpoint cancellation |
 | `shutdown` | host → sidecar | ✅ EP-04 STORY-04.2 |
