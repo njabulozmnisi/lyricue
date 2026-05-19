@@ -23,6 +23,7 @@
  */
 
 import { join } from "node:path"
+import type { LearnedFromMethod } from "../types/timing-map.js"
 
 export interface LyriCuePaths {
     /** The lyricue root inside userData. */
@@ -58,6 +59,10 @@ export function resolveLyriCuePaths(userDataDir: string): LyriCuePaths {
  */
 export function timingMapPath(paths: LyriCuePaths, showId: string): string {
     return join(paths.timingMapsDir, `${showId}.timing.json`)
+}
+
+export function timingMapVariantPath(paths: LyriCuePaths, showId: string, variant: Extract<LearnedFromMethod, "studio" | "rehearsal">): string {
+    return join(paths.timingMapsDir, `${showId}.${variant}.timing.json`)
 }
 
 export function arrangementsPath(paths: LyriCuePaths, showId: string): string {

@@ -42,6 +42,7 @@ import { writeFileAtomic, readFileIfExists } from "../fs/atomic-write.js"
 import {
     arrangementsPath,
     timingMapPath,
+    timingMapVariantPath,
     type LyriCuePaths
 } from "../settings/paths.js"
 import {
@@ -89,6 +90,8 @@ export interface TimingMapStorageOptions {
     hooks?: TimingMapStorageHooks
 }
 
+export type TimingMapStorageVariant = "studio" | "rehearsal"
+
 export class TimingMapStorage {
     constructor(private readonly opts: TimingMapStorageOptions) {}
 
@@ -106,6 +109,15 @@ export class TimingMapStorage {
      */
     async load(showId: string): Promise<TimingMap | null> {
         const path = timingMapPath(this.paths, showId)
+        return this.#loadFromPath(path)
+    }
+
+    async loadVariant(showId: string, variant: TimingMapStorageVariant): Promise<TimingMap | null> {
+        const path = timingMapVariantPath(this.paths, showId, variant)
+        return this.#loadFromPath(path)
+    }
+
+    async #loadFromPath(path: string): Promise<TimingMap | null> {
         const buf = await readFileIfExists(path)
         if (buf === null) return null
 
@@ -172,6 +184,23 @@ export class TimingMapStorage {
      * the JSON body would silently desync the disk layout from the data.
      */
     async save(showId: string, map: TimingMap): Promise<void> {
+        await this.#saveToPath(timingMapPath(this.paths, showId), showId, map)
+
+        if (this.opts.hooks?.onSaveMetaPointer) {
+            await this.opts.hooks.onSaveMetaPointer(showId, map)
+        }
+    }
+
+    async saveVariant(showId: string, variant: TimingMapStorageVariant, map: TimingMap): Promise<void> {
+        if (map.learnedFrom.method !== variant) {
+            throw new Error(
+                `TimingMapStorage.saveVariant: variant="${variant}" does not match map.learnedFrom.method="${map.learnedFrom.method}"`
+            )
+        }
+        await this.#saveToPath(timingMapVariantPath(this.paths, showId, variant), showId, map)
+    }
+
+    async #saveToPath(path: string, showId: string, map: TimingMap): Promise<void> {
         if (map.showId !== showId) {
             throw new Error(
                 `TimingMapStorage.save: showId mismatch (path-key="${showId}", map.showId="${map.showId}")`
@@ -180,7 +209,6 @@ export class TimingMapStorage {
 
         const result = validateTimingMap(map)
         if (!result.ok) {
-            const path = timingMapPath(this.paths, showId)
             throw new TimingMapValidationError(
                 `Refusing to save timing map for show ${showId}: failed schema validation (${result.errors.length} issues)`,
                 path,
@@ -188,13 +216,8 @@ export class TimingMapStorage {
             )
         }
 
-        const path = timingMapPath(this.paths, showId)
         const body = JSON.stringify(map, null, 2)
         await writeFileAtomic(path, body)
-
-        if (this.opts.hooks?.onSaveMetaPointer) {
-            await this.opts.hooks.onSaveMetaPointer(showId, map)
-        }
     }
 
     /**
@@ -204,24 +227,27 @@ export class TimingMapStorage {
      */
     async delete(showId: string): Promise<boolean> {
         const path = timingMapPath(this.paths, showId)
+        const deleted = await this.#deletePath(path)
+        if (this.opts.hooks?.onDeleteMetaPointer) {
+            await this.opts.hooks.onDeleteMetaPointer(showId)
+        }
+        return deleted
+    }
+
+    async deleteVariant(showId: string, variant: TimingMapStorageVariant): Promise<boolean> {
+        return this.#deletePath(timingMapVariantPath(this.paths, showId, variant))
+    }
+
+    async #deletePath(path: string): Promise<boolean> {
         try {
             await fs.unlink(path)
         } catch (err) {
             if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-                // Nothing to do — still invoke the meta-pointer cleanup hook so callers
-                // that need to remove the FreeShow `.show` pointer can do so even when
-                // the underlying file went missing through other means.
-                if (this.opts.hooks?.onDeleteMetaPointer) {
-                    await this.opts.hooks.onDeleteMetaPointer(showId)
-                }
                 return false
             }
             throw err
         }
 
-        if (this.opts.hooks?.onDeleteMetaPointer) {
-            await this.opts.hooks.onDeleteMetaPointer(showId)
-        }
         return true
     }
 
@@ -232,6 +258,14 @@ export class TimingMapStorage {
      */
     async exists(showId: string): Promise<boolean> {
         const path = timingMapPath(this.paths, showId)
+        return this.#existsPath(path)
+    }
+
+    async existsVariant(showId: string, variant: TimingMapStorageVariant): Promise<boolean> {
+        return this.#existsPath(timingMapVariantPath(this.paths, showId, variant))
+    }
+
+    async #existsPath(path: string): Promise<boolean> {
         try {
             await fs.access(path)
             return true

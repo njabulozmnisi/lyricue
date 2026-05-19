@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { promises as fs } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { resolveLyriCuePaths, timingMapPath, arrangementsPath } from "../settings/paths.js"
+import { resolveLyriCuePaths, timingMapPath, timingMapVariantPath, arrangementsPath } from "../settings/paths.js"
 import { SCHEMA_LYRICUE_TIMING_V1 } from "../types/schema-versions.js"
 import { TimingMapStorage, TimingMapValidationError } from "./timing-map-storage.js"
 import type { Arrangement, TimingMap } from "../types/timing-map.js"
@@ -238,6 +238,52 @@ describe("TimingMapStorage", () => {
             expect(await storage.exists("show-001")).toBe(true)
             await storage.delete("show-001")
             expect(await storage.exists("show-001")).toBe(false)
+        })
+    })
+
+    describe("variant timing maps", () => {
+        it("saves and loads a rehearsal timing map beside the studio map", async () => {
+            const studio = makeValidMap("show-001")
+            const rehearsal: TimingMap = {
+                ...makeValidMap("show-001"),
+                learnedFrom: {
+                    method: "rehearsal",
+                    filename: "rehearsal.wav",
+                    duration: 90,
+                    learnedAt: "2026-05-16T00:00:00.000Z"
+                },
+                bpm: 82
+            }
+
+            await storage.save("show-001", studio)
+            await storage.saveVariant("show-001", "rehearsal", rehearsal)
+
+            await expect(storage.load("show-001")).resolves.toMatchObject({ learnedFrom: { method: "studio" }, bpm: 76 })
+            await expect(storage.loadVariant("show-001", "rehearsal")).resolves.toMatchObject({ learnedFrom: { method: "rehearsal" }, bpm: 82 })
+            await expect(fs.access(timingMapPath(paths, "show-001"))).resolves.toBeUndefined()
+            await expect(fs.access(timingMapVariantPath(paths, "show-001", "rehearsal"))).resolves.toBeUndefined()
+        })
+
+        it("rejects variant saves when learnedFrom.method does not match the variant", async () => {
+            await expect(storage.saveVariant("show-001", "rehearsal", makeValidMap("show-001"))).rejects.toThrow(/does not match/)
+        })
+
+        it("deletes rehearsal variants without deleting the canonical studio map", async () => {
+            const rehearsal: TimingMap = {
+                ...makeValidMap("show-001"),
+                learnedFrom: {
+                    method: "rehearsal",
+                    filename: "rehearsal.wav",
+                    duration: 90,
+                    learnedAt: "2026-05-16T00:00:00.000Z"
+                }
+            }
+            await storage.save("show-001", makeValidMap("show-001"))
+            await storage.saveVariant("show-001", "rehearsal", rehearsal)
+
+            await expect(storage.deleteVariant("show-001", "rehearsal")).resolves.toBe(true)
+            await expect(storage.exists("show-001")).resolves.toBe(true)
+            await expect(storage.existsVariant("show-001", "rehearsal")).resolves.toBe(false)
         })
     })
 
