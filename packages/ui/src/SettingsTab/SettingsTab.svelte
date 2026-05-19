@@ -21,6 +21,7 @@
         type LyriCueSettings,
         type InstallIdentity,
         type LibraryConfig,
+        type RehearsalRecordingInfo,
         type SettingsStore,
         type IdentityStore,
         type LibraryConfigStore,
@@ -33,11 +34,16 @@
     import LibrarySection from "./LibrarySection.svelte"
     import IdentitySection from "./IdentitySection.svelte"
     import SidecarSection from "./SidecarSection.svelte"
+    import StorageSection from "./StorageSection.svelte"
 
     export let settingsStore: SettingsStore
     export let identityStore: IdentityStore
     export let libraryConfigStore: LibraryConfigStore
     export let onCatalogRefresh: (() => void) | undefined = undefined
+    export let rehearsalRecordings: RehearsalRecordingInfo[] = []
+    export let onRehearsalStorageRefresh: (() => Promise<void> | void) | undefined = undefined
+    export let onRehearsalRecordingDelete: ((fileName: string) => Promise<void> | void) | undefined = undefined
+    export let onRehearsalRecordingDeleteOlderThan: ((olderThanDays: number) => Promise<void> | void) | undefined = undefined
 
     let settings: LyriCueSettings = settingsStore.get()
     let identity: InstallIdentity = identityStore.get()
@@ -100,7 +106,7 @@
         unsubLibrary()
     })
 
-    type Section = "display" | "sync" | "shortcuts" | "library" | "identity" | "sidecar"
+    type Section = "display" | "sync" | "shortcuts" | "library" | "identity" | "sidecar" | "storage"
     let active: Section = "display"
 
     const sectionTabs: { id: Section; label: string }[] = [
@@ -109,8 +115,11 @@
         { id: "shortcuts", label: "Shortcuts" },
         { id: "library", label: "Library" },
         { id: "identity", label: "Identity" },
-        { id: "sidecar", label: "Sidecar" }
+        { id: "sidecar", label: "Sidecar" },
+        { id: "storage", label: "Storage" }
     ]
+
+    const noop = () => undefined
 </script>
 
 <div class="lyricue-settings">
@@ -148,6 +157,13 @@
                 {settings}
                 onChange={onSettingsChange}
                 onReset={() => resetSection("sidecar")}
+            />
+        {:else if active === "storage"}
+            <StorageSection
+                recordings={rehearsalRecordings}
+                onRefresh={onRehearsalStorageRefresh ?? noop}
+                onDelete={onRehearsalRecordingDelete ?? noop}
+                onDeleteOlderThan={onRehearsalRecordingDeleteOlderThan ?? noop}
             />
         {/if}
     </div>
