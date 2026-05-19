@@ -27,6 +27,10 @@ const OPERATOR_STATE_CHANNEL = "lyricue:operator:state"
 const OPERATOR_COMMAND_CHANNEL = "lyricue:operator:command"
 const OPERATOR_READY_EVENT = "lyricue:operator:ready"
 const OPERATOR_LEARN_SONG_CHANNEL = "lyricue:operator:learn-song"
+const OPERATOR_REHEARSAL_START_CHANNEL = "lyricue:operator:rehearsal-start"
+const OPERATOR_REHEARSAL_CHUNK_CHANNEL = "lyricue:operator:rehearsal-chunk"
+const OPERATOR_REHEARSAL_STOP_CHANNEL = "lyricue:operator:rehearsal-stop"
+const OPERATOR_REHEARSAL_DISCARD_CHANNEL = "lyricue:operator:rehearsal-discard"
 
 type StateHandler = (payload: unknown) => void
 
@@ -73,6 +77,22 @@ contextBridge.exposeInMainWorld("lyricueOperator", {
         return ipcRenderer.invoke(OPERATOR_LEARN_SONG_CHANNEL, request)
     },
 
+    startRehearsalCapture(request: unknown): Promise<unknown> {
+        return ipcRenderer.invoke(OPERATOR_REHEARSAL_START_CHANNEL, request)
+    },
+
+    writeRehearsalChunk(request: unknown): Promise<unknown> {
+        return ipcRenderer.invoke(OPERATOR_REHEARSAL_CHUNK_CHANNEL, request)
+    },
+
+    stopRehearsalCapture(): Promise<unknown> {
+        return ipcRenderer.invoke(OPERATOR_REHEARSAL_STOP_CHANNEL)
+    },
+
+    discardRehearsalCapture(): Promise<unknown> {
+        return ipcRenderer.invoke(OPERATOR_REHEARSAL_DISCARD_CHANNEL)
+    },
+
     /**
      * Tell main the renderer has mounted. The main process uses this to flush any
      * buffered state envelopes (states emitted before the renderer was ready).
@@ -88,6 +108,10 @@ declare global {
             subscribeState: (handler: StateHandler) => () => void
             sendCommand: (command: unknown) => void
             learnSong: (request: unknown) => Promise<unknown>
+            startRehearsalCapture: (request: unknown) => Promise<unknown>
+            writeRehearsalChunk: (request: unknown) => Promise<unknown>
+            stopRehearsalCapture: () => Promise<unknown>
+            discardRehearsalCapture: () => Promise<unknown>
             signalReady: () => void
         }
     }

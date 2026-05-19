@@ -107,6 +107,10 @@ const bridgeCandidate = (
             subscribeState: (handler: (state: unknown) => void) => () => void
             sendCommand: (command: unknown) => void
             learnSong: (request: unknown) => Promise<unknown>
+            startRehearsalCapture: (request: unknown) => Promise<unknown>
+            writeRehearsalChunk: (request: unknown) => Promise<unknown>
+            stopRehearsalCapture: () => Promise<unknown>
+            discardRehearsalCapture: () => Promise<unknown>
             signalReady: () => void
         }
     }
@@ -145,6 +149,14 @@ let rehearsalSummary: RehearsalSummary | null = null
 let rehearsalOverlay: HTMLElement | null = null
 let rehearsalTimer: number | null = null
 let rehearsalStartedAt = 0
+let rehearsalAudioContext: AudioContext | null = null
+let rehearsalSource: MediaStreamAudioSourceNode | null = null
+let rehearsalProcessor: ScriptProcessorNode | null = null
+let rehearsalSink: GainNode | null = null
+let rehearsalStream: MediaStream | null = null
+let rehearsalChunkChain: Promise<unknown> = Promise.resolve()
+let rehearsalCaptureFilePath: string | null = null
+let rehearsalCaptureRunning = false
 let learnSongDraft: unknown = null
 
 const banner = new TierChangeBanner({
@@ -247,44 +259,148 @@ function openRehearsalPanel(): void {
             elapsedMs: 0,
             level: 0,
             recording: false,
-            onStart: () => startRehearsalPreview(),
-            onStop: () => stopRehearsalPreview(summarySlot)
+            onStart: () => void startRehearsalCapture(),
+            onStop: () => void stopRehearsalCapture(summarySlot)
         }
     })
     body.appendChild(summarySlot)
 }
 
-function startRehearsalPreview(): void {
+async function startRehearsalCapture(): Promise<void> {
+    if (rehearsalStream) return
+    if (!navigator.mediaDevices?.getUserMedia) {
+        window.alert("Audio capture is unavailable in this renderer.")
+        return
+    }
     rehearsalStartedAt = Date.now()
-    rehearsalPanel?.$set({ recording: true, elapsedMs: 0, level: 0.18 })
+    rehearsalCaptureFilePath = null
+    rehearsalPanel?.$set({ recording: true, elapsedMs: 0, level: 0 })
     if (rehearsalTimer !== null) window.clearInterval(rehearsalTimer)
     rehearsalTimer = window.setInterval(() => {
         const elapsedMs = Date.now() - rehearsalStartedAt
-        const level = 0.18 + Math.abs(Math.sin(elapsedMs / 420)) * 0.62
-        rehearsalPanel?.$set({ elapsedMs, level, recording: true })
+        rehearsalPanel?.$set({ elapsedMs, recording: true })
     }, 250)
+
+    try {
+        const deviceId = currentState.selectedDeviceId === "synthetic-120bpm" ? null : currentState.selectedDeviceId
+        rehearsalStream = await navigator.mediaDevices.getUserMedia(
+            deviceId ? { audio: { deviceId: { exact: deviceId } } } : { audio: true }
+        )
+        rehearsalAudioContext = new AudioContext({ sampleRate: 48_000 })
+        rehearsalSource = rehearsalAudioContext.createMediaStreamSource(rehearsalStream)
+        rehearsalProcessor = rehearsalAudioContext.createScriptProcessor(4096, 1, 1)
+        rehearsalSink = rehearsalAudioContext.createGain()
+        rehearsalSink.gain.value = 0
+        const startResult = (await bridge.startRehearsalCapture({
+            sampleRate: rehearsalAudioContext.sampleRate,
+            channels: 1,
+            deviceId
+        })) as { filePath?: unknown }
+        rehearsalCaptureFilePath = typeof startResult.filePath === "string" ? startResult.filePath : null
+        rehearsalCaptureRunning = true
+        rehearsalChunkChain = Promise.resolve()
+        rehearsalProcessor.onaudioprocess = (event) => {
+            const input = event.inputBuffer.getChannelData(0)
+            let squareSum = 0
+            const pcm = new Int16Array(input.length)
+            for (let i = 0; i < input.length; i += 1) {
+                const clamped = Math.max(-1, Math.min(1, input[i] ?? 0))
+                squareSum += clamped * clamped
+                pcm[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff
+            }
+            const rms = Math.sqrt(squareSum / Math.max(1, input.length))
+            rehearsalPanel?.$set({
+                level: Math.min(1, rms * 8),
+                elapsedMs: Date.now() - rehearsalStartedAt,
+                recording: true
+            })
+            const bytes = new Uint8Array(pcm.buffer.slice(0))
+            rehearsalChunkChain = rehearsalChunkChain.then(() => bridge.writeRehearsalChunk({ chunk: bytes }))
+        }
+        rehearsalSource.connect(rehearsalProcessor)
+        rehearsalProcessor.connect(rehearsalSink)
+        rehearsalSink.connect(rehearsalAudioContext.destination)
+    } catch (err) {
+        await cleanupRehearsalAudio()
+        if (rehearsalCaptureRunning) await bridge.discardRehearsalCapture().catch(() => undefined)
+        rehearsalCaptureRunning = false
+        rehearsalPanel?.$set({ recording: false, level: 0, elapsedMs: 0 })
+        window.alert((err as Error).message || "Rehearsal capture failed to start.")
+    }
 }
 
-function stopRehearsalPreview(summarySlot: HTMLElement): void {
+async function stopRehearsalCapture(summarySlot: HTMLElement): Promise<void> {
     if (rehearsalTimer !== null) {
         window.clearInterval(rehearsalTimer)
         rehearsalTimer = null
     }
     const elapsedMs = rehearsalStartedAt ? Date.now() - rehearsalStartedAt : 0
+    await cleanupRehearsalAudio()
+    try {
+        await rehearsalChunkChain
+    } catch (err) {
+        await bridge.discardRehearsalCapture().catch(() => undefined)
+        rehearsalCaptureRunning = false
+        rehearsalPanel?.$set({ recording: false, elapsedMs, level: 0 })
+        window.alert((err as Error).message || "Rehearsal capture failed while writing audio chunks.")
+        return
+    }
+    const result = (await bridge.stopRehearsalCapture()) as { filePath?: unknown; bytesWritten?: unknown; elapsedMs?: unknown }
+    rehearsalCaptureRunning = false
+    const filePath = typeof result.filePath === "string" ? result.filePath : rehearsalCaptureFilePath
+    const bytesWritten = typeof result.bytesWritten === "number" ? result.bytesWritten : 0
     rehearsalPanel?.$set({ recording: false, elapsedMs, level: 0 })
     rehearsalSummary?.$destroy()
     rehearsalSummary = new RehearsalSummary({
         target: summarySlot,
         props: {
-            segments: currentState.setlist.slice(0, 3).map((song, index) => ({
-                index,
-                title: song.title,
-                status: song.syncStatus === "learned" ? "matched" : song.syncStatus === "partial" ? "review" : "failed",
-                confidence: song.syncStatus === "learned" ? 0.72 : song.syncStatus === "partial" ? 0.38 : 0.1
-            })),
+            segments: [
+                {
+                    index: 0,
+                    title: `${formatBytes(bytesWritten)} WAV saved${filePath ? ` to ${filePath}` : ""}`,
+                    status: "matched",
+                    confidence: 1
+                },
+                ...currentState.setlist.slice(0, 2).map((song, index) => ({
+                    index: index + 1,
+                    title: song.title,
+                    status: song.syncStatus === "learned" ? "matched" : song.syncStatus === "partial" ? "review" : "failed",
+                    confidence: song.syncStatus === "learned" ? 0.72 : song.syncStatus === "partial" ? 0.38 : 0.1
+                }))
+            ],
             onReview: () => window.alert("Rehearsal review opens in the timing preview workflow.")
         }
     })
+}
+
+async function cleanupRehearsalAudio(): Promise<void> {
+    if (rehearsalProcessor) {
+        rehearsalProcessor.onaudioprocess = null
+        rehearsalProcessor.disconnect()
+        rehearsalProcessor = null
+    }
+    if (rehearsalSink) {
+        rehearsalSink.disconnect()
+        rehearsalSink = null
+    }
+    if (rehearsalSource) {
+        rehearsalSource.disconnect()
+        rehearsalSource = null
+    }
+    if (rehearsalStream) {
+        for (const track of rehearsalStream.getTracks()) track.stop()
+        rehearsalStream = null
+    }
+    if (rehearsalAudioContext) {
+        await rehearsalAudioContext.close().catch(() => undefined)
+        rehearsalAudioContext = null
+    }
+}
+
+function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 function openToolOverlay(title: string): { overlay: HTMLElement; body: HTMLElement } {
@@ -359,6 +475,11 @@ function closeToolOverlays(): void {
     if (rehearsalTimer !== null) {
         window.clearInterval(rehearsalTimer)
         rehearsalTimer = null
+    }
+    void cleanupRehearsalAudio()
+    if (rehearsalCaptureRunning) {
+        rehearsalCaptureRunning = false
+        void bridge.discardRehearsalCapture().catch(() => undefined)
     }
     try {
         rehearsalSummary?.$destroy()

@@ -61,6 +61,7 @@ import {
     type Project,
     type SetlistController
 } from "@lyricue/core/setlist"
+import { createRehearsalCaptureSession, createWavChunkWriter, type RehearsalCaptureSession } from "@lyricue/core/rehearsal"
 import {
     SidecarController,
     nodePythonResolver,
@@ -134,6 +135,10 @@ const OPERATOR_STATE_CHANNEL = "lyricue:operator:state"
 const OPERATOR_COMMAND_CHANNEL = "lyricue:operator:command"
 const OPERATOR_READY_EVENT = "lyricue:operator:ready"
 const OPERATOR_LEARN_SONG_CHANNEL = "lyricue:operator:learn-song"
+const OPERATOR_REHEARSAL_START_CHANNEL = "lyricue:operator:rehearsal-start"
+const OPERATOR_REHEARSAL_CHUNK_CHANNEL = "lyricue:operator:rehearsal-chunk"
+const OPERATOR_REHEARSAL_STOP_CHANNEL = "lyricue:operator:rehearsal-stop"
+const OPERATOR_REHEARSAL_DISCARD_CHANNEL = "lyricue:operator:rehearsal-discard"
 const OPERATOR_STATE_BROADCAST_INTERVAL_MS = 200
 
 const DEMO_REPRISE_TIMING_MAP = {
@@ -200,6 +205,7 @@ let lastOperatorStateBroadcastAt = 0
 let ipcCommandHandler: ((event: Electron.IpcMainEvent, command: unknown) => void) | null = null
 let ipcReadyHandler: ((event: Electron.IpcMainEvent) => void) | null = null
 let sidecarController: SidecarController | null = null
+let rehearsalCaptureSession: RehearsalCaptureSession | null = null
 
 async function startSisterMode(): Promise<void> {
     adapter = new OwnWindowOutputAdapter({
@@ -531,6 +537,34 @@ async function startOperatorWindow(): Promise<void> {
         }
         return handleOperatorLearnSong(request)
     })
+    ipcMain.removeHandler(OPERATOR_REHEARSAL_START_CHANNEL)
+    ipcMain.handle(OPERATOR_REHEARSAL_START_CHANNEL, async (event, request: unknown) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected rehearsal-start request from unknown sender.")
+        }
+        return handleRehearsalStart(request)
+    })
+    ipcMain.removeHandler(OPERATOR_REHEARSAL_CHUNK_CHANNEL)
+    ipcMain.handle(OPERATOR_REHEARSAL_CHUNK_CHANNEL, async (event, request: unknown) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected rehearsal-chunk request from unknown sender.")
+        }
+        return handleRehearsalChunk(request)
+    })
+    ipcMain.removeHandler(OPERATOR_REHEARSAL_STOP_CHANNEL)
+    ipcMain.handle(OPERATOR_REHEARSAL_STOP_CHANNEL, async (event) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected rehearsal-stop request from unknown sender.")
+        }
+        return handleRehearsalStop()
+    })
+    ipcMain.removeHandler(OPERATOR_REHEARSAL_DISCARD_CHANNEL)
+    ipcMain.handle(OPERATOR_REHEARSAL_DISCARD_CHANNEL, async (event) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected rehearsal-discard request from unknown sender.")
+        }
+        return handleRehearsalDiscard()
+    })
 
     try {
         await operatorWindow.loadFile(OPERATOR_HTML_PATH)
@@ -624,9 +658,13 @@ function activeDemoArrangement(showId: string): Arrangement | null {
 function getTimingMapStorage(): TimingMapStorage {
     if (timingMapStorage) return timingMapStorage
     timingMapStorage = new TimingMapStorage({
-        paths: resolveLyriCuePaths(process.env.LC_USER_DATA_DIR || app.getPath("userData"))
+        paths: getLyriCuePaths()
     })
     return timingMapStorage
+}
+
+function getLyriCuePaths(): ReturnType<typeof resolveLyriCuePaths> {
+    return resolveLyriCuePaths(process.env.LC_USER_DATA_DIR || app.getPath("userData"))
 }
 
 async function hydrateDemoStorage(): Promise<void> {
@@ -831,6 +869,10 @@ function removeOperatorIpcHandlers(): void {
         ipcCommandHandler = null
     }
     ipcMain.removeHandler(OPERATOR_LEARN_SONG_CHANNEL)
+    ipcMain.removeHandler(OPERATOR_REHEARSAL_START_CHANNEL)
+    ipcMain.removeHandler(OPERATOR_REHEARSAL_CHUNK_CHANNEL)
+    ipcMain.removeHandler(OPERATOR_REHEARSAL_STOP_CHANNEL)
+    ipcMain.removeHandler(OPERATOR_REHEARSAL_DISCARD_CHANNEL)
 }
 
 async function handleOperatorLearnSong(request: unknown): Promise<unknown> {
@@ -851,6 +893,83 @@ async function handleOperatorLearnSong(request: unknown): Promise<unknown> {
     const controller = getSidecarController()
     await controller.ensureRunning()
     return controller.request("learn_song", payload, { timeoutMs: 120_000 })
+}
+
+async function handleRehearsalStart(request: unknown): Promise<unknown> {
+    if (rehearsalCaptureSession) {
+        throw new Error("A rehearsal capture session is already running.")
+    }
+    if (!request || typeof request !== "object") {
+        throw new Error("rehearsal-start request must be an object.")
+    }
+    const payload = request as Record<string, unknown>
+    const sampleRate = typeof payload.sampleRate === "number" ? Math.round(payload.sampleRate) : 48_000
+    const channels = typeof payload.channels === "number" ? Math.round(payload.channels) : 1
+    const startedAt = new Date()
+    const filePath = join(
+        getLyriCuePaths().rehearsalsDir,
+        `${startedAt.toISOString().replace(/[:.]/g, "-")}.wav`
+    )
+    const writer = await createWavChunkWriter({ filePath, sampleRate, channels })
+    rehearsalCaptureSession = createRehearsalCaptureSession({
+        filePath,
+        writer,
+        startedAt: startedAt.toISOString(),
+        now: () => performance.now()
+    })
+    log(`rehearsal capture started: ${filePath}`)
+    return {
+        filePath,
+        startedAt: rehearsalCaptureSession.startedAt,
+        sampleRate,
+        channels
+    }
+}
+
+async function handleRehearsalChunk(request: unknown): Promise<unknown> {
+    if (!rehearsalCaptureSession) {
+        throw new Error("No rehearsal capture session is running.")
+    }
+    if (!request || typeof request !== "object") {
+        throw new Error("rehearsal-chunk request must be an object.")
+    }
+    const chunk = (request as Record<string, unknown>).chunk
+    const bytes =
+        chunk instanceof Uint8Array
+            ? chunk
+            : chunk instanceof ArrayBuffer
+              ? new Uint8Array(chunk)
+              : ArrayBuffer.isView(chunk)
+                ? new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength)
+                : null
+    if (!bytes || bytes.byteLength === 0) {
+        throw new Error("rehearsal-chunk request must include non-empty bytes.")
+    }
+    await rehearsalCaptureSession.writeChunk(bytes)
+    return {
+        bytesWritten: rehearsalCaptureSession.bytesWritten,
+        elapsedMs: rehearsalCaptureSession.elapsedMs
+    }
+}
+
+async function handleRehearsalStop(): Promise<unknown> {
+    if (!rehearsalCaptureSession) {
+        throw new Error("No rehearsal capture session is running.")
+    }
+    const session = rehearsalCaptureSession
+    rehearsalCaptureSession = null
+    const result = await session.stop()
+    log(`rehearsal capture stopped: ${result.filePath} bytes=${result.bytesWritten}`)
+    return result
+}
+
+async function handleRehearsalDiscard(): Promise<unknown> {
+    if (!rehearsalCaptureSession) return { discarded: false }
+    const session = rehearsalCaptureSession
+    rehearsalCaptureSession = null
+    await session.discard()
+    log(`rehearsal capture discarded: ${session.filePath}`)
+    return { discarded: true, filePath: session.filePath }
 }
 
 function getSidecarController(): SidecarController {
@@ -985,6 +1104,9 @@ async function captureEp06Evidence(): Promise<void> {
             if (process.env.LC_CAPTURE_OPERATOR_PERSISTENCE === "1") {
                 await exerciseOperatorPersistence(opWindow)
             }
+            if (process.env.LC_CAPTURE_REHEARSAL_CAPTURE === "1") {
+                await exerciseRehearsalCapture(opWindow)
+            }
         } else {
             log("[capture] operator tool capture skipped: operator window missing")
         }
@@ -1074,6 +1196,30 @@ async function exerciseOperatorPersistence(opWindow: BrowserWindow): Promise<voi
         log(`[capture] operator persistence exercise result=${result}`)
     } catch (err) {
         log(`[capture] operator persistence exercise failed: ${(err as Error).message}`)
+    }
+}
+
+async function exerciseRehearsalCapture(opWindow: BrowserWindow): Promise<void> {
+    try {
+        const result = await opWindow.webContents.executeJavaScript(`
+            (async () => {
+                const api = window.lyricueOperator;
+                if (!api) return { status: "missing-bridge" };
+                const started = await api.startRehearsalCapture({ sampleRate: 48000, channels: 1, deviceId: "qa-synthetic" });
+                const chunk = new Uint8Array(4800 * 2);
+                for (let i = 0; i < 4800; i += 1) {
+                    const sample = Math.round(Math.sin((i / 48000) * Math.PI * 2 * 440) * 12000);
+                    chunk[i * 2] = sample & 0xff;
+                    chunk[i * 2 + 1] = (sample >> 8) & 0xff;
+                }
+                await api.writeRehearsalChunk({ chunk });
+                const stopped = await api.stopRehearsalCapture();
+                return { status: "captured", started, stopped };
+            })()
+        `)
+        log(`[capture] rehearsal capture exercise result=${JSON.stringify(result)}`)
+    } catch (err) {
+        log(`[capture] rehearsal capture exercise failed: ${(err as Error).message}`)
     }
 }
 

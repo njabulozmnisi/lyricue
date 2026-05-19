@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest"
-import { createRehearsalCaptureSession, type RehearsalChunkWriter } from "./rehearsal-capture.js"
+import { mkdtemp, readFile } from "node:fs/promises"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
+import { createRehearsalCaptureSession, createWavChunkWriter, type RehearsalChunkWriter } from "./rehearsal-capture.js"
 
 function makeWriter(): RehearsalChunkWriter & { chunks: Uint8Array[]; close: ReturnType<typeof vi.fn>; delete: ReturnType<typeof vi.fn> } {
     return {
@@ -41,5 +44,22 @@ describe("createRehearsalCaptureSession", () => {
         expect(writer.close).toHaveBeenCalledOnce()
         expect(writer.delete).toHaveBeenCalledOnce()
         await expect(session.writeChunk(new Uint8Array([1]))).rejects.toThrow(/closed/)
+    })
+
+    it("writes a valid PCM WAV header while streaming chunks to disk", async () => {
+        const dir = await mkdtemp(join(tmpdir(), "lyricue-rehearsal-"))
+        const filePath = join(dir, "capture.wav")
+        const writer = await createWavChunkWriter({ filePath, sampleRate: 48_000, channels: 1 })
+
+        await writer.write(new Uint8Array([0x01, 0x00, 0xff, 0x7f]))
+        await writer.write(new Uint8Array([0x00, 0x80]))
+        await writer.close()
+
+        const data = await readFile(filePath)
+        expect(data.toString("ascii", 0, 4)).toBe("RIFF")
+        expect(data.toString("ascii", 8, 12)).toBe("WAVE")
+        expect(data.toString("ascii", 36, 40)).toBe("data")
+        expect(data.readUInt32LE(40)).toBe(6)
+        expect(data.subarray(44)).toEqual(Buffer.from([0x01, 0x00, 0xff, 0x7f, 0x00, 0x80]))
     })
 })
