@@ -29,6 +29,7 @@ import { createShortcutHandler } from "@lyricue/core/sync"
 import type { Arrangement, TimingMap } from "@lyricue/core/types"
 import { learnSongProgressLabel } from "./learn-song-progress.js"
 import { shouldBypassOperatorShortcutTarget } from "./operator-shortcuts.js"
+import { normalizeRehearsalSegments, type RehearsalSegmentForUi } from "./rehearsal-segments.js"
 
 /**
  * Envelope shape mirroring the main-process broadcast. Mirrored loosely so adding
@@ -79,17 +80,6 @@ interface LearnSongDraftForHost {
     alignmentMode?: "deterministic" | "production"
     demucsModel?: string
     whisperxModel?: string
-}
-
-interface RehearsalSegmentForUi {
-    index: number
-    showId?: string | null
-    title?: string | null
-    status: "matched" | "review" | "failed"
-    confidence?: number
-    startSec?: number
-    endSec?: number
-    sourceAudioPath?: string | null
 }
 
 interface RehearsalApprovalForUi {
@@ -407,26 +397,6 @@ async function stopRehearsalCapture(summarySlot: HTMLElement): Promise<void> {
                       ])
             ],
             onReview: (segment: RehearsalSegmentForUi) => openRehearsalReview(segment, summarySlot)
-        }
-    })
-}
-
-function normalizeRehearsalSegments(value: unknown, sourceAudioPath: string | null): RehearsalSegmentForUi[] {
-    if (!value || typeof value !== "object") return []
-    const maybeSegments = (value as { segments?: unknown }).segments
-    if (!Array.isArray(maybeSegments)) return []
-    return maybeSegments.map((segment, fallbackIndex): RehearsalSegmentForUi => {
-        const row = segment && typeof segment === "object" ? (segment as Record<string, unknown>) : {}
-        const status = row.status === "matched" || row.status === "review" ? row.status : "failed"
-        return {
-            index: typeof row.index === "number" ? row.index : fallbackIndex,
-            showId: typeof row.showId === "string" ? row.showId : null,
-            title: typeof row.title === "string" ? row.title : `Segment ${fallbackIndex + 1}`,
-            status,
-            ...(typeof row.startSec === "number" ? { startSec: row.startSec } : {}),
-            ...(typeof row.endSec === "number" ? { endSec: row.endSec } : {}),
-            ...(sourceAudioPath ? { sourceAudioPath } : {}),
-            ...(typeof row.confidence === "number" ? { confidence: row.confidence } : {})
         }
     })
 }

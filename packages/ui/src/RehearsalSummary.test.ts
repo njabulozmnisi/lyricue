@@ -16,7 +16,7 @@ describe("RehearsalSummary", () => {
     it("renders learned/partial/failed statuses and opens review", () => {
         const onReview = vi.fn()
         const segments = [
-            { index: 0, title: "Way Maker", status: "matched" as const, confidence: 0.9 },
+            { index: 0, title: "Way Maker", status: "matched" as const, confidence: 0.9, startSec: 1, endSec: 65 },
             { index: 1, title: "Good Grace", status: "review" as const, confidence: 0.2 },
             { index: 2, title: "Unknown", status: "failed" as const }
         ]
@@ -29,6 +29,8 @@ describe("RehearsalSummary", () => {
         ])
         ;(target.querySelector("button") as HTMLButtonElement).click()
         expect(onReview).toHaveBeenCalledWith(segments[0])
+        expect(target.textContent).toContain("0:01-1:05")
+        expect(target.textContent).toContain("90%")
         cmp.$destroy()
     })
 })

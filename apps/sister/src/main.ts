@@ -1188,15 +1188,18 @@ async function handleRehearsalDiscard(): Promise<unknown> {
 
 async function segmentSavedRehearsal(audioPath: string): Promise<unknown> {
     const setlistState = setlistController?.snapshot() ?? null
-    const songs =
-        setlistState?.songs.map((song) => {
-            const map = DEMO_TIMING_MAPS.get(song.id)
-            return {
-                showId: song.id,
-                title: song.title,
-                lyrics: map ? lyricsTextForTimingMap(map) : ""
-            }
-        }) ?? []
+    const songs = setlistState
+        ? await Promise.all(
+              setlistState.songs.map(async (song) => {
+                  const map = await loadDemoTimingMap(song.id, "studio")
+                  return {
+                      showId: song.id,
+                      title: song.title,
+                      lyrics: map ? lyricsTextForTimingMap(map) : ""
+                  }
+              })
+          )
+        : []
     if (songs.length === 0) return { segments: [] }
 
     const controller = getSidecarController()
