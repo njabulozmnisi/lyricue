@@ -105,6 +105,55 @@ describe("createSetlistController", () => {
         expect(output.loadTimingMap).toHaveBeenCalledWith(expect.objectContaining({ showId: "s1" }), null)
     })
 
+    it("loads an available rehearsal timing-map variant for the active song", async () => {
+        const engine = makeEngine()
+        const studio = cloneMap("s1")
+        const rehearsal: TimingMap = {
+            ...cloneMap("s1"),
+            learnedFrom: {
+                ...cloneMap("s1").learnedFrom,
+                method: "rehearsal",
+                filename: "rehearsal.wav"
+            }
+        }
+        const controller = createSetlistController({
+            syncEngine: engine,
+            timingMaps: {
+                exists: async () => true,
+                load: async () => studio,
+                existsVariant: async (_showId, variant) => variant === "rehearsal",
+                loadVariant: async (_showId, variant) => (variant === "rehearsal" ? rehearsal : null),
+                loadArrangement: async () => null
+            }
+        })
+        await controller.loadProject(makeProject())
+        await controller.jumpToSong("s1")
+        await controller.selectTimingMapVariant("rehearsal")
+
+        expect(controller.snapshot().activeTimingMapVariant).toBe("rehearsal")
+        expect(controller.snapshot().availableTimingMapVariants).toEqual(["studio", "rehearsal"])
+        expect(engine.loadSong).toHaveBeenLastCalledWith({ map: expect.objectContaining({ learnedFrom: expect.objectContaining({ method: "rehearsal" }) }), arrangement: null, showId: "s1" })
+    })
+
+    it("ignores unavailable timing-map variants", async () => {
+        const engine = makeEngine()
+        const controller = createSetlistController({
+            syncEngine: engine,
+            timingMaps: {
+                exists: async () => true,
+                load: async (showId) => cloneMap(showId),
+                existsVariant: async () => false,
+                loadArrangement: async () => null
+            }
+        })
+        await controller.loadProject(makeProject())
+        await controller.jumpToSong("s1")
+        await controller.selectTimingMapVariant("rehearsal")
+
+        expect(controller.snapshot().activeTimingMapVariant).toBe("studio")
+        expect(engine.loadSong).toHaveBeenCalledTimes(1)
+    })
+
     it("auto-advances to the next learned song on songComplete", async () => {
         const engine = makeEngine()
         const controller = createSetlistController({

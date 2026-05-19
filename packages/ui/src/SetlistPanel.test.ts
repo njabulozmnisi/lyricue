@@ -78,6 +78,22 @@ describe("SetlistPanel — layout (AC1)", () => {
         cmp.$destroy()
     })
 
+    it("renders the timing-map source selector", () => {
+        const cmp = new SetlistPanel({
+            target,
+            props: {
+                setlist: makeSongs(),
+                activeSongId: "s1",
+                activeTimingMapVariant: "rehearsal",
+                availableTimingMapVariants: ["studio", "rehearsal"]
+            }
+        })
+        const select = target.querySelector('[data-testid="timing-map-source"]') as HTMLSelectElement
+        expect(select.value).toBe("rehearsal")
+        expect(Array.from(select.options).map((option) => option.value)).toEqual(["studio", "rehearsal"])
+        cmp.$destroy()
+    })
+
     it("renders the Start Sync button when sync is not active", () => {
         const cmp = new SetlistPanel({ target, props: { syncActive: false } })
         expect(target.querySelector('[data-testid="start-sync"]')).not.toBeNull()
@@ -312,6 +328,24 @@ describe("SetlistPanel — extended operator action commands", () => {
         cmp.$on("toggle-rehearsal", () => events.push(undefined))
         ;(target.querySelector('[data-testid="toggle-rehearsal"]') as HTMLButtonElement).click()
         expect(events).toHaveLength(1)
+        cmp.$destroy()
+    })
+
+    it("dispatches select-timing-map-variant when the timing source changes", () => {
+        const cmp = new SetlistPanel({
+            target,
+            props: {
+                setlist: makeSongs(),
+                activeSongId: "s1",
+                availableTimingMapVariants: ["studio", "rehearsal"]
+            }
+        })
+        const events: Array<{ variant: string }> = []
+        cmp.$on("select-timing-map-variant", (e: any) => events.push(e.detail))
+        const select = target.querySelector('[data-testid="timing-map-source"]') as HTMLSelectElement
+        select.value = "rehearsal"
+        select.dispatchEvent(new Event("change"))
+        expect(events).toEqual([{ variant: "rehearsal" }])
         cmp.$destroy()
     })
 })

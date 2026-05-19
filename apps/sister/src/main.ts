@@ -41,7 +41,7 @@ import { fileURLToPath } from "node:url"
 import { dirname, resolve, join } from "node:path"
 import { DEPLOYMENT_MODE, validateArrangement, validateTimingMap, type Arrangement, type TimingMap } from "@lyricue/core/types"
 import { resolveLyriCuePaths } from "@lyricue/core/settings"
-import { TimingMapStorage } from "@lyricue/core/timing"
+import { TimingMapStorage, type TimingMapStorageVariant } from "@lyricue/core/timing"
 import { DEMO_TIMING_MAP, DemoSyncEngine, generateFrameSequence } from "@lyricue/core/output/test-utils"
 import {
     createDiagnosticsObserver,
@@ -59,7 +59,8 @@ import {
 import {
     createSetlistController,
     type Project,
-    type SetlistController
+    type SetlistController,
+    type TimingMapVariant
 } from "@lyricue/core/setlist"
 import { createRehearsalCaptureSession, createWavChunkWriter, type RehearsalCaptureSession } from "@lyricue/core/rehearsal"
 import {
@@ -163,6 +164,7 @@ const DEMO_TIMING_MAPS = new Map([
     [DEMO_TIMING_MAP.showId, DEMO_TIMING_MAP],
     [DEMO_REPRISE_TIMING_MAP.showId, DEMO_REPRISE_TIMING_MAP]
 ])
+const DEMO_TIMING_MAP_VARIANTS = new Map<string, TimingMap>()
 const DEMO_ARRANGEMENTS = new Map<string, Arrangement[]>()
 const DEMO_ACTIVE_ARRANGEMENT_IDS = new Map<string, string | null>()
 
@@ -340,7 +342,9 @@ function startE2EMode(): void {
         outputAdapter: adapter,
         timingMaps: {
             exists: async (showId) => DEMO_TIMING_MAPS.has(showId),
-            load: async (showId) => DEMO_TIMING_MAPS.get(showId) ?? null,
+            load: async (showId) => loadDemoTimingMap(showId, "studio"),
+            existsVariant: async (showId, variant) => demoTimingMapVariantExists(showId, variant),
+            loadVariant: async (showId, variant) => loadDemoTimingMap(showId, variant),
             loadArrangement: async (showId) => activeDemoArrangement(showId)
         }
     })
@@ -603,6 +607,11 @@ function handleOperatorCommand(command: unknown): void {
                 void setlistController?.jumpToSong(c.songId).then(() => broadcastOperatorState())
             }
             break
+        case "selectTimingMapVariant":
+            if (c.variant === "studio" || c.variant === "rehearsal") {
+                void setlistController?.selectTimingMapVariant(c.variant).then(() => broadcastOperatorState())
+            }
+            break
         case "changeDevice":
             // Device-selection plumbing lands in EP-07 STORY-07.2 wiring. For now,
             // just record the change in the state so the picker shows it persistently.
@@ -655,6 +664,32 @@ function activeDemoArrangement(showId: string): Arrangement | null {
     return arrangements.find((arrangement) => arrangement.isDefault) ?? arrangements[0] ?? null
 }
 
+function demoVariantKey(showId: string, variant: TimingMapVariant): string {
+    return `${showId}:${variant}`
+}
+
+async function demoTimingMapVariantExists(showId: string, variant: TimingMapVariant): Promise<boolean> {
+    if (variant === "studio") return DEMO_TIMING_MAPS.has(showId)
+    if (DEMO_TIMING_MAP_VARIANTS.has(demoVariantKey(showId, variant))) return true
+    return getTimingMapStorage().existsVariant(showId, variant as TimingMapStorageVariant)
+}
+
+async function loadDemoTimingMap(showId: string, variant: TimingMapVariant): Promise<TimingMap | null> {
+    if (variant === "studio") return DEMO_TIMING_MAPS.get(showId) ?? null
+    const key = demoVariantKey(showId, variant)
+    const cached = DEMO_TIMING_MAP_VARIANTS.get(key)
+    if (cached) return cached
+    const stored = await getTimingMapStorage().loadVariant(showId, variant as TimingMapStorageVariant)
+    if (stored) DEMO_TIMING_MAP_VARIANTS.set(key, stored)
+    return stored
+}
+
+function activeDemoTimingMap(showId: string, variant: TimingMapVariant): TimingMap | null {
+    return variant === "studio"
+        ? DEMO_TIMING_MAPS.get(showId) ?? null
+        : DEMO_TIMING_MAP_VARIANTS.get(demoVariantKey(showId, variant)) ?? null
+}
+
 function getTimingMapStorage(): TimingMapStorage {
     if (timingMapStorage) return timingMapStorage
     timingMapStorage = new TimingMapStorage({
@@ -675,6 +710,13 @@ async function hydrateDemoStorage(): Promise<void> {
             if (storedMap) DEMO_TIMING_MAPS.set(showId, storedMap)
         } catch (err) {
             log(`timing storage load failed for ${showId}: ${(err as Error).message}`)
+        }
+
+        try {
+            const rehearsalMap = await storage.loadVariant(showId, "rehearsal")
+            if (rehearsalMap) DEMO_TIMING_MAP_VARIANTS.set(demoVariantKey(showId, "rehearsal"), rehearsalMap)
+        } catch (err) {
+            log(`rehearsal timing-map variant load failed for ${showId}: ${(err as Error).message}`)
         }
 
         try {
@@ -733,9 +775,14 @@ async function saveDemoTranslation(input: unknown): Promise<void> {
         log(`operator translation save rejected: unknown showId=${map.showId}`)
         return
     }
-    DEMO_TIMING_MAPS.set(map.showId, map)
     try {
-        await getTimingMapStorage().save(map.showId, map)
+        if (map.learnedFrom.method === "rehearsal") {
+            DEMO_TIMING_MAP_VARIANTS.set(demoVariantKey(map.showId, "rehearsal"), map)
+            await getTimingMapStorage().saveVariant(map.showId, "rehearsal", map)
+        } else {
+            DEMO_TIMING_MAPS.set(map.showId, map)
+            await getTimingMapStorage().save(map.showId, map)
+        }
     } catch (err) {
         log(`operator translation save failed: ${(err as Error).message}`)
         return
@@ -747,7 +794,7 @@ async function saveDemoTranslation(input: unknown): Promise<void> {
 function reloadActiveDemoSong(showId: string): void {
     const setlistState = setlistController?.snapshot() ?? null
     if (setlistState?.activeShowId !== showId) return
-    const map = DEMO_TIMING_MAPS.get(showId)
+    const map = activeDemoTimingMap(showId, setlistState.activeTimingMapVariant)
     if (!map) return
     const arrangement = activeDemoArrangement(showId)
     syncEngine?.loadSong({ map, arrangement, showId })
@@ -799,7 +846,8 @@ function broadcastOperatorState(): void {
     const seState = syncEngine?.snapshot() ?? null
     const setlistState = setlistController?.snapshot() ?? null
     const activeShowId = setlistState?.activeShowId ?? seState?.activeShowId ?? null
-    const activeTimingMap = activeShowId ? DEMO_TIMING_MAPS.get(activeShowId) ?? null : null
+    const activeTimingMapVariant = setlistState?.activeTimingMapVariant ?? "studio"
+    const activeTimingMap = activeShowId ? activeDemoTimingMap(activeShowId, activeTimingMapVariant) : null
     const activeArrangements = activeShowId ? DEMO_ARRANGEMENTS.get(activeShowId) ?? [] : []
     const activeArrangement = activeShowId ? activeDemoArrangement(activeShowId) : null
     detectTierTransition(seState)
@@ -815,6 +863,8 @@ function broadcastOperatorState(): void {
         syncActive: seState?.runState === "running",
         activeSongId: activeShowId,
         nextSongTitle: setlistState?.nextSongTitle ?? null,
+        activeTimingMapVariant,
+        availableTimingMapVariants: setlistState?.availableTimingMapVariants ?? ["studio"],
         setlist,
         activeTimingMap,
         activeArrangements,

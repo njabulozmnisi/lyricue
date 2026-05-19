@@ -5,6 +5,8 @@ import type { SyncTier, SyncRunState } from "../sync/sync-engine-state.js"
 import type { Project, ProjectShowRef } from "./project-adapter.js"
 
 export type SetlistSyncStatus = "learned" | "partial" | "not-learned"
+export type TimingMapVariant = "studio" | "rehearsal"
+const TIMING_MAP_VARIANTS: readonly TimingMapVariant[] = ["studio", "rehearsal"]
 
 export interface SetlistSong {
     id: string
@@ -17,6 +19,8 @@ export interface SetlistSong {
 export interface TimingMapResolver {
     exists(showId: string): Promise<boolean>
     load(showId: string): Promise<TimingMap | null>
+    existsVariant?(showId: string, variant: TimingMapVariant): Promise<boolean>
+    loadVariant?(showId: string, variant: TimingMapVariant): Promise<TimingMap | null>
     loadArrangement?(showId: string): Promise<Arrangement | null>
 }
 
@@ -35,6 +39,8 @@ export interface SetlistControllerState {
     activeShowId: string | null
     nextSongTitle: string | null
     passThroughShowId: string | null
+    activeTimingMapVariant: TimingMapVariant
+    availableTimingMapVariants: TimingMapVariant[]
 }
 
 export interface SetlistControllerOptions {
@@ -49,6 +55,7 @@ export interface SetlistController {
     snapshot(): SetlistControllerState
     loadProject(project: Project | null): Promise<void>
     jumpToSong(showId: string): Promise<void>
+    selectTimingMapVariant(variant: TimingMapVariant): Promise<void>
     advanceToNext(): Promise<void>
     destroy(): void
 }
@@ -77,7 +84,9 @@ export function createSetlistController(opts: SetlistControllerOptions): Setlist
         songs: [],
         activeShowId: null,
         nextSongTitle: null,
-        passThroughShowId: null
+        passThroughShowId: null,
+        activeTimingMapVariant: "studio",
+        availableTimingMapVariants: ["studio"]
     })
     let current = snapshotFromStore()
     let destroyed = false
@@ -89,7 +98,9 @@ export function createSetlistController(opts: SetlistControllerOptions): Setlist
             songs: [],
             activeShowId: null,
             nextSongTitle: null,
-            passThroughShowId: null
+            passThroughShowId: null,
+            activeTimingMapVariant: "studio",
+            availableTimingMapVariants: ["studio"]
         }
         store.subscribe((v) => (state = v))()
         return state
@@ -107,18 +118,45 @@ export function createSetlistController(opts: SetlistControllerOptions): Setlist
         return project.shows[idx + 1]?.title ?? null
     }
 
+    async function variantsFor(showId: string): Promise<TimingMapVariant[]> {
+        const variants: TimingMapVariant[] = []
+        for (const variant of TIMING_MAP_VARIANTS) {
+            const exists =
+                variant === "studio"
+                    ? await opts.timingMaps.exists(showId)
+                    : (await opts.timingMaps.existsVariant?.(showId, variant)) ?? false
+            if (exists) variants.push(variant)
+        }
+        return variants.length > 0 ? variants : ["studio"]
+    }
+
+    async function loadMap(showId: string, variant: TimingMapVariant): Promise<{ map: TimingMap | null; variant: TimingMapVariant }> {
+        if (variant !== "studio" && opts.timingMaps.loadVariant) {
+            const variantMap = await opts.timingMaps.loadVariant(showId, variant)
+            if (variantMap) return { map: variantMap, variant }
+        }
+        return { map: await opts.timingMaps.load(showId), variant: "studio" }
+    }
+
     async function loadIndex(index: number): Promise<void> {
         const project = current.project
         if (!project || index < 0 || index >= project.shows.length) return
         const show = project.shows[index]!
-        const map = await opts.timingMaps.load(show.id)
+        const availableTimingMapVariants = await variantsFor(show.id)
+        const requestedVariant = availableTimingMapVariants.includes(current.activeTimingMapVariant)
+            ? current.activeTimingMapVariant
+            : availableTimingMapVariants[0] ?? "studio"
+        const loaded = await loadMap(show.id, requestedVariant)
+        const map = loaded.map
         const arrangement = (await opts.timingMaps.loadArrangement?.(show.id)) ?? null
 
         setState({
             ...current,
             activeShowId: show.id,
             nextSongTitle: nextTitleFor(project, show.id),
-            passThroughShowId: map ? null : show.id
+            passThroughShowId: map ? null : show.id,
+            activeTimingMapVariant: loaded.variant,
+            availableTimingMapVariants
         })
 
         if (!map) {
@@ -150,7 +188,9 @@ export function createSetlistController(opts: SetlistControllerOptions): Setlist
             songs,
             activeShowId: null,
             nextSongTitle: project?.shows[0]?.title ?? null,
-            passThroughShowId: null
+            passThroughShowId: null,
+            activeTimingMapVariant: "studio",
+            availableTimingMapVariants: ["studio"]
         })
     }
 
@@ -159,6 +199,18 @@ export function createSetlistController(opts: SetlistControllerOptions): Setlist
         if (!project) return
         const index = project.shows.findIndex((show) => show.id === showId)
         await loadIndex(index)
+    }
+
+    async function selectTimingMapVariant(variant: TimingMapVariant): Promise<void> {
+        const project = current.project
+        if (!project || !current.activeShowId) {
+            setState({ ...current, activeTimingMapVariant: variant })
+            return
+        }
+        const available = await variantsFor(current.activeShowId)
+        if (!available.includes(variant)) return
+        setState({ ...current, activeTimingMapVariant: variant, availableTimingMapVariants: available })
+        await jumpToSong(current.activeShowId)
     }
 
     async function advanceToNext(): Promise<void> {
@@ -175,6 +227,7 @@ export function createSetlistController(opts: SetlistControllerOptions): Setlist
         },
         loadProject,
         jumpToSong,
+        selectTimingMapVariant,
         advanceToNext,
         destroy() {
             if (destroyed) return

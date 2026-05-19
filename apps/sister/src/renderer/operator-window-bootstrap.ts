@@ -38,6 +38,8 @@ interface OperatorState {
     syncActive: boolean
     activeSongId: string | null
     nextSongTitle: string | null
+    activeTimingMapVariant: "studio" | "rehearsal"
+    availableTimingMapVariants: Array<"studio" | "rehearsal">
     setlist: Array<{
         id: string
         title: string
@@ -86,6 +88,8 @@ const DEFAULT_STATE: OperatorState = {
     syncActive: false,
     activeSongId: null,
     nextSongTitle: null,
+    activeTimingMapVariant: "studio",
+    availableTimingMapVariants: ["studio"],
     setlist: [],
     activeTimingMap: null,
     activeArrangements: [],
@@ -182,6 +186,8 @@ function mountPanel(): SetlistPanel {
             setlist: currentState.setlist,
             activeSongId: currentState.activeSongId,
             nextSongTitle: currentState.nextSongTitle,
+            activeTimingMapVariant: currentState.activeTimingMapVariant,
+            availableTimingMapVariants: currentState.availableTimingMapVariants,
             syncActive: currentState.syncActive,
             selectedDeviceId: currentState.selectedDeviceId,
             enumerateDevices: async () => currentState.audioDevices
@@ -205,6 +211,9 @@ function mountPanel(): SetlistPanel {
         bridge.sendCommand({ kind: "publishSong", songId: e.detail.songId })
     )
     panel.$on("toggle-rehearsal", () => openRehearsalPanel())
+    panel.$on("select-timing-map-variant", (e: CustomEvent<{ variant: "studio" | "rehearsal" }>) =>
+        bridge.sendCommand({ kind: "selectTimingMapVariant", variant: e.detail.variant })
+    )
     return panel
 }
 
@@ -654,6 +663,8 @@ const stateUnsub = bridge.subscribeState((raw) => {
         setlist: next.setlist,
         activeSongId: next.activeSongId,
         nextSongTitle: next.nextSongTitle,
+        activeTimingMapVariant: next.activeTimingMapVariant,
+        availableTimingMapVariants: next.availableTimingMapVariants,
         syncActive: next.syncActive,
         selectedDeviceId: next.selectedDeviceId
     })

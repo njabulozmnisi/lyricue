@@ -36,6 +36,7 @@
         SetlistSong,
         SyncStatus,
         SyncTier,
+        TimingMapVariant,
         TierTransition
     } from "./types.js"
 
@@ -61,6 +62,12 @@
 
     /** Title of the next-up song (auto-advance preview). null = no next song. */
     export let nextSongTitle: string | null = null
+
+    /** Current timing-map source for the active song. */
+    export let activeTimingMapVariant: TimingMapVariant = "studio"
+
+    /** Timing-map sources available for the active song. */
+    export let availableTimingMapVariants: TimingMapVariant[] = ["studio"]
 
     /**
      * Whether sync is currently engaged. When true, Start Sync is replaced with a
@@ -91,6 +98,7 @@
         "translate-song": { songId: string }
         "publish-song": { songId: string }
         "toggle-rehearsal": void
+        "select-timing-map-variant": { variant: TimingMapVariant }
     }>()
 
     function handleStartSync(): void {
@@ -119,6 +127,12 @@
 
     function handleToggleRehearsal(): void {
         dispatch("toggle-rehearsal")
+    }
+
+    function handleTimingMapVariantChange(event: Event): void {
+        const value = (event.currentTarget as HTMLSelectElement).value
+        if (value !== "studio" && value !== "rehearsal") return
+        dispatch("select-timing-map-variant", { variant: value })
     }
 
     function handleSelectSong(songId: string, _song: SetlistSong): void {
@@ -217,6 +231,21 @@
                 on:change={handleDeviceChange}
             />
         </div>
+
+        <label class="timing-source" data-testid="timing-map-source-control">
+            <span>Timing</span>
+            <select
+                data-testid="timing-map-source"
+                value={activeTimingMapVariant}
+                disabled={!activeSongId || availableTimingMapVariants.length <= 1}
+                on:change={handleTimingMapVariantChange}
+                aria-label="Timing map source"
+            >
+                {#each availableTimingMapVariants as variant}
+                    <option value={variant}>{variant === "studio" ? "Studio" : "Rehearsal"}</option>
+                {/each}
+            </select>
+        </label>
 
         <div class="start-area">
             {#if syncActive}
@@ -379,11 +408,40 @@
 
     .control-row {
         display: flex;
+        flex-wrap: wrap;
         gap: 0.85rem;
         align-items: stretch;
     }
     .device-area {
         flex: 1;
+    }
+    .timing-source {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        min-width: 8.5rem;
+        color: #aaa;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .timing-source select {
+        width: 100%;
+        min-height: 2.45rem;
+        border-radius: 6px;
+        border: 1px solid #444;
+        background: #181818;
+        color: #f0f0f0;
+        font: inherit;
+        font-size: 0.82rem;
+        font-weight: 600;
+        letter-spacing: 0;
+        text-transform: none;
+        padding: 0.45rem 0.55rem;
+    }
+    .timing-source select:disabled {
+        opacity: 0.45;
     }
     .start-area {
         display: flex;

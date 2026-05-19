@@ -8,6 +8,7 @@
  */
 
 export type SyncTier = "auto" | "timer" | "manual"
+export type TimingMapVariant = "studio" | "rehearsal"
 
 export interface TierTransition {
     from: SyncTier
