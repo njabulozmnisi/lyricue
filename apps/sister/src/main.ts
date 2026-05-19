@@ -40,6 +40,8 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { dirname, resolve, join } from "node:path"
 import { DEPLOYMENT_MODE, validateArrangement, validateTimingMap, type Arrangement, type TimingMap } from "@lyricue/core/types"
+import { resolveLyriCuePaths } from "@lyricue/core/settings"
+import { TimingMapStorage } from "@lyricue/core/timing"
 import { DEMO_TIMING_MAP, DemoSyncEngine, generateFrameSequence } from "@lyricue/core/output/test-utils"
 import {
     createDiagnosticsObserver,
@@ -174,6 +176,7 @@ let setlistControllerUnsub: (() => void) | null = null
 let syntheticAudio: SyntheticAudioDriver | null = null
 let diagnostics: DiagnosticsObserverState | null = null
 let diagnosticsUnsub: (() => void) | null = null
+let timingMapStorage: TimingMapStorage | null = null
 
 /** Operator window state. */
 let operatorWindow: BrowserWindow | null = null
@@ -226,6 +229,7 @@ async function startSisterMode(): Promise<void> {
         return
     }
     log(`adapter.start() OK; running=${adapter.health.running}`)
+    await hydrateDemoStorage()
 
     if (RENDERER_PERF_MODE) {
         startRendererPerfMode()
@@ -597,13 +601,13 @@ function handleOperatorCommand(command: unknown): void {
             broadcastOperatorState()
             break
         case "saveArrangement":
-            saveDemoArrangement(c.arrangement)
+            void saveDemoArrangement(c.arrangement)
             break
         case "selectArrangement":
             selectDemoArrangement(c.showId, c.arrangementId)
             break
         case "saveTranslation":
-            saveDemoTranslation(c.timingMap)
+            void saveDemoTranslation(c.timingMap)
             break
         default:
             log(`operator command: unknown kind=${c.kind}`)
@@ -617,7 +621,34 @@ function activeDemoArrangement(showId: string): Arrangement | null {
     return arrangements.find((arrangement) => arrangement.isDefault) ?? arrangements[0] ?? null
 }
 
-function saveDemoArrangement(input: unknown): void {
+function getTimingMapStorage(): TimingMapStorage {
+    if (timingMapStorage) return timingMapStorage
+    timingMapStorage = new TimingMapStorage({
+        paths: resolveLyriCuePaths(process.env.LC_USER_DATA_DIR || app.getPath("userData"))
+    })
+    return timingMapStorage
+}
+
+async function hydrateDemoStorage(): Promise<void> {
+    const storage = getTimingMapStorage()
+    for (const showId of DEMO_TIMING_MAPS.keys()) {
+        try {
+            const storedMap = await storage.load(showId)
+            if (storedMap) DEMO_TIMING_MAPS.set(showId, storedMap)
+        } catch (err) {
+            log(`timing storage load failed for ${showId}: ${(err as Error).message}`)
+        }
+
+        try {
+            const storedArrangements = await storage.loadArrangements(showId)
+            if (storedArrangements.length > 0) DEMO_ARRANGEMENTS.set(showId, storedArrangements)
+        } catch (err) {
+            log(`arrangement storage load failed for ${showId}: ${(err as Error).message}`)
+        }
+    }
+}
+
+async function saveDemoArrangement(input: unknown): Promise<void> {
     const result = validateArrangement(input)
     if (!result.ok) {
         log(`operator arrangement save rejected: ${result.errors[0]?.message ?? "invalid arrangement"}`)
@@ -635,6 +666,12 @@ function saveDemoArrangement(input: unknown): void {
         : [...current, arrangement]
     DEMO_ARRANGEMENTS.set(arrangement.showId, next)
     DEMO_ACTIVE_ARRANGEMENT_IDS.set(arrangement.showId, arrangement.id)
+    try {
+        await getTimingMapStorage().saveArrangements(arrangement.showId, next)
+    } catch (err) {
+        log(`operator arrangement save failed: ${(err as Error).message}`)
+        return
+    }
     reloadActiveDemoSong(arrangement.showId)
     broadcastOperatorState()
 }
@@ -647,7 +684,7 @@ function selectDemoArrangement(showId: unknown, arrangementId: unknown): void {
     broadcastOperatorState()
 }
 
-function saveDemoTranslation(input: unknown): void {
+async function saveDemoTranslation(input: unknown): Promise<void> {
     const result = validateTimingMap(input)
     if (!result.ok) {
         log(`operator translation save rejected: ${result.errors[0]?.message ?? "invalid timing map"}`)
@@ -659,6 +696,12 @@ function saveDemoTranslation(input: unknown): void {
         return
     }
     DEMO_TIMING_MAPS.set(map.showId, map)
+    try {
+        await getTimingMapStorage().save(map.showId, map)
+    } catch (err) {
+        log(`operator translation save failed: ${(err as Error).message}`)
+        return
+    }
     reloadActiveDemoSong(map.showId)
     broadcastOperatorState()
 }
@@ -939,6 +982,9 @@ async function captureEp06Evidence(): Promise<void> {
             await captureOperatorTool(opWindow, operatorDir, "05-arrangement-builder-operator", "[data-testid=\"edit-arrangement\"]")
             await captureOperatorTool(opWindow, operatorDir, "06-translation-editor-operator", "[data-testid=\"translate-song\"]")
             await captureOperatorTool(opWindow, operatorDir, "07-rehearsal-mode-operator", "[data-testid=\"toggle-rehearsal\"]")
+            if (process.env.LC_CAPTURE_OPERATOR_PERSISTENCE === "1") {
+                await exerciseOperatorPersistence(opWindow)
+            }
         } else {
             log("[capture] operator tool capture skipped: operator window missing")
         }
@@ -980,6 +1026,54 @@ async function captureOperatorTool(
         await new Promise<void>((r) => setTimeout(r, 250))
     } catch (err) {
         log(`[capture] ${label} failed: ${(err as Error).message}`)
+    }
+}
+
+async function exerciseOperatorPersistence(opWindow: BrowserWindow): Promise<void> {
+    try {
+        const result = await opWindow.webContents.executeJavaScript(`
+            (async () => {
+                const click = (selector) => {
+                    const element = document.querySelector(selector);
+                    if (!(element instanceof HTMLButtonElement)) return false;
+                    element.click();
+                    return true;
+                };
+                const input = (selector, value) => {
+                    const element = document.querySelector(selector);
+                    if (!(element instanceof HTMLInputElement) && !(element instanceof HTMLTextAreaElement)) return false;
+                    element.value = value;
+                    element.dispatchEvent(new Event("input", { bubbles: true }));
+                    return true;
+                };
+                const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+                if (!click("[data-testid='edit-arrangement']")) return "missing-arrange-button";
+                await sleep(100);
+                if (!input("[aria-label='Arrangement name']", "QA Persistence Arrangement")) return "missing-arrangement-name";
+                if (!click("[aria-label='Available sections'] button")) return "missing-section-button";
+                await sleep(50);
+                const saveArrangement = [...document.querySelectorAll("button")].find((button) => button.textContent?.includes("Save Arrangement"));
+                if (!(saveArrangement instanceof HTMLButtonElement)) return "missing-save-arrangement";
+                saveArrangement.click();
+                await sleep(250);
+                click(".operator-tool-shell header button");
+                await sleep(100);
+
+                if (!click("[data-testid='translate-song']")) return "missing-translate-button";
+                await sleep(100);
+                if (!input("textarea[aria-label^='Translation for']", "Sawubona mhlaba lokhu kuyi LyriCue")) return "missing-translation-textarea";
+                const saveTranslation = [...document.querySelectorAll("button")].find((button) => button.textContent?.includes("Save Translation"));
+                if (!(saveTranslation instanceof HTMLButtonElement)) return "missing-save-translation";
+                saveTranslation.click();
+                await sleep(250);
+                click(".operator-tool-shell header button");
+                return "persisted";
+            })()
+        `)
+        log(`[capture] operator persistence exercise result=${result}`)
+    } catch (err) {
+        log(`[capture] operator persistence exercise failed: ${(err as Error).message}`)
     }
 }
 
