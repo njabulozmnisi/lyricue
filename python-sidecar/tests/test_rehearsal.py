@@ -94,3 +94,33 @@ def test_segment_rehearsal_flags_unmatched_extra_segments(monkeypatch: pytest.Mo
 
     assert result["segments"][0]["status"] == "review"
     assert result["segments"][0]["showId"] is None
+
+
+def test_segment_rehearsal_tolerates_zero_crossings(monkeypatch: pytest.MonkeyPatch):
+    samples = []
+    for index in range(40):
+        samples.append(0.0 if index % 5 == 0 else 0.4)
+
+    def fake_decode(_audio_path: str):
+        return DecodedAudio(
+            path=Path("/tmp/rehearsal.wav"),
+            samples=samples,
+            sample_rate=10,
+            duration_seconds=4,
+            sample_count=len(samples),
+            byte_size=128,
+        )
+
+    monkeypatch.setattr(rehearsal, "decode_audio_file", fake_decode)
+
+    result = segment_rehearsal_handler(
+        {
+            "audioPath": "/tmp/rehearsal.wav",
+            "setlist": [{"showId": "s1", "title": "Known", "lyrics": "known words"}],
+            "options": {"minSegmentSeconds": 1, "maxSilenceSeconds": 0.25},
+        }
+    )
+
+    assert len(result["segments"]) == 1
+    assert result["segments"][0]["startSec"] == 0.1
+    assert result["segments"][0]["endSec"] == 4.0

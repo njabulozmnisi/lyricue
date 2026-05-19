@@ -30,6 +30,7 @@ def segment_rehearsal_handler(params: Optional[Mapping[str, Any]]) -> dict[str, 
     opts = options if isinstance(options, Mapping) else {}
     threshold = float(opts.get("silenceThreshold", 0.02))
     min_segment_seconds = float(opts.get("minSegmentSeconds", 1.0))
+    max_silence_seconds = float(opts.get("maxSilenceSeconds", 0.25))
 
     songs = [_read_song(item, index) for index, item in enumerate(setlist)]
     recognized = params.get("recognizedTextBySegment", [])
@@ -40,7 +41,7 @@ def segment_rehearsal_handler(params: Optional[Mapping[str, Any]]) -> dict[str, 
     decoded = decode_audio_file(audio_path)
     jobs.checkpoint(job_id)
 
-    ranges = _active_ranges(decoded.samples, decoded.sample_rate, threshold, min_segment_seconds)
+    ranges = _active_ranges(decoded.samples, decoded.sample_rate, threshold, min_segment_seconds, max_silence_seconds)
     segments = []
     for index, (start, end) in enumerate(ranges):
         hint = recognized[index] if isinstance(recognized, list) and index < len(recognized) else ""
@@ -81,19 +82,34 @@ def _read_song(item: Any, index: int) -> dict[str, Any]:
     return {"showId": show_id, "title": title, "tokens": set(_tokens(f"{title} {lyrics}"))}
 
 
-def _active_ranges(samples: list[float], sample_rate: int, threshold: float, min_segment_seconds: float):
+def _active_ranges(
+    samples: list[float],
+    sample_rate: int,
+    threshold: float,
+    min_segment_seconds: float,
+    max_silence_seconds: float,
+):
     ranges = []
     start: int | None = None
+    last_active: int | None = None
     min_samples = max(1, int(min_segment_seconds * sample_rate))
+    max_silence_samples = max(1, int(max_silence_seconds * sample_rate))
     for index, sample in enumerate(samples):
-        if abs(sample) >= threshold and start is None:
-            start = index
-        if abs(sample) < threshold and start is not None:
-            if index - start >= min_samples:
-                ranges.append((start / sample_rate, index / sample_rate))
+        if abs(sample) >= threshold:
+            if start is None:
+                start = index
+            last_active = index
+            continue
+        if start is not None and last_active is not None and index - last_active > max_silence_samples:
+            end = last_active + 1
+            if end - start >= min_samples:
+                ranges.append((start / sample_rate, end / sample_rate))
             start = None
-    if start is not None and len(samples) - start >= min_samples:
-        ranges.append((start / sample_rate, len(samples) / sample_rate))
+            last_active = None
+    if start is not None and last_active is not None:
+        end = last_active + 1
+        if end - start >= min_samples:
+            ranges.append((start / sample_rate, end / sample_rate))
     return ranges
 
 

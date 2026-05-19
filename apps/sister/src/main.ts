@@ -960,7 +960,11 @@ async function handleRehearsalStop(): Promise<unknown> {
     rehearsalCaptureSession = null
     const result = await session.stop()
     log(`rehearsal capture stopped: ${result.filePath} bytes=${result.bytesWritten}`)
-    return result
+    const segmentation = await segmentSavedRehearsal(result.filePath).catch((err) => ({
+        error: (err as Error).message,
+        segments: []
+    }))
+    return { ...result, segmentation }
 }
 
 async function handleRehearsalDiscard(): Promise<unknown> {
@@ -970,6 +974,42 @@ async function handleRehearsalDiscard(): Promise<unknown> {
     await session.discard()
     log(`rehearsal capture discarded: ${session.filePath}`)
     return { discarded: true, filePath: session.filePath }
+}
+
+async function segmentSavedRehearsal(audioPath: string): Promise<unknown> {
+    const setlistState = setlistController?.snapshot() ?? null
+    const songs =
+        setlistState?.songs.map((song) => {
+            const map = DEMO_TIMING_MAPS.get(song.id)
+            return {
+                showId: song.id,
+                title: song.title,
+                lyrics: map ? lyricsTextForTimingMap(map) : ""
+            }
+        }) ?? []
+    if (songs.length === 0) return { segments: [] }
+
+    const controller = getSidecarController()
+    await controller.ensureRunning()
+    return controller.request(
+        "segment_rehearsal",
+        {
+            jobId: `rehearsal-${Date.now()}`,
+            audioPath,
+            setlist: songs,
+            options: {
+                silenceThreshold: 0.02,
+                minSegmentSeconds: 1
+            }
+        },
+        { timeoutMs: 120_000 }
+    )
+}
+
+function lyricsTextForTimingMap(map: TimingMap): string {
+    return map.sections
+        .flatMap((section) => section.words.map((word) => word.text))
+        .join(" ")
 }
 
 function getSidecarController(): SidecarController {
@@ -1206,8 +1246,9 @@ async function exerciseRehearsalCapture(opWindow: BrowserWindow): Promise<void> 
                 const api = window.lyricueOperator;
                 if (!api) return { status: "missing-bridge" };
                 const started = await api.startRehearsalCapture({ sampleRate: 48000, channels: 1, deviceId: "qa-synthetic" });
-                const chunk = new Uint8Array(4800 * 2);
-                for (let i = 0; i < 4800; i += 1) {
+                const sampleCount = 48000 * 2;
+                const chunk = new Uint8Array(sampleCount * 2);
+                for (let i = 0; i < sampleCount; i += 1) {
                     const sample = Math.round(Math.sin((i / 48000) * Math.PI * 2 * 440) * 12000);
                     chunk[i * 2] = sample & 0xff;
                     chunk[i * 2 + 1] = (sample >> 8) & 0xff;

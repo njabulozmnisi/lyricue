@@ -73,6 +73,13 @@ interface LearnSongDraftForHost {
     audioPath: string | null
 }
 
+interface RehearsalSegmentForUi {
+    index: number
+    title?: string | null
+    status: "matched" | "review" | "failed"
+    confidence?: number
+}
+
 const DEFAULT_STATE: OperatorState = {
     projectTitle: "Walking-Skeleton Demo",
     tier: "auto",
@@ -345,30 +352,50 @@ async function stopRehearsalCapture(summarySlot: HTMLElement): Promise<void> {
         window.alert((err as Error).message || "Rehearsal capture failed while writing audio chunks.")
         return
     }
-    const result = (await bridge.stopRehearsalCapture()) as { filePath?: unknown; bytesWritten?: unknown; elapsedMs?: unknown }
+    const result = (await bridge.stopRehearsalCapture()) as {
+        filePath?: unknown
+        bytesWritten?: unknown
+        elapsedMs?: unknown
+        segmentation?: unknown
+    }
     rehearsalCaptureRunning = false
     const filePath = typeof result.filePath === "string" ? result.filePath : rehearsalCaptureFilePath
     const bytesWritten = typeof result.bytesWritten === "number" ? result.bytesWritten : 0
+    const segments = normalizeRehearsalSegments(result.segmentation)
     rehearsalPanel?.$set({ recording: false, elapsedMs, level: 0 })
     rehearsalSummary?.$destroy()
     rehearsalSummary = new RehearsalSummary({
         target: summarySlot,
         props: {
             segments: [
-                {
-                    index: 0,
-                    title: `${formatBytes(bytesWritten)} WAV saved${filePath ? ` to ${filePath}` : ""}`,
-                    status: "matched",
-                    confidence: 1
-                },
-                ...currentState.setlist.slice(0, 2).map((song, index) => ({
-                    index: index + 1,
-                    title: song.title,
-                    status: song.syncStatus === "learned" ? "matched" : song.syncStatus === "partial" ? "review" : "failed",
-                    confidence: song.syncStatus === "learned" ? 0.72 : song.syncStatus === "partial" ? 0.38 : 0.1
-                }))
+                ...(segments.length > 0
+                    ? segments
+                    : [
+                          {
+                              index: 0,
+                              title: `${formatBytes(bytesWritten)} WAV saved${filePath ? ` to ${filePath}` : ""}; segmentation needs review`,
+                              status: "review" as const,
+                              confidence: 0
+                          }
+                      ])
             ],
             onReview: () => window.alert("Rehearsal review opens in the timing preview workflow.")
+        }
+    })
+}
+
+function normalizeRehearsalSegments(value: unknown): RehearsalSegmentForUi[] {
+    if (!value || typeof value !== "object") return []
+    const maybeSegments = (value as { segments?: unknown }).segments
+    if (!Array.isArray(maybeSegments)) return []
+    return maybeSegments.map((segment, fallbackIndex): RehearsalSegmentForUi => {
+        const row = segment && typeof segment === "object" ? (segment as Record<string, unknown>) : {}
+        const status = row.status === "matched" || row.status === "review" ? row.status : "failed"
+        return {
+            index: typeof row.index === "number" ? row.index : fallbackIndex,
+            title: typeof row.title === "string" ? row.title : `Segment ${fallbackIndex + 1}`,
+            status,
+            ...(typeof row.confidence === "number" ? { confidence: row.confidence } : {})
         }
     })
 }
