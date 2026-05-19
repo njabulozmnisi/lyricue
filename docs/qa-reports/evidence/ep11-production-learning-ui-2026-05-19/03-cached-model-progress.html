@@ -1,0 +1,269 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>03-cached-model-progress</title>
+    <style>
+    .learn-song-wizard {
+        width: min(960px, calc(100vw - 2rem));
+        max-height: calc(100vh - 2rem);
+        margin: 1rem auto;
+        padding: 1.25rem;
+        overflow: auto;
+        background: #111;
+        color: #f5f5f5;
+        border: 1px solid #303030;
+        border-radius: 8px;
+        font-family: system-ui, sans-serif;
+    }
+    .wizard-header,
+    .actions,
+    .search-row,
+    .section-tools,
+    .tool-buttons {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    .wizard-header,
+    .actions {
+        justify-content: space-between;
+    }
+    .eyebrow {
+        margin: 0 0 0.15rem;
+        color: #9ca3af;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+    h1,
+    h2,
+    h3,
+    p {
+        margin: 0;
+    }
+    h1 {
+        font-size: 1.45rem;
+    }
+    h2 {
+        font-size: 1.05rem;
+    }
+    h3 {
+        font-size: 0.95rem;
+    }
+    .steps {
+        list-style: none;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 0.35rem;
+        margin: 1.25rem 0;
+        padding: 0;
+        color: #777;
+        font-size: 0.82rem;
+    }
+    .steps li {
+        padding: 0.45rem 0.55rem;
+        border: 1px solid #303030;
+        border-radius: 6px;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+    .steps li.active {
+        color: #fff;
+        border-color: #4ade80;
+    }
+    .steps li.done {
+        color: #4ade80;
+    }
+    .step-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+        min-height: 430px;
+    }
+    .source-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 0.75rem;
+    }
+    .source-card,
+    .section-editor,
+    .preview article {
+        padding: 0.85rem;
+        border: 1px solid #303030;
+        border-radius: 8px;
+        background: #181818;
+    }
+    label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        color: #d1d5db;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    input,
+    select,
+    textarea {
+        min-width: 0;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0.55rem 0.65rem;
+        color: #f5f5f5;
+        background: #242424;
+        border: 1px solid #3a3a3a;
+        border-radius: 6px;
+        font: inherit;
+    }
+    textarea {
+        resize: vertical;
+    }
+    .lyrics-input {
+        min-height: 220px;
+    }
+    .section-list,
+    .preview-sections,
+    .results {
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+    }
+    .learning-mode-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+        padding: 0.85rem;
+        border: 1px solid #303030;
+        border-radius: 8px;
+        background: #181818;
+    }
+    .model-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+    }
+    .section-tools {
+        align-items: end;
+        margin-bottom: 0.65rem;
+    }
+    .section-tools label {
+        flex: 1;
+    }
+    .section-editor textarea {
+        min-height: 110px;
+    }
+    button,
+    .file-picker span {
+        border: 1px solid #3a3a3a;
+        border-radius: 6px;
+        padding: 0.52rem 0.8rem;
+        color: #f5f5f5;
+        background: #2b2b2b;
+        font: inherit;
+        cursor: pointer;
+    }
+    button:hover:not(:disabled),
+    .file-picker:hover span {
+        background: #353535;
+    }
+    button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+    button.primary {
+        color: #06130a;
+        background: #4ade80;
+        border-color: #4ade80;
+        font-weight: 700;
+    }
+    button.ghost {
+        background: transparent;
+    }
+    .file-picker input {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+    }
+    .results {
+        margin: 0.75rem 0 0;
+        padding: 0;
+        list-style: none;
+    }
+    .results button {
+        width: 100%;
+        text-align: left;
+    }
+    .results span {
+        display: block;
+        color: #aaa;
+        font-size: 0.8rem;
+    }
+    .hint,
+    .warning,
+    .summary,
+    .ok,
+    .error {
+        color: #aaa;
+        font-size: 0.86rem;
+    }
+    .warning {
+        color: #facc15;
+    }
+    .ok {
+        color: #4ade80;
+    }
+    .error {
+        color: #f87171;
+    }
+    .progress-label {
+        color: #d1d5db;
+    }
+    .progress-bar {
+        height: 10px;
+        overflow: hidden;
+        background: #242424;
+        border-radius: 999px;
+    }
+    .progress-bar span {
+        display: block;
+        width: 65%;
+        height: 100%;
+        background: #4ade80;
+    }
+    .progress-bar span.running {
+        animation: progress-slide 1.1s ease-in-out infinite alternate;
+    }
+    @keyframes progress-slide {
+        from {
+            transform: translateX(-45%);
+        }
+        to {
+            transform: translateX(55%);
+        }
+    }
+    .preview article p {
+        margin-top: 0.35rem;
+        color: #d1d5db;
+        white-space: pre-line;
+    }
+    @media (max-width: 760px) {
+        .steps,
+        .source-grid {
+            grid-template-columns: 1fr;
+        }
+        .section-tools {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .actions {
+            flex-wrap: wrap;
+        }
+    }
+</style>
+</head>
+<body style="margin:0;background:#050505;padding:24px;"><div class="learn-song-wizard svelte-cd88vh" role="dialog" aria-modal="true" aria-labelledby="learn-song-title"><header class="wizard-header svelte-cd88vh"><div><p class="eyebrow svelte-cd88vh">Learn song</p> <h1 id="learn-song-title" class="svelte-cd88vh">Siyabonga</h1></div> <button type="button" class="ghost svelte-cd88vh">Cancel</button></header> <ol class="steps svelte-cd88vh" aria-label="Learn song steps"><li class="svelte-cd88vh done">1. Source lyrics</li><li class="svelte-cd88vh done">2. Review sections</li><li class="svelte-cd88vh done">3. Attach audio</li><li class="svelte-cd88vh active">4. Learn</li><li class="svelte-cd88vh">5. Preview</li></ol> <section class="step-panel svelte-cd88vh"><h2 class="svelte-cd88vh">Learn timing</h2> <p class="progress-label svelte-cd88vh">Using cached htdemucs-v1</p> <div class="progress-bar svelte-cd88vh" aria-label="Learning progress"><span class="svelte-cd88vh"></span></div>  <button type="button" class="primary svelte-cd88vh">Start learning</button></section> <footer class="actions svelte-cd88vh"><button type="button" class="svelte-cd88vh">Back</button>  <button type="button" class="primary svelte-cd88vh" disabled="">Preview</button></footer></div></body>
+</html>
