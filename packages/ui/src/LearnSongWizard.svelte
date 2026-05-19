@@ -38,9 +38,9 @@
 </script>
 
 <script lang="ts">
-    import { createEventDispatcher } from "svelte"
+    import { createEventDispatcher, onDestroy } from "svelte"
     import { parseLyrics, parseLyricsFileText } from "@lyricue/core/lyrics"
-    import type { TimingSectionType } from "@lyricue/core/types"
+    import { validateTimingMap, type TimingMap, type TimingSection, type TimingSectionType } from "@lyricue/core/types"
 
     export let initialDraft: Partial<LearnSongDraft> | undefined = undefined
     export let searchLyrics: ((query: string) => Promise<LyricSearchResult[]>) | undefined = undefined
@@ -48,6 +48,7 @@
     export let learnSong:
         | ((draft: LearnSongDraft, onProgress: (label: string) => void) => Promise<{ progressLabel?: string; timingMap?: unknown } | void>)
         | undefined = undefined
+    export let saveTimingMap: ((timingMap: TimingMap) => Promise<void> | void) | undefined = undefined
     export let confirmCancel: ((draft: LearnSongDraft) => boolean) | undefined = undefined
 
     const dispatch = createEventDispatcher<{
@@ -92,8 +93,28 @@
     let importError = ""
     let learnError = ""
     let learning = false
+    let audioPreviewUrl: string | null = null
+    let previewAudio: HTMLAudioElement | null = null
+    let previewCurrentMs = 0
+    let timingEditStatus = ""
+    let dragState:
+        | {
+              sectionIndex: number
+              wordIndex: number
+              edge: "start" | "end"
+              left: number
+              width: number
+          }
+        | null = null
 
     $: stepIndex = stepOrder.indexOf(draft.step)
+    $: timingMapResult = draft.timingMap ? validateTimingMap(draft.timingMap) : null
+    $: timingMap = timingMapResult?.ok ? timingMapResult.value : null
+    $: timingMapErrors = timingMapResult && !timingMapResult.ok ? timingMapResult.errors : []
+    $: firstTimingMapError = timingMapErrors[0]
+    $: totalDurationMs = timingMap ? Math.max(timingMap.learnedFrom.duration * 1000, ...timingMap.sections.map((section) => section.endMs), 1) : 1
+    $: activePreviewWordKey = timingMap ? activeWordKey(timingMap, previewCurrentMs) : ""
+    $: waveformBars = buildWaveformBars(timingMap, totalDurationMs)
     $: canGoNext =
         draft.step === "source"
             ? draft.lyricsText.trim().length > 0 && draft.sections.length > 0
@@ -187,6 +208,8 @@
         const file = input.files?.[0]
         if (!file) return
         const filePath = (file as unknown as { path?: string }).path
+        if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl)
+        audioPreviewUrl = typeof URL !== "undefined" && URL.createObjectURL ? URL.createObjectURL(file) : null
         draft.audioFileName = file.name
         draft.audioFileSize = file.size
         draft.audioPath = typeof filePath === "string" && filePath.length > 0 ? filePath : null
@@ -249,6 +272,163 @@
     function complete(): void {
         dispatch("complete", { draft })
     }
+
+    async function playPreview(): Promise<void> {
+        if (!previewAudio) return
+        try {
+            await previewAudio.play()
+        } catch {
+            timingEditStatus = "Audio preview could not start in this environment."
+        }
+    }
+
+    function onPreviewTimeUpdate(): void {
+        previewCurrentMs = Math.max(0, (previewAudio?.currentTime ?? 0) * 1000)
+    }
+
+    async function saveTimingEdits(): Promise<void> {
+        if (!timingMap) return
+        timingEditStatus = "Saving timing edits"
+        try {
+            bumpTimingMapVersion(timingMap)
+            draft.timingMap = timingMap
+            emitDraft()
+            await saveTimingMap?.(timingMap)
+            timingEditStatus = saveTimingMap ? "Timing edits saved." : "Timing edits saved to draft."
+        } catch (err) {
+            timingEditStatus = (err as Error).message || "Timing edits could not be saved."
+        }
+    }
+
+    function startBoundaryDrag(sectionIndex: number, wordIndex: number, edge: "start" | "end", event: PointerEvent): void {
+        const stage = (event.currentTarget as HTMLElement).closest(".waveform-stage")
+        if (!(stage instanceof HTMLElement)) return
+        const bounds = stage.getBoundingClientRect()
+        dragState = { sectionIndex, wordIndex, edge, left: bounds.left, width: Math.max(bounds.width, 1) }
+        window.addEventListener("pointermove", onBoundaryDrag)
+        window.addEventListener("pointerup", stopBoundaryDrag, { once: true })
+        event.preventDefault()
+    }
+
+    function onBoundaryDrag(event: PointerEvent): void {
+        if (!dragState || !timingMap) return
+        const ratio = Math.max(0, Math.min(1, (event.clientX - dragState.left) / dragState.width))
+        updateWordBoundary(dragState.sectionIndex, dragState.wordIndex, dragState.edge, Math.round(ratio * totalDurationMs))
+    }
+
+    function stopBoundaryDrag(): void {
+        window.removeEventListener("pointermove", onBoundaryDrag)
+        dragState = null
+    }
+
+    function onWordTimeInput(sectionIndex: number, wordIndex: number, edge: "start" | "end", event: Event): void {
+        const value = Number((event.currentTarget as HTMLInputElement).value)
+        if (!Number.isFinite(value)) return
+        updateWordBoundary(sectionIndex, wordIndex, edge, Math.round(value))
+    }
+
+    function updateWordBoundary(sectionIndex: number, wordIndex: number, edge: "start" | "end", requestedMs: number): void {
+        if (!timingMap) return
+        const next = cloneTimingMap(timingMap)
+        const section = next.sections[sectionIndex]
+        const word = section?.words[wordIndex]
+        if (!section || !word) return
+        const minGap = 25
+        if (edge === "start") {
+            const previous = section.words[wordIndex - 1]
+            const lower = previous ? previous.startMs + minGap : section.startMs
+            const upper = word.endMs - minGap
+            const startMs = clampMs(requestedMs, lower, upper)
+            word.startMs = startMs
+            if (previous) previous.endMs = startMs
+        } else {
+            const nextWord = section.words[wordIndex + 1]
+            const lower = word.startMs + minGap
+            const upper = nextWord ? nextWord.endMs - minGap : section.endMs
+            const endMs = clampMs(requestedMs, lower, upper)
+            word.endMs = endMs
+            if (nextWord) nextWord.startMs = endMs
+        }
+        normalizeSection(section)
+        draft.timingMap = next
+        timingEditStatus = "Timing edits pending save."
+        emitDraft()
+    }
+
+    function cloneTimingMap(map: TimingMap): TimingMap {
+        return {
+            ...map,
+            learnedFrom: { ...map.learnedFrom },
+            metadata: { ...map.metadata },
+            sections: map.sections.map((section) => ({
+                ...section,
+                words: section.words.map((word) => ({ ...word })),
+                lines: section.lines.map((line) => ({ ...line }))
+            })),
+            ...(map.parallel ? { parallel: map.parallel.map((track) => ({ ...track, sections: track.sections.map((section) => ({ ...section })) })) } : {})
+        }
+    }
+
+    function normalizeSection(section: TimingSection): void {
+        if (section.words.length === 0) return
+        section.startMs = Math.min(...section.words.map((word) => word.startMs))
+        section.endMs = Math.max(...section.words.map((word) => word.endMs))
+        section.lines = section.lines.map((line) => {
+            const words = section.words.slice(line.wordStartIndex, line.wordEndIndex)
+            if (words.length === 0) return line
+            return { ...line, startMs: words[0]!.startMs, endMs: words[words.length - 1]!.endMs }
+        })
+    }
+
+    function bumpTimingMapVersion(map: TimingMap): void {
+        const stamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)
+        map.metadata = { ...map.metadata, version: `${map.metadata.version}+manual.${stamp}` }
+    }
+
+    function activeWordKey(map: TimingMap, currentMs: number): string {
+        for (let sectionIndex = 0; sectionIndex < map.sections.length; sectionIndex += 1) {
+            const section = map.sections[sectionIndex]!
+            for (let wordIndex = 0; wordIndex < section.words.length; wordIndex += 1) {
+                const word = section.words[wordIndex]!
+                if (currentMs >= word.startMs && currentMs <= word.endMs) return `${sectionIndex}:${wordIndex}`
+            }
+        }
+        return ""
+    }
+
+    function buildWaveformBars(map: TimingMap | null, durationMs: number): { x: number; y: number; height: number }[] {
+        const bars = 72
+        return Array.from({ length: bars }, (_, index) => {
+            const t = (index / Math.max(bars - 1, 1)) * durationMs
+            const confidence = nearestConfidence(map, t)
+            const wave = Math.abs(Math.sin(index * 0.63)) * 0.45 + Math.abs(Math.sin(index * 0.17 + 1.8)) * 0.35 + confidence * 0.25
+            const height = 18 + Math.min(76, Math.round(wave * 70))
+            return { x: 8 + index * 13.65, y: Math.round((104 - height) / 2), height }
+        })
+    }
+
+    function nearestConfidence(map: TimingMap | null, ms: number): number {
+        if (!map) return 0.5
+        for (const section of map.sections) {
+            const word = section.words.find((candidate) => ms >= candidate.startMs && ms <= candidate.endMs)
+            if (word) return word.confidence ?? 0.35
+        }
+        return 0.45
+    }
+
+    function pct(ms: number, durationMs: number): number {
+        return Math.max(0, Math.min(100, (ms / Math.max(durationMs, 1)) * 100))
+    }
+
+    function clampMs(value: number, min: number, max: number): number {
+        if (max < min) return min
+        return Math.max(min, Math.min(max, value))
+    }
+
+    onDestroy(() => {
+        if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl)
+        stopBoundaryDrag()
+    })
 
     function updateSection(index: number, patch: Partial<ParsedLyricsSection>): void {
         const section = draft.sections[index]
@@ -483,10 +663,75 @@
         </section>
     {:else if draft.step === "preview"}
         <section class="step-panel preview">
-            <h2>Preview structure</h2>
+            <h2>Timing review</h2>
             <p class="summary">{draft.sections.length} sections ready{draft.audioFileName ? ` with ${draft.audioFileName}` : " for manual mode"}.</p>
-            {#if draft.timingMap && typeof draft.timingMap === "object"}
+            {#if timingMap}
                 <p class="ok">Timing map learned and ready for review.</p>
+                <div class="timing-review">
+                    <div class="preview-controls">
+                        {#if audioPreviewUrl}
+                            <audio bind:this={previewAudio} src={audioPreviewUrl} preload="metadata" on:timeupdate={onPreviewTimeUpdate} />
+                            <button type="button" on:click={playPreview}>Play reference</button>
+                        {:else}
+                            <p class="hint">Reference playback is available immediately after choosing audio in this wizard session.</p>
+                        {/if}
+                        <button type="button" class="primary" on:click={saveTimingEdits}>Save timing edits</button>
+                        {#if timingEditStatus}<p class:ok={timingEditStatus.includes("saved")} class:error={timingEditStatus.includes("could not")}>{timingEditStatus}</p>{/if}
+                    </div>
+                    <div class="waveform-stage" aria-label="Timing waveform">
+                        <svg viewBox="0 0 1000 120" role="img" aria-label="Reference audio waveform">
+                            <rect x="0" y="0" width="1000" height="120" rx="8" />
+                            {#each waveformBars as bar}
+                                <line x1={bar.x} x2={bar.x} y1={60 - bar.height / 2} y2={60 + bar.height / 2} />
+                            {/each}
+                            <line class="playhead" x1={pct(previewCurrentMs, totalDurationMs) * 10} x2={pct(previewCurrentMs, totalDurationMs) * 10} y1="10" y2="110" />
+                        </svg>
+                        {#each timingMap.sections as section, sectionIndex}
+                            {#each section.words as word, wordIndex}
+                                <button
+                                    type="button"
+                                    class="word-marker"
+                                    class:active={activePreviewWordKey === `${sectionIndex}:${wordIndex}`}
+                                    style={`left:${pct(word.startMs, totalDurationMs)}%`}
+                                    aria-label={`Start ${word.text}`}
+                                    on:pointerdown={(e) => startBoundaryDrag(sectionIndex, wordIndex, "start", e)}
+                                />
+                                <button
+                                    type="button"
+                                    class="word-marker end"
+                                    style={`left:${pct(word.endMs, totalDurationMs)}%`}
+                                    aria-label={`End ${word.text}`}
+                                    on:pointerdown={(e) => startBoundaryDrag(sectionIndex, wordIndex, "end", e)}
+                                />
+                            {/each}
+                        {/each}
+                    </div>
+                    <div class="word-timing-list">
+                        {#each timingMap.sections as section, sectionIndex}
+                            <article class="timing-section">
+                                <h3>{section.label}</h3>
+                                <div class="word-grid">
+                                    {#each section.words as word, wordIndex}
+                                        <div class="word-row" class:active={activePreviewWordKey === `${sectionIndex}:${wordIndex}`}>
+                                            <span>{word.text}</span>
+                                            <label>
+                                                Start
+                                                <input type="number" min="0" step="25" value={word.startMs} on:input={(e) => onWordTimeInput(sectionIndex, wordIndex, "start", e)} />
+                                            </label>
+                                            <label>
+                                                End
+                                                <input type="number" min="0" step="25" value={word.endMs} on:input={(e) => onWordTimeInput(sectionIndex, wordIndex, "end", e)} />
+                                            </label>
+                                            <small>{word.confidence === null ? "Needs review" : `${Math.round(word.confidence * 100)}%`}</small>
+                                        </div>
+                                    {/each}
+                                </div>
+                            </article>
+                        {/each}
+                    </div>
+                </div>
+            {:else if firstTimingMapError}
+                <p class="error">Timing map cannot be reviewed: {firstTimingMapError.path} {firstTimingMapError.message}</p>
             {/if}
             <div class="preview-sections">
                 {#each draft.sections as section}
@@ -761,6 +1006,109 @@
         color: #d1d5db;
         white-space: pre-line;
     }
+    .timing-review,
+    .word-timing-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    .preview-controls {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+    .waveform-stage {
+        position: relative;
+        min-height: 120px;
+        overflow: hidden;
+        border: 1px solid #303030;
+        border-radius: 8px;
+        background: #090909;
+        touch-action: none;
+    }
+    .waveform-stage svg {
+        display: block;
+        width: 100%;
+        height: 120px;
+    }
+    .waveform-stage rect {
+        fill: #090909;
+    }
+    .waveform-stage line {
+        stroke: #4ade80;
+        stroke-width: 5;
+        stroke-linecap: round;
+        opacity: 0.48;
+    }
+    .waveform-stage .playhead {
+        stroke: #f5f5f5;
+        stroke-width: 2;
+        opacity: 0.95;
+    }
+    .word-marker {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 10px;
+        min-width: 10px;
+        padding: 0;
+        transform: translateX(-5px);
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        cursor: ew-resize;
+    }
+    .word-marker::before {
+        content: "";
+        position: absolute;
+        top: 12px;
+        bottom: 12px;
+        left: 4px;
+        width: 2px;
+        background: #facc15;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.65);
+    }
+    .word-marker.end::before {
+        background: #60a5fa;
+    }
+    .word-marker.active::before {
+        width: 4px;
+        background: #f5f5f5;
+    }
+    .timing-section {
+        padding: 0.8rem;
+        border: 1px solid #303030;
+        border-radius: 8px;
+        background: #181818;
+    }
+    .word-grid {
+        display: grid;
+        gap: 0.45rem;
+        margin-top: 0.65rem;
+    }
+    .word-row {
+        display: grid;
+        grid-template-columns: minmax(7rem, 1fr) 8rem 8rem 5.5rem;
+        align-items: end;
+        gap: 0.55rem;
+        padding: 0.45rem;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: #121212;
+    }
+    .word-row.active {
+        border-color: #4ade80;
+        background: #17251b;
+    }
+    .word-row span {
+        color: #f5f5f5;
+        font-weight: 700;
+    }
+    .word-row small {
+        color: #aaa;
+        align-self: center;
+    }
     @media (max-width: 760px) {
         .steps,
         .source-grid {
@@ -772,6 +1120,9 @@
         }
         .actions {
             flex-wrap: wrap;
+        }
+        .word-row {
+            grid-template-columns: 1fr;
         }
     }
 </style>

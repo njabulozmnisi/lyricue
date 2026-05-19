@@ -660,6 +660,9 @@ function handleOperatorCommand(command: unknown): void {
         case "saveTranslation":
             void saveDemoTranslation(c.timingMap)
             break
+        case "saveTimingMap":
+            void saveOperatorTimingMap(c.timingMap)
+            break
         case "approveRehearsalSegment":
             void approveRehearsalSegment(c.segment, c.skippedWordKeys)
             break
@@ -796,6 +799,24 @@ async function saveDemoTranslation(input: unknown): Promise<void> {
         }
     } catch (err) {
         log(`operator translation save failed: ${(err as Error).message}`)
+        return
+    }
+    reloadActiveDemoSong(map.showId)
+    broadcastOperatorState()
+}
+
+async function saveOperatorTimingMap(input: unknown): Promise<void> {
+    const result = validateTimingMap(input)
+    if (!result.ok) {
+        log(`operator timing-map save rejected: ${result.errors[0]?.message ?? "invalid timing map"}`)
+        return
+    }
+    const map = result.value
+    try {
+        DEMO_TIMING_MAPS.set(map.showId, map)
+        await getTimingMapStorage().save(map.showId, map)
+    } catch (err) {
+        log(`operator timing-map save failed: ${(err as Error).message}`)
         return
     }
     reloadActiveDemoSong(map.showId)

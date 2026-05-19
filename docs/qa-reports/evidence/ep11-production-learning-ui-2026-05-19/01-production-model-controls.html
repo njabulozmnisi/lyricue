@@ -250,6 +250,109 @@
         color: #d1d5db;
         white-space: pre-line;
     }
+    .timing-review,
+    .word-timing-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    .preview-controls {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+    .waveform-stage {
+        position: relative;
+        min-height: 120px;
+        overflow: hidden;
+        border: 1px solid #303030;
+        border-radius: 8px;
+        background: #090909;
+        touch-action: none;
+    }
+    .waveform-stage svg {
+        display: block;
+        width: 100%;
+        height: 120px;
+    }
+    .waveform-stage rect {
+        fill: #090909;
+    }
+    .waveform-stage line {
+        stroke: #4ade80;
+        stroke-width: 5;
+        stroke-linecap: round;
+        opacity: 0.48;
+    }
+    .waveform-stage .playhead {
+        stroke: #f5f5f5;
+        stroke-width: 2;
+        opacity: 0.95;
+    }
+    .word-marker {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 10px;
+        min-width: 10px;
+        padding: 0;
+        transform: translateX(-5px);
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        cursor: ew-resize;
+    }
+    .word-marker::before {
+        content: "";
+        position: absolute;
+        top: 12px;
+        bottom: 12px;
+        left: 4px;
+        width: 2px;
+        background: #facc15;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.65);
+    }
+    .word-marker.end::before {
+        background: #60a5fa;
+    }
+    .word-marker.active::before {
+        width: 4px;
+        background: #f5f5f5;
+    }
+    .timing-section {
+        padding: 0.8rem;
+        border: 1px solid #303030;
+        border-radius: 8px;
+        background: #181818;
+    }
+    .word-grid {
+        display: grid;
+        gap: 0.45rem;
+        margin-top: 0.65rem;
+    }
+    .word-row {
+        display: grid;
+        grid-template-columns: minmax(7rem, 1fr) 8rem 8rem 5.5rem;
+        align-items: end;
+        gap: 0.55rem;
+        padding: 0.45rem;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: #121212;
+    }
+    .word-row.active {
+        border-color: #4ade80;
+        background: #17251b;
+    }
+    .word-row span {
+        color: #f5f5f5;
+        font-weight: 700;
+    }
+    .word-row small {
+        color: #aaa;
+        align-self: center;
+    }
     @media (max-width: 760px) {
         .steps,
         .source-grid {
@@ -262,11 +365,14 @@
         .actions {
             flex-wrap: wrap;
         }
+        .word-row {
+            grid-template-columns: 1fr;
+        }
     }
 </style>
 </head>
-<body style="margin:0;background:#050505;padding:24px;"><div class="learn-song-wizard svelte-cd88vh" role="dialog" aria-modal="true" aria-labelledby="learn-song-title"><header class="wizard-header svelte-cd88vh"><div><p class="eyebrow svelte-cd88vh">Learn song</p> <h1 id="learn-song-title" class="svelte-cd88vh">Siyabonga</h1></div> <button type="button" class="ghost svelte-cd88vh">Cancel</button></header> <ol class="steps svelte-cd88vh" aria-label="Learn song steps"><li class="svelte-cd88vh done">1. Source lyrics</li><li class="svelte-cd88vh done">2. Review sections</li><li class="svelte-cd88vh active">3. Attach audio</li><li class="svelte-cd88vh">4. Learn</li><li class="svelte-cd88vh">5. Preview</li></ol> <section class="step-panel svelte-cd88vh"><h2 class="svelte-cd88vh">Attach reference audio</h2> <label class="file-picker svelte-cd88vh"><span class="svelte-cd88vh">Choose MP3, WAV, FLAC, or OGG</span> <input type="file" accept=".mp3,.wav,.flac,.ogg" class="svelte-cd88vh"></label> <p class="ok svelte-cd88vh">siyabonga.wav selected</p> <div class="learning-mode-panel svelte-cd88vh"><label class="svelte-cd88vh">Learning mode
-                        <select aria-label="Learning mode" class="svelte-cd88vh"><option value="deterministic">Fast deterministic alignment</option><option value="production">Production Demucs + WhisperX</option></select></label> <div class="model-grid svelte-cd88vh"><label class="svelte-cd88vh">Demucs model
-                                <select aria-label="Demucs model" class="svelte-cd88vh"><option value="htdemucs">htdemucs</option><option value="htdemucs_ft">htdemucs_ft</option><option value="mdx_extra">mdx_extra</option></select></label> <label class="svelte-cd88vh">WhisperX model
-                                <select aria-label="WhisperX model" class="svelte-cd88vh"><option value="tiny">tiny</option><option value="base">base</option><option value="small">small</option><option value="medium">medium</option></select></label></div> <p class="hint svelte-cd88vh">Production mode uses the configured model manifest and may download model weights on first use.</p></div></section> <footer class="actions svelte-cd88vh"><button type="button" class="svelte-cd88vh">Back</button> <button type="button" class="svelte-cd88vh">Skip audio</button> <button type="button" class="primary svelte-cd88vh">Next</button></footer></div></body>
+<body style="margin:0;background:#050505;padding:24px;"><div class="learn-song-wizard svelte-fbjr31" role="dialog" aria-modal="true" aria-labelledby="learn-song-title"><header class="wizard-header svelte-fbjr31"><div><p class="eyebrow svelte-fbjr31">Learn song</p> <h1 id="learn-song-title" class="svelte-fbjr31">Siyabonga</h1></div> <button type="button" class="ghost svelte-fbjr31">Cancel</button></header> <ol class="steps svelte-fbjr31" aria-label="Learn song steps"><li class="svelte-fbjr31 done">1. Source lyrics</li><li class="svelte-fbjr31 done">2. Review sections</li><li class="svelte-fbjr31 active">3. Attach audio</li><li class="svelte-fbjr31">4. Learn</li><li class="svelte-fbjr31">5. Preview</li></ol> <section class="step-panel svelte-fbjr31"><h2 class="svelte-fbjr31">Attach reference audio</h2> <label class="file-picker svelte-fbjr31"><span class="svelte-fbjr31">Choose MP3, WAV, FLAC, or OGG</span> <input type="file" accept=".mp3,.wav,.flac,.ogg" class="svelte-fbjr31"></label> <p class="ok svelte-fbjr31">siyabonga.wav selected</p> <div class="learning-mode-panel svelte-fbjr31"><label class="svelte-fbjr31">Learning mode
+                        <select aria-label="Learning mode" class="svelte-fbjr31"><option value="deterministic">Fast deterministic alignment</option><option value="production">Production Demucs + WhisperX</option></select></label> <div class="model-grid svelte-fbjr31"><label class="svelte-fbjr31">Demucs model
+                                <select aria-label="Demucs model" class="svelte-fbjr31"><option value="htdemucs">htdemucs</option><option value="htdemucs_ft">htdemucs_ft</option><option value="mdx_extra">mdx_extra</option></select></label> <label class="svelte-fbjr31">WhisperX model
+                                <select aria-label="WhisperX model" class="svelte-fbjr31"><option value="tiny">tiny</option><option value="base">base</option><option value="small">small</option><option value="medium">medium</option></select></label></div> <p class="hint svelte-fbjr31">Production mode uses the configured model manifest and may download model weights on first use.</p></div></section> <footer class="actions svelte-fbjr31"><button type="button" class="svelte-fbjr31">Back</button> <button type="button" class="svelte-fbjr31">Skip audio</button> <button type="button" class="primary svelte-fbjr31">Next</button></footer></div></body>
 </html>

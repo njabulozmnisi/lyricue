@@ -75,6 +75,7 @@ interface LearnSongDraftForHost {
     sections: unknown[]
     audioFileName: string | null
     audioPath: string | null
+    timingMap?: unknown
     alignmentMode?: "deterministic" | "production"
     demucsModel?: string
     whisperxModel?: string
@@ -619,7 +620,8 @@ function openLearnSongWizard(): void {
         props: {
             initialDraft: learnSongDraft && typeof learnSongDraft === "object" ? learnSongDraft : undefined,
             confirmCancel: () => window.confirm("Discard the current song-learning draft?"),
-            learnSong: async (draft: LearnSongDraftForHost, onProgress: (label: string) => void) => learnSongFromSidecar(draft, onProgress)
+            learnSong: async (draft: LearnSongDraftForHost, onProgress: (label: string) => void) => learnSongFromSidecar(draft, onProgress),
+            saveTimingMap: async (timingMap: TimingMap) => bridge.sendCommand({ kind: "saveTimingMap", timingMap })
         }
     })
     learnSongWizard.$on("draft-change", (e: CustomEvent<{ draft: unknown }>) => {
@@ -628,6 +630,10 @@ function openLearnSongWizard(): void {
     learnSongWizard.$on("cancel", closeLearnSongWizard)
     learnSongWizard.$on("complete", (e: CustomEvent<{ draft: unknown }>) => {
         learnSongDraft = e.detail.draft
+        if (learnSongDraft && typeof learnSongDraft === "object" && "timingMap" in learnSongDraft) {
+            const timingMap = (learnSongDraft as LearnSongDraftForHost).timingMap
+            if (timingMap) bridge.sendCommand({ kind: "saveTimingMap", timingMap })
+        }
         closeLearnSongWizard()
     })
 }

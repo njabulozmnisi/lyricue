@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
+import { SCHEMA_LYRICUE_TIMING_V1, type TimingMap } from "@lyricue/core/types"
 import LearnSongWizard from "./LearnSongWizard.svelte"
 
 function click(el: Element | null): void {
@@ -36,6 +37,32 @@ async function waitForText(target: HTMLElement, text: string): Promise<void> {
         await settle()
     }
     throw new Error(`Text not found: ${text}`)
+}
+
+function timingMap(): TimingMap {
+    return {
+        $schema: SCHEMA_LYRICUE_TIMING_V1,
+        showId: "learned-song",
+        learnedFrom: { method: "studio", filename: "song.wav", duration: 2, learnedAt: "2026-05-19T17:00:00.000Z" },
+        bpm: 120,
+        language: "en",
+        sections: [
+            {
+                id: "v1",
+                type: "verse",
+                label: "Verse 1",
+                slideIndex: 0,
+                startMs: 0,
+                endMs: 2000,
+                words: [
+                    { text: "Line", startMs: 0, endMs: 1000, confidence: 0.92, lineIndex: 0 },
+                    { text: "one", startMs: 1000, endMs: 2000, confidence: null, lineIndex: 0 }
+                ],
+                lines: [{ startMs: 0, endMs: 2000, wordStartIndex: 0, wordEndIndex: 2 }]
+            }
+        ],
+        metadata: { schemaVersion: "1", version: "1.0.0", demucsModel: "htdemucs", whisperxModel: "small" }
+    }
 }
 
 describe("LearnSongWizard", () => {
@@ -149,7 +176,7 @@ describe("LearnSongWizard", () => {
             onProgress("Decoding and resampling audio")
             await settle()
             onProgress("Assembling timing map")
-            return { progressLabel: "Timing map ready for review", timingMap: { showId: "demo" } }
+            return { progressLabel: "Timing map ready for review", timingMap: timingMap() }
         })
         const cmp = new LearnSongWizard({
             target,
@@ -181,7 +208,7 @@ describe("LearnSongWizard", () => {
             expect(draft.alignmentMode).toBe("production")
             expect(draft.demucsModel).toBe("mdx_extra")
             expect(draft.whisperxModel).toBe("base")
-            return { progressLabel: "Timing map ready", timingMap: { showId: "prod" } }
+            return { progressLabel: "Timing map ready", timingMap: timingMap() }
         })
         const cmp = new LearnSongWizard({
             target,
@@ -210,6 +237,45 @@ describe("LearnSongWizard", () => {
         await waitForText(target, "Timing map learned and ready for review.")
 
         expect(learnSong).toHaveBeenCalledOnce()
+        cmp.$destroy()
+    })
+
+    it("reviews timing maps with editable word boundaries and save callback", async () => {
+        const saveTimingMap = vi.fn()
+        const onDraftChange = vi.fn()
+        const cmp = new LearnSongWizard({
+            target,
+            props: {
+                initialDraft: {
+                    step: "preview",
+                    title: "Review Song",
+                    lyricsText: "[Verse 1]\nLine one",
+                    sections: [{ id: "v1", type: "verse", label: "Verse 1", text: "Line one", lines: ["Line one"] }],
+                    audioFileName: "song.wav",
+                    audioFileSize: 2048,
+                    audioPath: "/tmp/song.wav",
+                    timingMap: timingMap()
+                },
+                saveTimingMap
+            }
+        })
+        cmp.$on("draft-change", onDraftChange)
+
+        expect(target.textContent).toContain("Timing map learned and ready for review.")
+        expect(target.querySelector('[aria-label="Timing waveform"]')).not.toBeNull()
+
+        const endInputs = Array.from(target.querySelectorAll('input[type="number"]')).filter((input) => (input as HTMLInputElement).value === "1000")
+        input(endInputs[0] ?? null, "1250")
+        await settle()
+        click(buttonByText(target, "Save timing edits"))
+        await settle()
+
+        expect(saveTimingMap).toHaveBeenCalledOnce()
+        const saved = saveTimingMap.mock.calls[0]?.[0] as TimingMap
+        expect(saved.sections[0]?.words[0]?.endMs).toBe(1250)
+        expect(saved.sections[0]?.words[1]?.startMs).toBe(1250)
+        expect(target.textContent).toContain("Timing edits saved.")
+        expect(onDraftChange).toHaveBeenCalled()
         cmp.$destroy()
     })
 })
