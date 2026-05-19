@@ -5,9 +5,11 @@ from typing import Any, Mapping, Optional
 
 from .audio_decode import decode_audio_file
 from .bpm import detect_bpm
+from .forced_alignment import DEFAULT_WHISPERX_MODEL, align_vocals
 from .jobs import jobs
 from .protocol import ERROR_INVALID_PARAMS, JsonRpcError
 from .timing_map import assemble_timing_map, deterministic_align, parse_input_sections, propose_sections
+from .vocal_isolation import DEFAULT_DEMUCS_MODEL, isolate_vocals
 
 
 def learn_song_handler(params: Optional[Mapping[str, Any]]) -> dict[str, Any]:
@@ -42,6 +44,10 @@ def learn_song_handler(params: Optional[Mapping[str, Any]]) -> dict[str, Any]:
     if not isinstance(language, str) or language.strip() == "":
         raise JsonRpcError(ERROR_INVALID_PARAMS, "params.options.language must be a string if present")
 
+    alignment_mode = _string_option(opts, "alignmentMode", "deterministic")
+    if alignment_mode not in {"deterministic", "production"}:
+        raise JsonRpcError(ERROR_INVALID_PARAMS, "params.options.alignmentMode must be 'deterministic' or 'production'")
+
     try:
         sections = parse_input_sections(params.get("lyrics"))
     except ValueError as err:
@@ -54,14 +60,30 @@ def learn_song_handler(params: Optional[Mapping[str, Any]]) -> dict[str, Any]:
     bpm = detect_bpm(decoded.samples, decoded.sample_rate)
     jobs.checkpoint(job_id)
 
-    try:
-        aligned_words = deterministic_align(sections, decoded.duration_seconds)
-    except ValueError as err:
-        raise JsonRpcError(ERROR_INVALID_PARAMS, str(err)) from err
+    demucs_model = _string_option(opts, "demucsModel", DEFAULT_DEMUCS_MODEL if alignment_mode == "production" else "deterministic-no-demucs")
+    whisperx_model = _string_option(opts, "whisperxModel", DEFAULT_WHISPERX_MODEL if alignment_mode == "production" else "deterministic-aligner")
+
+    vocals_diagnostics: dict[str, Any] | None = None
+    if alignment_mode == "production":
+        debug_path = opts.get("debugVocalsPath")
+        if debug_path is not None and not isinstance(debug_path, str):
+            raise JsonRpcError(ERROR_INVALID_PARAMS, "params.options.debugVocalsPath must be a string if present")
+        vocals = isolate_vocals(decoded, model_name=demucs_model, debug_path=debug_path)
+        jobs.checkpoint(job_id)
+        aligned = align_vocals(vocals, sections, language=language.strip(), model_name=whisperx_model)
+        aligned_words = aligned.words
+        vocals_diagnostics = {
+            "model": vocals.model_name,
+            "rms": vocals.rms,
+            **({"debugPath": vocals.debug_path} if vocals.debug_path else {}),
+        }
+    else:
+        try:
+            aligned_words = deterministic_align(sections, decoded.duration_seconds)
+        except ValueError as err:
+            raise JsonRpcError(ERROR_INVALID_PARAMS, str(err)) from err
     jobs.checkpoint(job_id)
 
-    demucs_model = _string_option(opts, "demucsModel", "deterministic-no-demucs")
-    whisperx_model = _string_option(opts, "whisperxModel", "deterministic-aligner")
     timing_map = assemble_timing_map(
         show_id=show_id.strip(),
         sections=sections,
@@ -79,7 +101,7 @@ def learn_song_handler(params: Optional[Mapping[str, Any]]) -> dict[str, Any]:
         "stage": "timing_map_ready",
         "timingMap": timing_map,
         "diagnostics": {
-            "alignmentMode": "deterministic",
+            "alignmentMode": alignment_mode,
             "audio": {
                 "filename": timing_map["learnedFrom"]["filename"],
                 "durationSeconds": decoded.duration_seconds,
@@ -87,6 +109,7 @@ def learn_song_handler(params: Optional[Mapping[str, Any]]) -> dict[str, Any]:
                 "sampleCount": decoded.sample_count,
                 "bytes": decoded.byte_size,
             },
+            **({"vocals": vocals_diagnostics} if vocals_diagnostics else {}),
         },
     }
     if opts.get("detectSections") is True:

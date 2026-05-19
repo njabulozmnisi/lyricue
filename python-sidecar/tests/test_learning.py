@@ -13,6 +13,7 @@ from lyricue_sidecar.jobs import cancel_job_handler
 from lyricue_sidecar.learning import learn_song_handler
 from lyricue_sidecar.protocol import ERROR_INVALID_PARAMS, ERROR_JOB_CANCELLED, JsonRpcError
 from lyricue_sidecar.timing_map import deterministic_align, parse_input_sections, propose_sections
+from lyricue_sidecar.vocal_isolation import IsolatedVocals
 
 
 def test_learn_song_requires_params():
@@ -101,6 +102,73 @@ def test_learn_song_returns_timing_map(monkeypatch: pytest.MonkeyPatch):
         {"startMs": 0, "endMs": 2983, "wordStartIndex": 0, "wordEndIndex": 2},
         {"startMs": 4166, "endMs": 11315, "wordStartIndex": 2, "wordEndIndex": 6},
     ]
+
+
+def test_learn_song_production_mode_uses_vocal_isolation_and_forced_alignment(monkeypatch: pytest.MonkeyPatch):
+    from lyricue_sidecar.timing_map import AlignedWord
+
+    def fake_decode(audio_path: str):
+        return DecodedAudio(
+            path=Path(audio_path),
+            samples=[0.2] * 48_000,
+            sample_rate=TARGET_SAMPLE_RATE,
+            duration_seconds=3.0,
+            sample_count=48_000,
+            byte_size=4096,
+        )
+
+    def fake_isolate(decoded, *, model_name, debug_path=None):
+        assert model_name == "htdemucs"
+        assert debug_path == "/tmp/vocals.wav"
+        return IsolatedVocals(samples=[0.1] * 48_000, sample_rate=decoded.sample_rate, model_name=model_name, rms=0.12, debug_path=debug_path)
+
+    def fake_align(vocals, sections, *, language, model_name):
+        assert vocals.model_name == "htdemucs"
+        assert language == "zu"
+        assert model_name == "small"
+        return SimpleNamespace(
+            words=[
+                AlignedWord("Siyabonga", 0, 700, 0.92, 0, 0),
+                AlignedWord("Nkosi", 750, 1300, 0.88, 0, 0),
+            ]
+        )
+
+    monkeypatch.setattr(learning, "decode_audio_file", fake_decode)
+    monkeypatch.setattr(learning, "detect_bpm", lambda _samples, _sample_rate: 100)
+    monkeypatch.setattr(learning, "isolate_vocals", fake_isolate)
+    monkeypatch.setattr(learning, "align_vocals", fake_align)
+
+    result = learn_song_handler(
+        {
+            "jobId": "job-prod",
+            "showId": "show-prod",
+            "audioPath": "/tmp/song.wav",
+            "lyrics": [{"id": "v1", "type": "verse", "label": "Verse 1", "text": "Siyabonga Nkosi", "lines": ["Siyabonga Nkosi"]}],
+            "options": {"alignmentMode": "production", "language": "zu", "debugVocalsPath": "/tmp/vocals.wav"},
+        }
+    )
+
+    assert result["diagnostics"]["alignmentMode"] == "production"
+    assert result["diagnostics"]["vocals"] == {"model": "htdemucs", "rms": 0.12, "debugPath": "/tmp/vocals.wav"}
+    timing_map = result["timingMap"]
+    assert timing_map["metadata"]["demucsModel"] == "htdemucs"
+    assert timing_map["metadata"]["whisperxModel"] == "small"
+    assert [word["confidence"] for word in timing_map["sections"][0]["words"]] == [0.92, 0.88]
+
+
+def test_learn_song_rejects_unknown_alignment_mode():
+    with pytest.raises(JsonRpcError) as exc:
+        learn_song_handler(
+            {
+                "jobId": "job-mode",
+                "showId": "show-1",
+                "audioPath": "/tmp/song.wav",
+                "lyrics": [{"label": "Verse 1", "text": "Line one", "lines": ["Line one"]}],
+                "options": {"alignmentMode": "fast"},
+            }
+        )
+
+    assert exc.value.code == ERROR_INVALID_PARAMS
 
 
 def test_cancelled_job_stops_at_checkpoint(monkeypatch: pytest.MonkeyPatch):

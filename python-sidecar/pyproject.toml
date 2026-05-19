@@ -21,6 +21,11 @@ dev = [
     "ruff>=0.3",
     "pyinstaller>=6.0",
 ]
+ml = [
+    "demucs>=4.0,<5",
+    "faster-whisper>=1.0,<2",
+    "whisperx>=3.1,<4",
+]
 
 [project.scripts]
 lyricue-sidecar = "lyricue_sidecar.__main__:main"
