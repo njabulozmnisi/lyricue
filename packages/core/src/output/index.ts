@@ -8,3 +8,4 @@
 
 export * from "./output-adapter.js"
 export * from "./sync-frame.js"
+export * from "./caption-injection-output-adapter.js"
