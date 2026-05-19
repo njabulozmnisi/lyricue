@@ -65,13 +65,16 @@ import {
 import { buildRehearsalTimingMapVariant, createRehearsalCaptureSession, createWavChunkWriter, type RehearsalCaptureSession } from "@lyricue/core/rehearsal"
 import {
     SidecarController,
+    loadModelManifestFile,
     nodePythonResolver,
     nodeSidecarSpawner,
+    type ModelManifest,
     type SidecarControllerOptions
 } from "@lyricue/core/sidecar"
 import { OwnWindowOutputAdapter } from "./output/OwnWindowOutputAdapter.js"
 import { createElectronBrowserWindowFactory } from "./output/electron-browser-window-factory.js"
 import { createSyntheticAudioDriver, type SyntheticAudioDriver } from "./audio/synthetic-audio-driver.js"
+import { withRequiredModelSpecs } from "./model-manifest.js"
 
 // Fail fast if launched with the wrong mode. The fork-mode entry has the same guard;
 // this prevents a misconfigured build from silently doing the wrong thing.
@@ -85,6 +88,9 @@ if (DEPLOYMENT_MODE !== "sister") {
 
 const DEMO_MODE = process.env.LC_DEMO_MODE === "1"
 const RENDERER_PERF_MODE = process.env.LC_RENDERER_PERF_MODE === "1"
+const MODEL_MANIFEST_PATH = process.env.LC_MODEL_MANIFEST_PATH
+const MODEL_MIRROR_URL = process.env.LC_MODEL_MIRROR_URL
+const REQUIRE_MODEL_MANIFEST = process.env.LC_REQUIRE_MODEL_MANIFEST === "1"
 /**
  * End-to-end mode (LC_E2E_MODE=1). Replaces DemoSyncEngine with the real composition:
  *   SyntheticAudioDriver (BpmEstimator + VadDetector) → SyncEngine → OutputAdapter.
@@ -208,6 +214,7 @@ let lastOperatorStateBroadcastAt = 0
 let ipcCommandHandler: ((event: Electron.IpcMainEvent, command: unknown) => void) | null = null
 let ipcReadyHandler: ((event: Electron.IpcMainEvent) => void) | null = null
 let sidecarController: SidecarController | null = null
+let modelManifestCache: ModelManifest | null | undefined
 let rehearsalCaptureSession: RehearsalCaptureSession | null = null
 
 async function startSisterMode(): Promise<void> {
@@ -990,15 +997,37 @@ async function handleOperatorLearnSong(request: unknown): Promise<unknown> {
         throw new Error("Song learning requires a showId.")
     }
 
+    const productionMode = isProductionLearnSongPayload(payload)
+    const learnSongPayload = withRequiredModelSpecs(payload, {
+        manifest: productionMode ? getConfiguredModelManifest() : null,
+        ...(MODEL_MIRROR_URL ? { modelMirrorUrl: MODEL_MIRROR_URL } : {}),
+        requireManifest: productionMode && REQUIRE_MODEL_MANIFEST
+    })
     const controller = getSidecarController()
     await controller.ensureRunning()
-    return controller.request("learn_song", payload, {
+    return controller.request("learn_song", learnSongPayload, {
         timeoutMs: 120_000,
         onProgress: (notification) => {
             if (!operatorWindow || operatorWindow.isDestroyed()) return
             operatorWindow.webContents.send(OPERATOR_LEARN_SONG_PROGRESS_CHANNEL, notification.params ?? {})
         }
     })
+}
+
+function isProductionLearnSongPayload(payload: Record<string, unknown>): boolean {
+    const options = payload.options
+    return !!options && typeof options === "object" && !Array.isArray(options) && (options as Record<string, unknown>).alignmentMode === "production"
+}
+
+function getConfiguredModelManifest(): ModelManifest | null {
+    if (modelManifestCache !== undefined) return modelManifestCache
+    if (!MODEL_MANIFEST_PATH || MODEL_MANIFEST_PATH.trim() === "") {
+        modelManifestCache = null
+        return modelManifestCache
+    }
+    modelManifestCache = loadModelManifestFile(MODEL_MANIFEST_PATH)
+    log(`loaded model manifest from ${MODEL_MANIFEST_PATH}`)
+    return modelManifestCache
 }
 
 async function handleRehearsalStart(request: unknown): Promise<unknown> {

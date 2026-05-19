@@ -77,6 +77,8 @@ All local, fully offline-capable. **No general-purpose LLMs** — only specializ
 
 See [architecture.md §2.1](_bmad-output/architecture.md) for the full offline guarantee + hardware requirements.
 
+Production song learning can preload required model artifacts from a per-install manifest before Demucs/WhisperX run. Set `LC_MODEL_MANIFEST_PATH=/path/to/model-manifest.json`; optionally set `LC_MODEL_MIRROR_URL=https://.../models/` to override the manifest mirror, and `LC_REQUIRE_MODEL_MANIFEST=1` to fail production learning when no manifest is configured. The manifest schema is `lyricue-model-manifest-v1` and each entry must carry a SHA256 checksum.
+
 ## Hardware Requirements
 
 **Live performance machine:** 4-core CPU, 8 GB RAM, no GPU. Apple M1+ is a first-class target.
