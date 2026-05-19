@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
 import { parseModelManifest, resolveSongLearningModelRequirements } from "./model-manifest.js"
+import {
+    FIXTURE_DEMUCS_SHA256,
+    FIXTURE_MODEL_MANIFEST,
+    FIXTURE_WHISPERX_SHA256
+} from "./test-utils/model-manifest-fixture.js"
 
 const SHA_A = "a".repeat(64)
 const SHA_B = "b".repeat(64)
@@ -87,5 +92,27 @@ describe("model manifest", () => {
                 whisperxModel: "small"
             })
         ).toThrow("whisperx model 'small'")
+    })
+
+    it("keeps the fixture manifest valid for installer and subprocess smoke tests", () => {
+        const manifest = parseModelManifest(FIXTURE_MODEL_MANIFEST)
+        expect(
+            resolveSongLearningModelRequirements(manifest, {
+                demucsModel: "fixture-demucs",
+                whisperxModel: "fixture-whisperx"
+            })
+        ).toEqual({
+            modelMirrorUrl: "file:///tmp/lyricue-model-fixture/",
+            requiredModels: [
+                { name: "fixture-demucs", version: "v1", sha256: FIXTURE_DEMUCS_SHA256, bytes: 20 },
+                {
+                    name: "fixture-whisperx",
+                    version: "v1",
+                    sha256: FIXTURE_WHISPERX_SHA256,
+                    artifactName: "weights.bin",
+                    bytes: 22
+                }
+            ]
+        })
     })
 })

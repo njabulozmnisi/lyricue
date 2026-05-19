@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import subprocess
 import sys
 import wave
@@ -135,6 +136,85 @@ def test_sidecar_learn_song_emits_progress_then_timing_map(tmp_path: Path):
 
     shutdown_resp = next(line for line in lines if line.get("id") == "shutdown-1")
     assert shutdown_resp["result"]["shuttingDown"] is True
+    assert proc.returncode == 0
+
+
+def test_sidecar_ensure_models_downloads_from_file_mirror(tmp_path: Path):
+    """Spawn the sidecar; install fixture models through the real JSON-RPC transport."""
+
+    mirror = tmp_path / "mirror"
+    demucs_dir = mirror / "fixture-demucs-v1"
+    whisperx_dir = mirror / "fixture-whisperx-v1"
+    demucs_dir.mkdir(parents=True)
+    whisperx_dir.mkdir(parents=True)
+    (demucs_dir / "fixture-demucs-v1.bin").write_bytes(b"fixture-demucs-model")
+    (whisperx_dir / "weights.bin").write_bytes(b"fixture-whisperx-model")
+    models_dir = tmp_path / "models"
+
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "lyricue_sidecar"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=REPO_ROOT,
+        env={**os.environ, "LYRICUE_MODELS_DIR": str(models_dir)},
+        text=True,
+    )
+    assert proc.stdin is not None
+    assert proc.stdout is not None
+
+    request = {
+        "jsonrpc": "2.0",
+        "id": "models-1",
+        "method": "ensure_models",
+        "params": {
+            "mirrorUrl": mirror.as_uri(),
+            "models": [
+                {
+                    "name": "fixture-demucs",
+                    "version": "v1",
+                    "sha256": "7d12dac6600a2aacee79c3d089d39582f8b27b1e367fa2342cdd74023773f26a",
+                    "bytes": len(b"fixture-demucs-model"),
+                },
+                {
+                    "name": "fixture-whisperx",
+                    "version": "v1",
+                    "sha256": "661ac7dd2def9073f07ab09c9d4c34bfb8b51bff9f169eb16557bc49ce3d21ed",
+                    "artifactName": "weights.bin",
+                    "bytes": len(b"fixture-whisperx-model"),
+                },
+            ],
+        },
+    }
+    proc.stdin.write(json.dumps(request) + "\n")
+    proc.stdin.write(json.dumps({"jsonrpc": "2.0", "id": "models-2", "method": "ensure_models", "params": request["params"]}) + "\n")
+    proc.stdin.write(json.dumps({"jsonrpc": "2.0", "id": "shutdown-1", "method": "shutdown"}) + "\n")
+    proc.stdin.close()
+
+    try:
+        stdout_data, _stderr_data = proc.communicate(timeout=20)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.communicate(timeout=5)
+        raise
+    lines = [json.loads(line) for line in stdout_data.splitlines() if line.strip()]
+
+    ready = lines[0]
+    assert ready["method"] == "ready"
+    assert "ensure_models" in ready["params"]["methods"]
+
+    first_response = next(line for line in lines if line.get("id") == "models-1")
+    assert [model["status"] for model in first_response["result"]["models"]] == ["downloaded", "downloaded"]
+    second_response = next(line for line in lines if line.get("id") == "models-2")
+    assert [model["status"] for model in second_response["result"]["models"]] == ["cached", "cached"]
+
+    progress_stages = [line["params"]["stage"] for line in lines if line.get("method") == "progress"]
+    assert progress_stages.count("model_download_start") == 2
+    assert progress_stages.count("model_download_progress") == 2
+    assert progress_stages.count("model_installed") == 2
+    assert progress_stages.count("model_cached") == 2
+    assert (models_dir / "fixture-demucs-v1" / "fixture-demucs-v1.bin").read_bytes() == b"fixture-demucs-model"
+    assert (models_dir / "fixture-whisperx-v1" / "weights.bin").read_bytes() == b"fixture-whisperx-model"
     assert proc.returncode == 0
 
 
