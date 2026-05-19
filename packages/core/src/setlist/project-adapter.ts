@@ -128,7 +128,7 @@ export function forkProject(project: Project, opts: { id: string; title?: string
     }
 }
 
-function normalizeProject(payload: unknown): Project {
+export function normalizeProject(payload: unknown): Project {
     if (!payload || typeof payload !== "object") {
         throw new Error("Project response must be an object")
     }
@@ -145,12 +145,38 @@ function normalizeProject(payload: unknown): Project {
             id: readString(item.id ?? item.showId, `project.shows[${index}].id`),
             title: readString(item.title ?? item.name, `project.shows[${index}].title`)
         }
-        return typeof item.artist === "string" && item.artist.trim() ? { ...base, artist: item.artist } : base
+        return {
+            ...base,
+            ...(typeof item.artist === "string" && item.artist.trim() ? { artist: item.artist } : {}),
+            ...(typeof item.songId === "string" && item.songId.trim() ? { songId: item.songId } : {}),
+            ...(typeof item.bundleVersion === "string" && item.bundleVersion.trim() ? { bundleVersion: item.bundleVersion } : {}),
+            ...(typeof item.arrangementId === "string" && item.arrangementId.trim() ? { arrangementId: item.arrangementId } : {})
+        }
     })
-    return { id, title, shows }
+    return {
+        id,
+        title,
+        shows,
+        ...(typeof project.date === "string" && project.date.trim() ? { date: project.date } : {}),
+        ...normalizeProjectSource(project.source)
+    }
 }
 
 function readString(value: unknown, field: string): string {
     if (typeof value !== "string" || value.trim() === "") throw new Error(`${field} must be a non-empty string`)
     return value
+}
+
+function normalizeProjectSource(source: unknown): { source?: ProjectSource } {
+    if (!source || typeof source !== "object") return {}
+    const raw = source as Record<string, unknown>
+    if (raw.kind !== "local" && raw.kind !== "central" && raw.kind !== "campus") return {}
+    return {
+        source: {
+            kind: raw.kind,
+            ...(typeof raw.planId === "string" && raw.planId.trim() ? { planId: raw.planId } : {}),
+            ...(typeof raw.campusId === "string" && raw.campusId.trim() ? { campusId: raw.campusId } : {}),
+            ...(typeof raw.diverged === "boolean" ? { diverged: raw.diverged } : {})
+        }
+    }
 }

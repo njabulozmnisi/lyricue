@@ -58,6 +58,7 @@ import {
 } from "@lyricue/core/sync"
 import {
     createSetlistController,
+    ProjectStorage,
     type Project,
     type SetlistController,
     type TimingMapVariant
@@ -191,6 +192,7 @@ let syntheticAudio: SyntheticAudioDriver | null = null
 let diagnostics: DiagnosticsObserverState | null = null
 let diagnosticsUnsub: (() => void) | null = null
 let timingMapStorage: TimingMapStorage | null = null
+let projectStorage: ProjectStorage | null = null
 
 /** Operator window state. */
 let operatorWindow: BrowserWindow | null = null
@@ -349,7 +351,7 @@ function startE2EMode(): void {
         syncEngine,
         outputAdapter: adapter,
         timingMaps: {
-            exists: async (showId) => DEMO_TIMING_MAPS.has(showId),
+            exists: async (showId) => DEMO_TIMING_MAPS.has(showId) || getTimingMapStorage().exists(showId),
             load: async (showId) => loadDemoTimingMap(showId, "studio"),
             existsVariant: async (showId, variant) => demoTimingMapVariantExists(showId, variant),
             loadVariant: async (showId, variant) => loadDemoTimingMap(showId, variant),
@@ -357,8 +359,10 @@ function startE2EMode(): void {
         }
     })
     setlistControllerUnsub = setlistController.state.subscribe(() => broadcastOperatorState())
-    void setlistController.loadProject(DEMO_PROJECT).then(async () => {
-        await setlistController?.jumpToSong(DEMO_TIMING_MAP.showId)
+    void loadOperatorProject().then(async (project) => {
+        await setlistController?.loadProject(project)
+        const firstShowId = project.shows[0]?.id
+        if (firstShowId) await setlistController?.jumpToSong(firstShowId)
         syncEngine?.engageSync()
         broadcastOperatorState()
     })
@@ -683,13 +687,19 @@ function demoVariantKey(showId: string, variant: TimingMapVariant): string {
 }
 
 async function demoTimingMapVariantExists(showId: string, variant: TimingMapVariant): Promise<boolean> {
-    if (variant === "studio") return DEMO_TIMING_MAPS.has(showId)
+    if (variant === "studio") return DEMO_TIMING_MAPS.has(showId) || getTimingMapStorage().exists(showId)
     if (DEMO_TIMING_MAP_VARIANTS.has(demoVariantKey(showId, variant))) return true
     return getTimingMapStorage().existsVariant(showId, variant as TimingMapStorageVariant)
 }
 
 async function loadDemoTimingMap(showId: string, variant: TimingMapVariant): Promise<TimingMap | null> {
-    if (variant === "studio") return DEMO_TIMING_MAPS.get(showId) ?? null
+    if (variant === "studio") {
+        const cached = DEMO_TIMING_MAPS.get(showId)
+        if (cached) return cached
+        const stored = await getTimingMapStorage().load(showId)
+        if (stored) DEMO_TIMING_MAPS.set(showId, stored)
+        return stored
+    }
     const key = demoVariantKey(showId, variant)
     const cached = DEMO_TIMING_MAP_VARIANTS.get(key)
     if (cached) return cached
@@ -710,6 +720,12 @@ function getTimingMapStorage(): TimingMapStorage {
         paths: getLyriCuePaths()
     })
     return timingMapStorage
+}
+
+function getProjectStorage(): ProjectStorage {
+    if (projectStorage) return projectStorage
+    projectStorage = new ProjectStorage({ paths: getLyriCuePaths() })
+    return projectStorage
 }
 
 function getLyriCuePaths(): ReturnType<typeof resolveLyriCuePaths> {
@@ -739,6 +755,29 @@ async function hydrateDemoStorage(): Promise<void> {
         } catch (err) {
             log(`arrangement storage load failed for ${showId}: ${(err as Error).message}`)
         }
+    }
+}
+
+async function loadOperatorProject(): Promise<Project> {
+    try {
+        const stored = await getProjectStorage().loadActiveProject()
+        if (stored) return stored
+    } catch (err) {
+        log(`active project load failed: ${(err as Error).message}`)
+    }
+    try {
+        await getProjectStorage().saveActiveProject(DEMO_PROJECT)
+    } catch (err) {
+        log(`default project save failed: ${(err as Error).message}`)
+    }
+    return DEMO_PROJECT
+}
+
+async function saveOperatorProject(project: Project): Promise<void> {
+    try {
+        await getProjectStorage().saveActiveProject(project)
+    } catch (err) {
+        log(`active project save failed: ${(err as Error).message}`)
     }
 }
 
@@ -818,6 +857,21 @@ async function saveOperatorTimingMap(input: unknown): Promise<void> {
     } catch (err) {
         log(`operator timing-map save failed: ${(err as Error).message}`)
         return
+    }
+    const currentProject = setlistController?.snapshot().project ?? (await loadOperatorProject())
+    if (!currentProject.shows.some((show) => show.id === map.showId)) {
+        const nextProject: Project = {
+            ...currentProject,
+            shows: [
+                ...currentProject.shows,
+                {
+                    id: map.showId,
+                    title: map.showId
+                }
+            ]
+        }
+        await saveOperatorProject(nextProject)
+        await setlistController?.loadProject(nextProject)
     }
     reloadActiveDemoSong(map.showId)
     broadcastOperatorState()
@@ -1467,6 +1521,8 @@ function stopTimers(): void {
         diagnostics.stop()
         diagnostics = null
     }
+    projectStorage = null
+    timingMapStorage = null
     if (operatorStateBroadcastTimer) {
         clearTimeout(operatorStateBroadcastTimer)
         operatorStateBroadcastTimer = null

@@ -14,6 +14,8 @@
  *     │   └── <showId>.timing.json
  *     ├── arrangements/
  *     │   └── <showId>.arrangements.json
+ *     ├── projects/
+ *     │   └── active-project.json
  *     ├── rehearsals/
  *     │   └── <recordingId>.wav
  *     ├── models/
@@ -33,6 +35,8 @@ export interface LyriCuePaths {
     libraryConfigFile: string
     timingMapsDir: string
     arrangementsDir: string
+    projectsDir: string
+    activeProjectFile: string
     rehearsalsDir: string
     modelsDir: string
     logsDir: string
@@ -47,6 +51,8 @@ export function resolveLyriCuePaths(userDataDir: string): LyriCuePaths {
         libraryConfigFile: join(root, "library-config.json"),
         timingMapsDir: join(root, "timing-maps"),
         arrangementsDir: join(root, "arrangements"),
+        projectsDir: join(root, "projects"),
+        activeProjectFile: join(root, "projects", "active-project.json"),
         rehearsalsDir: join(root, "rehearsals"),
         modelsDir: join(root, "models"),
         logsDir: join(root, "logs")
