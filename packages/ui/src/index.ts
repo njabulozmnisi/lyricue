@@ -16,7 +16,8 @@ import LibraryBrowser from "./LibraryBrowser.svelte"
 import ProjectSourcePicker from "./ProjectSourcePicker.svelte"
 import RehearsalModePanel from "./RehearsalModePanel.svelte"
 import RehearsalSummary from "./RehearsalSummary.svelte"
+import RehearsalReviewPanel from "./RehearsalReviewPanel.svelte"
 import ArrangementBuilder from "./ArrangementBuilder.svelte"
 import TranslationEditor from "./TranslationEditor.svelte"
 
-export { FirstRunWizard, SettingsTab, KaraokeOutput, DiagnosticsPanel, AudioDevicePicker, ModeIndicator, TierChangeBanner, SetlistPanel, LearnSongWizard, LibraryPublishDialog, LibraryBrowser, ProjectSourcePicker, RehearsalModePanel, RehearsalSummary, ArrangementBuilder, TranslationEditor }
+export { FirstRunWizard, SettingsTab, KaraokeOutput, DiagnosticsPanel, AudioDevicePicker, ModeIndicator, TierChangeBanner, SetlistPanel, LearnSongWizard, LibraryPublishDialog, LibraryBrowser, ProjectSourcePicker, RehearsalModePanel, RehearsalSummary, RehearsalReviewPanel, ArrangementBuilder, TranslationEditor }

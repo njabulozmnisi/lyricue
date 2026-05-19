@@ -1,9 +1,13 @@
 <script lang="ts">
     interface RehearsalSegmentSummary {
         index: number
+        showId?: string | null
         title?: string | null
         status: "learned" | "partial" | "failed" | "matched" | "review"
         confidence?: number
+        startSec?: number
+        endSec?: number
+        sourceAudioPath?: string | null
     }
 
     export let segments: RehearsalSegmentSummary[] = []

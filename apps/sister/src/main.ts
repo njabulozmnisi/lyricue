@@ -38,7 +38,7 @@
 import { app, BrowserWindow, ipcMain } from "electron"
 import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
-import { dirname, resolve, join } from "node:path"
+import { basename, dirname, resolve, join } from "node:path"
 import { DEPLOYMENT_MODE, validateArrangement, validateTimingMap, type Arrangement, type TimingMap } from "@lyricue/core/types"
 import { resolveLyriCuePaths } from "@lyricue/core/settings"
 import { TimingMapStorage, type TimingMapStorageVariant } from "@lyricue/core/timing"
@@ -62,7 +62,7 @@ import {
     type SetlistController,
     type TimingMapVariant
 } from "@lyricue/core/setlist"
-import { createRehearsalCaptureSession, createWavChunkWriter, type RehearsalCaptureSession } from "@lyricue/core/rehearsal"
+import { buildRehearsalTimingMapVariant, createRehearsalCaptureSession, createWavChunkWriter, type RehearsalCaptureSession } from "@lyricue/core/rehearsal"
 import {
     SidecarController,
     nodePythonResolver,
@@ -652,6 +652,9 @@ function handleOperatorCommand(command: unknown): void {
         case "saveTranslation":
             void saveDemoTranslation(c.timingMap)
             break
+        case "approveRehearsalSegment":
+            void approveRehearsalSegment(c.segment, c.skippedWordKeys)
+            break
         default:
             log(`operator command: unknown kind=${c.kind}`)
     }
@@ -789,6 +792,52 @@ async function saveDemoTranslation(input: unknown): Promise<void> {
     }
     reloadActiveDemoSong(map.showId)
     broadcastOperatorState()
+}
+
+async function approveRehearsalSegment(segmentInput: unknown, skippedInput: unknown): Promise<void> {
+    const segment = parseRehearsalReviewSegment(segmentInput)
+    if (!segment) {
+        log("operator rehearsal approval rejected: invalid segment")
+        return
+    }
+    const baseMap = DEMO_TIMING_MAPS.get(segment.showId)
+    if (!baseMap) {
+        log(`operator rehearsal approval rejected: unknown showId=${segment.showId}`)
+        return
+    }
+    const skippedWordKeys = Array.isArray(skippedInput)
+        ? skippedInput.filter((value): value is string => typeof value === "string")
+        : []
+    const map = buildRehearsalTimingMapVariant({
+        baseMap,
+        segment,
+        skippedWordKeys,
+        ...(segment.sourceAudioPath ? { sourceFilename: basename(segment.sourceAudioPath) } : {})
+    })
+    try {
+        DEMO_TIMING_MAP_VARIANTS.set(demoVariantKey(segment.showId, "rehearsal"), map)
+        await getTimingMapStorage().saveVariant(segment.showId, "rehearsal", map)
+    } catch (err) {
+        log(`operator rehearsal approval failed: ${(err as Error).message}`)
+        return
+    }
+    await setlistController?.selectTimingMapVariant("rehearsal")
+    broadcastOperatorState()
+}
+
+function parseRehearsalReviewSegment(input: unknown): { showId: string; startSec: number; endSec: number; sourceAudioPath?: string } | null {
+    if (!input || typeof input !== "object") return null
+    const row = input as Record<string, unknown>
+    if (typeof row.showId !== "string" || row.showId.trim() === "") return null
+    const startSec = typeof row.startSec === "number" && Number.isFinite(row.startSec) ? row.startSec : 0
+    const endSec = typeof row.endSec === "number" && Number.isFinite(row.endSec) ? row.endSec : 0
+    if (endSec <= startSec) return null
+    return {
+        showId: row.showId,
+        startSec,
+        endSec,
+        ...(typeof row.sourceAudioPath === "string" ? { sourceAudioPath: row.sourceAudioPath } : {})
+    }
 }
 
 function reloadActiveDemoSong(showId: string): void {
@@ -1305,7 +1354,17 @@ async function exerciseRehearsalCapture(opWindow: BrowserWindow): Promise<void> 
                 }
                 await api.writeRehearsalChunk({ chunk });
                 const stopped = await api.stopRehearsalCapture();
-                return { status: "captured", started, stopped };
+                const segment = stopped?.segmentation?.segments?.[0];
+                if (segment?.showId) {
+                    api.sendCommand({
+                        kind: "approveRehearsalSegment",
+                        segment: { ...segment, sourceAudioPath: stopped.filePath },
+                        skippedWordKeys: ["demo-1:1"]
+                    });
+                    await new Promise((resolve) => setTimeout(resolve, 400));
+                    return { status: "captured-approved", started, stopped };
+                }
+                return { status: "captured-no-match", started, stopped };
             })()
         `)
         log(`[capture] rehearsal capture exercise result=${JSON.stringify(result)}`)

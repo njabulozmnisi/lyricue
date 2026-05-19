@@ -24,6 +24,7 @@ import ArrangementBuilder from "@lyricue/ui/ArrangementBuilder.svelte"
 import TranslationEditor from "@lyricue/ui/TranslationEditor.svelte"
 import RehearsalModePanel from "@lyricue/ui/RehearsalModePanel.svelte"
 import RehearsalSummary from "@lyricue/ui/RehearsalSummary.svelte"
+import RehearsalReviewPanel from "@lyricue/ui/RehearsalReviewPanel.svelte"
 import { createShortcutHandler } from "@lyricue/core/sync"
 import type { Arrangement, TimingMap } from "@lyricue/core/types"
 import { shouldBypassOperatorShortcutTarget } from "./operator-shortcuts.js"
@@ -77,9 +78,18 @@ interface LearnSongDraftForHost {
 
 interface RehearsalSegmentForUi {
     index: number
+    showId?: string | null
     title?: string | null
     status: "matched" | "review" | "failed"
     confidence?: number
+    startSec?: number
+    endSec?: number
+    sourceAudioPath?: string | null
+}
+
+interface RehearsalApprovalForUi {
+    segment: RehearsalSegmentForUi
+    skippedWordKeys: string[]
 }
 
 const DEFAULT_STATE: OperatorState = {
@@ -157,7 +167,9 @@ let translationEditor: TranslationEditor | null = null
 let translationOverlay: HTMLElement | null = null
 let rehearsalPanel: RehearsalModePanel | null = null
 let rehearsalSummary: RehearsalSummary | null = null
+let rehearsalReviewPanel: RehearsalReviewPanel | null = null
 let rehearsalOverlay: HTMLElement | null = null
+let pendingRehearsalReview: { segment: RehearsalSegmentForUi; target: HTMLElement } | null = null
 let rehearsalTimer: number | null = null
 let rehearsalStartedAt = 0
 let rehearsalAudioContext: AudioContext | null = null
@@ -370,7 +382,7 @@ async function stopRehearsalCapture(summarySlot: HTMLElement): Promise<void> {
     rehearsalCaptureRunning = false
     const filePath = typeof result.filePath === "string" ? result.filePath : rehearsalCaptureFilePath
     const bytesWritten = typeof result.bytesWritten === "number" ? result.bytesWritten : 0
-    const segments = normalizeRehearsalSegments(result.segmentation)
+    const segments = normalizeRehearsalSegments(result.segmentation, filePath)
     rehearsalPanel?.$set({ recording: false, elapsedMs, level: 0 })
     rehearsalSummary?.$destroy()
     rehearsalSummary = new RehearsalSummary({
@@ -388,12 +400,12 @@ async function stopRehearsalCapture(summarySlot: HTMLElement): Promise<void> {
                           }
                       ])
             ],
-            onReview: () => window.alert("Rehearsal review opens in the timing preview workflow.")
+            onReview: (segment: RehearsalSegmentForUi) => openRehearsalReview(segment, summarySlot)
         }
     })
 }
 
-function normalizeRehearsalSegments(value: unknown): RehearsalSegmentForUi[] {
+function normalizeRehearsalSegments(value: unknown, sourceAudioPath: string | null): RehearsalSegmentForUi[] {
     if (!value || typeof value !== "object") return []
     const maybeSegments = (value as { segments?: unknown }).segments
     if (!Array.isArray(maybeSegments)) return []
@@ -402,9 +414,53 @@ function normalizeRehearsalSegments(value: unknown): RehearsalSegmentForUi[] {
         const status = row.status === "matched" || row.status === "review" ? row.status : "failed"
         return {
             index: typeof row.index === "number" ? row.index : fallbackIndex,
+            showId: typeof row.showId === "string" ? row.showId : null,
             title: typeof row.title === "string" ? row.title : `Segment ${fallbackIndex + 1}`,
             status,
+            ...(typeof row.startSec === "number" ? { startSec: row.startSec } : {}),
+            ...(typeof row.endSec === "number" ? { endSec: row.endSec } : {}),
+            ...(sourceAudioPath ? { sourceAudioPath } : {}),
             ...(typeof row.confidence === "number" ? { confidence: row.confidence } : {})
+        }
+    })
+}
+
+function openRehearsalReview(segment: RehearsalSegmentForUi, target: HTMLElement): void {
+    if (!segment.showId) {
+        window.alert("This rehearsal segment needs a song match before it can be approved.")
+        return
+    }
+    if (!currentState.activeTimingMap || currentState.activeTimingMap.showId !== segment.showId) {
+        pendingRehearsalReview = { segment, target }
+        bridge.sendCommand({ kind: "selectSong", songId: segment.showId })
+        return
+    }
+    const timingMap =
+        currentState.activeTimingMap && currentState.activeTimingMap.showId === segment.showId
+            ? currentState.activeTimingMap
+            : null
+    if (!timingMap) {
+        window.alert("Select the matched song before approving this rehearsal segment.")
+        return
+    }
+    rehearsalSummary?.$destroy()
+    rehearsalSummary = null
+    rehearsalReviewPanel?.$destroy()
+    rehearsalReviewPanel = new RehearsalReviewPanel({
+        target,
+        props: {
+            timingMap,
+            segment,
+            onCancel: () => {
+                rehearsalReviewPanel?.$destroy()
+                rehearsalReviewPanel = null
+            },
+            onApprove: (payload: RehearsalApprovalForUi) => {
+                bridge.sendCommand({ kind: "approveRehearsalSegment", ...payload })
+                rehearsalReviewPanel?.$destroy()
+                rehearsalReviewPanel = null
+                window.alert("Rehearsal timing map approved.")
+            }
         }
     })
 }
@@ -517,6 +573,13 @@ function closeToolOverlays(): void {
         rehearsalCaptureRunning = false
         void bridge.discardRehearsalCapture().catch(() => undefined)
     }
+    try {
+        rehearsalReviewPanel?.$destroy()
+    } catch {
+        // already destroyed
+    }
+    rehearsalReviewPanel = null
+    pendingRehearsalReview = null
     try {
         rehearsalSummary?.$destroy()
     } catch {
@@ -675,6 +738,11 @@ const stateUnsub = bridge.subscribeState((raw) => {
             activeArrangementId: next.activeArrangementId
         })
         translationEditor?.$set({ timingMap: next.activeTimingMap })
+    }
+    if (pendingRehearsalReview?.segment.showId && next.activeTimingMap?.showId === pendingRehearsalReview.segment.showId) {
+        const pending = pendingRehearsalReview
+        pendingRehearsalReview = null
+        openRehearsalReview(pending.segment, pending.target)
     }
 
     // Fire the banner only when the transition actually changed identity AND it's
