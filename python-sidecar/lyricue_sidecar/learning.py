@@ -1,6 +1,8 @@
 """Song-learning RPC handlers."""
+
 from __future__ import annotations
 
+import os
 from typing import Any, Mapping, Optional
 
 from .audio_decode import decode_audio_file
@@ -63,8 +65,12 @@ def learn_song_handler(params: Optional[Mapping[str, Any]], context: RequestCont
     bpm = detect_bpm(decoded.samples, decoded.sample_rate)
     jobs.checkpoint(job_id)
 
-    demucs_model = _string_option(opts, "demucsModel", DEFAULT_DEMUCS_MODEL if alignment_mode == "production" else "deterministic-no-demucs")
-    whisperx_model = _string_option(opts, "whisperxModel", DEFAULT_WHISPERX_MODEL if alignment_mode == "production" else "deterministic-aligner")
+    demucs_model = _string_option(
+        opts, "demucsModel", DEFAULT_DEMUCS_MODEL if alignment_mode == "production" else "deterministic-no-demucs"
+    )
+    whisperx_model = _string_option(
+        opts, "whisperxModel", DEFAULT_WHISPERX_MODEL if alignment_mode == "production" else "deterministic-aligner"
+    )
 
     vocals_diagnostics: dict[str, Any] | None = None
     if alignment_mode == "production":
@@ -76,7 +82,9 @@ def learn_song_handler(params: Optional[Mapping[str, Any]], context: RequestCont
             mirror_url = opts.get("modelMirrorUrl")
             if mirror_url is not None:
                 if not isinstance(mirror_url, str) or mirror_url.strip() == "":
-                    raise JsonRpcError(ERROR_INVALID_PARAMS, "params.options.modelMirrorUrl must be a non-empty string if present")
+                    raise JsonRpcError(
+                        ERROR_INVALID_PARAMS, "params.options.modelMirrorUrl must be a non-empty string if present"
+                    )
                 model_params["mirrorUrl"] = mirror_url
             specs, resolved_mirror_url = parse_ensure_models_params(model_params)
             _progress(context, job_id, "models", message="Checking required model cache")
@@ -87,10 +95,38 @@ def learn_song_handler(params: Optional[Mapping[str, Any]], context: RequestCont
         debug_path = opts.get("debugVocalsPath")
         if debug_path is not None and not isinstance(debug_path, str):
             raise JsonRpcError(ERROR_INVALID_PARAMS, "params.options.debugVocalsPath must be a string if present")
-        vocals = isolate_vocals(decoded, model_name=demucs_model, debug_path=debug_path)
+        demucs_repo = _string_option(opts, "demucsRepo", os.environ.get("LYRICUE_DEMUCS_REPO", ""))
+        whisperx_download_root = _string_option(
+            opts, "whisperxDownloadRoot", os.environ.get("LYRICUE_WHISPERX_DOWNLOAD_ROOT", "")
+        )
+        whisperx_align_model = _string_option(
+            opts, "whisperxAlignModel", os.environ.get("LYRICUE_WHISPERX_ALIGN_MODEL", "")
+        )
+        whisperx_align_model_dir = _string_option(
+            opts, "whisperxAlignModelDir", os.environ.get("LYRICUE_WHISPERX_ALIGN_MODEL_DIR", "")
+        )
+        model_cache_only = _bool_option(opts, "modelCacheOnly", os.environ.get("LYRICUE_MODEL_CACHE_ONLY") == "1")
+
+        vocals = isolate_vocals(decoded, model_name=demucs_model, debug_path=debug_path, model_repo=demucs_repo or None)
         jobs.checkpoint(job_id)
-        _progress(context, job_id, "whisperx", message="Aligning vocals against known lyrics", model=whisperx_model, language=language.strip())
-        aligned = align_vocals(vocals, sections, language=language.strip(), model_name=whisperx_model)
+        _progress(
+            context,
+            job_id,
+            "whisperx",
+            message="Aligning vocals against known lyrics",
+            model=whisperx_model,
+            language=language.strip(),
+        )
+        aligned = align_vocals(
+            vocals,
+            sections,
+            language=language.strip(),
+            model_name=whisperx_model,
+            download_root=whisperx_download_root or None,
+            align_model_name=whisperx_align_model or None,
+            align_model_dir=whisperx_align_model_dir or None,
+            model_cache_only=model_cache_only,
+        )
         aligned_words = aligned.words
         vocals_diagnostics = {
             "model": vocals.model_name,
@@ -151,6 +187,11 @@ def learn_song_handler(params: Optional[Mapping[str, Any]], context: RequestCont
 def _string_option(options: Mapping[str, Any], key: str, fallback: str) -> str:
     value = options.get(key)
     return value.strip() if isinstance(value, str) and value.strip() else fallback
+
+
+def _bool_option(options: Mapping[str, Any], key: str, fallback: bool) -> bool:
+    value = options.get(key)
+    return value if isinstance(value, bool) else fallback
 
 
 def _progress(context: RequestContext | None, job_id: str | None, stage: str, **params: Any) -> None:

@@ -1,4 +1,5 @@
 """EP-05 song-learning RPC handler tests."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -164,15 +165,36 @@ def test_learn_song_production_mode_uses_vocal_isolation_and_forced_alignment(mo
             byte_size=4096,
         )
 
-    def fake_isolate(decoded, *, model_name, debug_path=None):
+    def fake_isolate(decoded, *, model_name, debug_path=None, model_repo=None):
         assert model_name == "htdemucs"
         assert debug_path == "/tmp/vocals.wav"
-        return IsolatedVocals(samples=[0.1] * 48_000, sample_rate=decoded.sample_rate, model_name=model_name, rms=0.12, debug_path=debug_path)
+        assert model_repo == "/tmp/demucs-repo"
+        return IsolatedVocals(
+            samples=[0.1] * 48_000,
+            sample_rate=decoded.sample_rate,
+            model_name=model_name,
+            rms=0.12,
+            debug_path=debug_path,
+        )
 
-    def fake_align(vocals, sections, *, language, model_name):
+    def fake_align(
+        vocals,
+        sections,
+        *,
+        language,
+        model_name,
+        download_root=None,
+        align_model_name=None,
+        align_model_dir=None,
+        model_cache_only=False,
+    ):
         assert vocals.model_name == "htdemucs"
         assert language == "zu"
         assert model_name == "small"
+        assert download_root == "/tmp/whisperx"
+        assert align_model_name == "WAV2VEC2_ASR_BASE_960H"
+        assert align_model_dir == "/tmp/align"
+        assert model_cache_only is True
         return SimpleNamespace(
             words=[
                 AlignedWord("Siyabonga", 0, 700, 0.92, 0, 0),
@@ -190,8 +212,25 @@ def test_learn_song_production_mode_uses_vocal_isolation_and_forced_alignment(mo
             "jobId": "job-prod",
             "showId": "show-prod",
             "audioPath": "/tmp/song.wav",
-            "lyrics": [{"id": "v1", "type": "verse", "label": "Verse 1", "text": "Siyabonga Nkosi", "lines": ["Siyabonga Nkosi"]}],
-            "options": {"alignmentMode": "production", "language": "zu", "debugVocalsPath": "/tmp/vocals.wav"},
+            "lyrics": [
+                {
+                    "id": "v1",
+                    "type": "verse",
+                    "label": "Verse 1",
+                    "text": "Siyabonga Nkosi",
+                    "lines": ["Siyabonga Nkosi"],
+                }
+            ],
+            "options": {
+                "alignmentMode": "production",
+                "language": "zu",
+                "debugVocalsPath": "/tmp/vocals.wav",
+                "demucsRepo": "/tmp/demucs-repo",
+                "whisperxDownloadRoot": "/tmp/whisperx",
+                "whisperxAlignModel": "WAV2VEC2_ASR_BASE_960H",
+                "whisperxAlignModelDir": "/tmp/align",
+                "modelCacheOnly": True,
+            },
         }
     )
 
@@ -230,11 +269,23 @@ def test_learn_song_production_mode_ensures_required_models(monkeypatch: pytest.
     monkeypatch.setattr(learning, "detect_bpm", lambda _samples, _sample_rate: 100)
     monkeypatch.setattr(learning, "ensure_models", fake_ensure)
     monkeypatch.setattr(learning, "resolve_models_dir", lambda: tmp_path)
-    monkeypatch.setattr(learning, "isolate_vocals", lambda decoded, *, model_name, debug_path=None: IsolatedVocals(samples=[0.1] * 48_000, sample_rate=decoded.sample_rate, model_name=model_name, rms=0.12, debug_path=debug_path))
+    monkeypatch.setattr(
+        learning,
+        "isolate_vocals",
+        lambda decoded, *, model_name, debug_path=None, model_repo=None: IsolatedVocals(
+            samples=[0.1] * 48_000,
+            sample_rate=decoded.sample_rate,
+            model_name=model_name,
+            rms=0.12,
+            debug_path=debug_path,
+        ),
+    )
     monkeypatch.setattr(
         learning,
         "align_vocals",
-        lambda _vocals, _sections, *, language, model_name: SimpleNamespace(words=[AlignedWord("Siyabonga", 0, 700, 0.92, 0, 0)]),
+        lambda _vocals, _sections, *, language, model_name, download_root=None, align_model_name=None, align_model_dir=None, model_cache_only=False: (
+            SimpleNamespace(words=[AlignedWord("Siyabonga", 0, 700, 0.92, 0, 0)])
+        ),
     )
     context, notifications = progress_context("learn-models")
 
@@ -357,7 +408,9 @@ def test_detect_sections_is_best_effort_when_energy_analysis_fails(monkeypatch: 
     )
     aligned = deterministic_align(sections, 2.0)
 
-    proposals = propose_sections(sections, aligned_words=aligned, samples=[0.1] * 32_000, sample_rate=TARGET_SAMPLE_RATE)
+    proposals = propose_sections(
+        sections, aligned_words=aligned, samples=[0.1] * 32_000, sample_rate=TARGET_SAMPLE_RATE
+    )
 
     assert proposals == [
         {"sectionId": "a", "suggestedType": "chorus", "reason": "repeated_lyrics"},

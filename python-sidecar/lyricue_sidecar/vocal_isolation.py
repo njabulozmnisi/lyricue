@@ -1,4 +1,5 @@
 """Demucs vocal-isolation stage for EP-05 STORY-05.2."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -28,6 +29,7 @@ def isolate_vocals(
     model_name: str = DEFAULT_DEMUCS_MODEL,
     runner: DemucsRunner | None = None,
     debug_path: str | Path | None = None,
+    model_repo: str | Path | None = None,
     min_rms: float = 0.001,
 ) -> IsolatedVocals:
     """Run Demucs and return isolated vocal samples.
@@ -38,7 +40,9 @@ def isolate_vocals(
 
     active_runner = runner or _run_demucs
     try:
-        vocals = active_runner(decoded, model_name)
+        vocals = (
+            active_runner(decoded, model_name) if runner else _run_demucs(decoded, model_name, model_repo=model_repo)
+        )
         arr, rms = _coerce_vocals(vocals)
     except JsonRpcError:
         raise
@@ -69,7 +73,7 @@ def isolate_vocals(
     )
 
 
-def _run_demucs(decoded: DecodedAudio, model_name: str) -> Any:
+def _run_demucs(decoded: DecodedAudio, model_name: str, *, model_repo: str | Path | None = None) -> Any:
     try:
         import numpy as np  # type: ignore[import-not-found]
         import torch  # type: ignore[import-not-found]
@@ -84,7 +88,8 @@ def _run_demucs(decoded: DecodedAudio, model_name: str) -> Any:
 
     device = _select_device(torch)
     try:
-        model = get_model(model_name)
+        repo_path = Path(model_repo) if model_repo is not None else None
+        model = get_model(model_name, repo=repo_path)
         model.to(device)
         model.eval()
         mono = np.asarray(decoded.samples, dtype="float32")
@@ -100,12 +105,22 @@ def _run_demucs(decoded: DecodedAudio, model_name: str) -> Any:
         raise
     except RuntimeError as err:
         if device != "cpu" and _looks_like_oom(err):
-            return _run_demucs_cpu(decoded, model_name, get_model, apply_model, np, torch)
+            return _run_demucs_cpu(decoded, model_name, get_model, apply_model, np, torch, model_repo=model_repo)
         raise
 
 
-def _run_demucs_cpu(decoded: DecodedAudio, model_name: str, get_model: Any, apply_model: Any, np: Any, torch: Any) -> Any:
-    model = get_model(model_name)
+def _run_demucs_cpu(
+    decoded: DecodedAudio,
+    model_name: str,
+    get_model: Any,
+    apply_model: Any,
+    np: Any,
+    torch: Any,
+    *,
+    model_repo: str | Path | None = None,
+) -> Any:
+    repo_path = Path(model_repo) if model_repo is not None else None
+    model = get_model(model_name, repo=repo_path)
     model.to("cpu")
     model.eval()
     mono = np.asarray(decoded.samples, dtype="float32")

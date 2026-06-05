@@ -37,6 +37,14 @@ cd python-sidecar
 .venv-ml/bin/pytest -q
 ```
 
+Production learning can be forced to use local model caches instead of package-managed downloads:
+
+- `params.options.demucsRepo` or `LYRICUE_DEMUCS_REPO` — local Demucs repo passed to `demucs.pretrained.get_model(..., repo=...)`.
+- `params.options.whisperxDownloadRoot` or `LYRICUE_WHISPERX_DOWNLOAD_ROOT` — Faster Whisper cache/download root.
+- `params.options.whisperxAlignModel` or `LYRICUE_WHISPERX_ALIGN_MODEL` — explicit WhisperX alignment model name.
+- `params.options.whisperxAlignModelDir` or `LYRICUE_WHISPERX_ALIGN_MODEL_DIR` — WhisperX alignment model cache directory.
+- `params.options.modelCacheOnly` or `LYRICUE_MODEL_CACHE_ONLY=1` — require local cached model files and prevent WhisperX downloads.
+
 ## Protocol
 
 JSON-RPC 2.0 over stdin (requests) / stdout (responses + notifications). stderr is reserved for logging.

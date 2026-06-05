@@ -1,4 +1,5 @@
 """WhisperX forced-alignment stage for EP-05 STORY-05.3."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -27,12 +28,29 @@ def align_vocals(
     language: str = "en",
     model_name: str = DEFAULT_WHISPERX_MODEL,
     runner: WhisperXRunner | None = None,
+    download_root: str | None = None,
+    align_model_name: str | None = None,
+    align_model_dir: str | None = None,
+    model_cache_only: bool = False,
 ) -> ForcedAlignmentResult:
     """Align isolated vocals against known lyrics using WhisperX."""
 
     active_runner = runner or _run_whisperx
     try:
-        words = active_runner(vocals, sections, language, model_name)
+        words = (
+            active_runner(vocals, sections, language, model_name)
+            if runner
+            else _run_whisperx(
+                vocals,
+                sections,
+                language,
+                model_name,
+                download_root=download_root,
+                align_model_name=align_model_name,
+                align_model_dir=align_model_dir,
+                model_cache_only=model_cache_only,
+            )
+        )
     except JsonRpcError:
         raise
     except Exception as err:  # noqa: BLE001 - model/native failures must stay protocol-shaped.
@@ -43,11 +61,25 @@ def align_vocals(
         ) from err
 
     if not words:
-        raise _alignment_error("WhisperX returned no aligned words.", reason="empty_alignment", details={"model": model_name, "language": language})
+        raise _alignment_error(
+            "WhisperX returned no aligned words.",
+            reason="empty_alignment",
+            details={"model": model_name, "language": language},
+        )
     return ForcedAlignmentResult(words=words, model_name=model_name, language=language)
 
 
-def _run_whisperx(vocals: IsolatedVocals, sections: list[InputSection], language: str, model_name: str) -> list[AlignedWord]:
+def _run_whisperx(
+    vocals: IsolatedVocals,
+    sections: list[InputSection],
+    language: str,
+    model_name: str,
+    *,
+    download_root: str | None = None,
+    align_model_name: str | None = None,
+    align_model_dir: str | None = None,
+    model_cache_only: bool = False,
+) -> list[AlignedWord]:
     try:
         import whisperx  # type: ignore[import-not-found]
     except Exception as err:  # noqa: BLE001 - optional dependency may be absent.
@@ -59,12 +91,24 @@ def _run_whisperx(vocals: IsolatedVocals, sections: list[InputSection], language
 
     try:
         known_text = "\n".join(section.text for section in sections)
-        model = whisperx.load_model(model_name, device="cpu", language=language)
+        model = whisperx.load_model(
+            model_name,
+            device="cpu",
+            language=language,
+            download_root=download_root,
+            local_files_only=model_cache_only,
+        )
         transcription = model.transcribe(vocals.samples, batch_size=8, language=language)
         segments = transcription.get("segments", [])
         if known_text.strip():
             segments = _forced_segments(known_text, segments, vocals)
-        align_model, metadata = whisperx.load_align_model(language_code=language, device="cpu")
+        align_model, metadata = whisperx.load_align_model(
+            language_code=language,
+            device="cpu",
+            model_name=align_model_name,
+            model_dir=align_model_dir,
+            model_cache_only=model_cache_only,
+        )
         aligned = whisperx.align(
             segments,
             align_model,
@@ -84,7 +128,11 @@ def _run_whisperx(vocals: IsolatedVocals, sections: list[InputSection], language
 
     raw_words = aligned.get("word_segments") if isinstance(aligned, dict) else None
     if not isinstance(raw_words, list):
-        raise _alignment_error("WhisperX did not return word_segments.", reason="missing_word_segments", details={"model": model_name, "language": language})
+        raise _alignment_error(
+            "WhisperX did not return word_segments.",
+            reason="missing_word_segments",
+            details={"model": model_name, "language": language},
+        )
     return _map_whisperx_words(raw_words, sections)
 
 
@@ -124,7 +172,16 @@ def _map_whisperx_words(raw_words: list[Any], sections: list[InputSection]) -> l
             start = end = 0
             confidence = None
         text, section_index, line_index = slot
-        mapped.append(AlignedWord(text=text, start_ms=start, end_ms=end, confidence=confidence, section_index=section_index, line_index=line_index))
+        mapped.append(
+            AlignedWord(
+                text=text,
+                start_ms=start,
+                end_ms=end,
+                confidence=confidence,
+                section_index=section_index,
+                line_index=line_index,
+            )
+        )
     return mapped
 
 
