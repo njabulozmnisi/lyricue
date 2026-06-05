@@ -24,7 +24,7 @@ The project is not yet production-shippable for a multi-campus rollout because s
 | EP-02 OutputAdapter walking skeleton | Complete | 100% | Sister mode proven; fork adapter contract present | FreeShow vendor SDKs make fork runtime verification external |
 | EP-03 Timing map/storage | Complete | 100% | Atomic storage and migrations are in place | Crash-safe writes became a load-bearing invariant across later modules |
 | EP-04 Sidecar infra | Locally strong, packaging incomplete | 82% | JSON-RPC, controller, model manifest/download manager, subprocess smoke pass, Python 3.11 ML venv validated | PyInstaller bundle and real model mirror remain external release gates |
-| EP-05 Song learning | Contract complete, production accuracy unverified | 72% | Deterministic path works; production stage contracts and progress are wired; Demucs/WhisperX packages install and import locally | Real production pass still needs model manifest/artifacts and a public-domain vocal fixture |
+| EP-05 Song learning | Production fixture repeatable, quality gate failing | 74% | Deterministic path works; production stage contracts and progress are wired; Demucs/WhisperX packages install/import; public-domain opt-in fixture exists | Real fixture runs completed but only 18-19/26 words met confidence gate; model artifact/offline strategy still needs release proof |
 | EP-06 Karaoke renderer | Complete for sister-mode local use | 95% | Renderer, easing, next-section preview, perf harness pass | Visual QA mattered more than unit tests; tempo-adaptive easing arrived from operator feedback |
 | EP-07 Audio input/beat detection | Mostly complete | 85% | Synthetic and pure module tests pass | Physical microphone/loopback QA remains a hardware gate |
 | EP-08 VAD/STT correction | Partial | 45% | VAD and phrase matcher exist; SyncEngine accepts correction events | Whisper.cpp native addon is the main missing platform-specific dependency |
@@ -69,13 +69,16 @@ Completed local work:
 1. Installed and validated `python-sidecar[ml]` in a Python 3.11 ML venv.
 2. Fixed the Python 3.11 subprocess test harness issue surfaced by the ML venv.
 3. Verified the full Python sidecar suite in both the regular venv and ML venv.
+4. Added the EP-05.8 public-domain audio fixture and opt-in production ML test.
+5. Ran the real production fixture; it completed model inference but failed the current quality gate at 18-19/26 confident words across two runs.
 
 Remaining work:
 
-1. Provision a real model manifest and model artifacts with SHA256 hashes.
-2. Add the EP-05.8 public-domain audio fixture test.
-3. Run a real production-mode Learn Song pass through the operator UI.
-4. Capture QA evidence for timing accuracy, progress, cancellation, and fallback.
+1. Capture and inspect the failing production TimingMap against manually prepared ground truth.
+2. Decide whether the failure is fixture quality, lyric-window mismatch, model selection, vocal isolation, or alignment mapping.
+3. Provision a real model manifest and model artifacts with SHA256 hashes.
+4. Run a real production-mode Learn Song pass through the operator UI.
+5. Capture QA evidence for timing accuracy, progress, cancellation, and fallback.
 
 ### Gate C — Multi-Campus Library/Publishing Certification
 
@@ -126,11 +129,12 @@ Work proceeds in this order:
 
 ## Immediate Queue
 
-1. Provision the real model manifest and model artifacts with SHA256 hashes.
-2. Add the EP-05.8 public-domain audio fixture test.
-3. Run a real production-mode Learn Song pass through the operator UI.
-4. Capture Gate B QA evidence for timing accuracy, progress, cancellation, and fallback.
-5. Keep Gate C/D/E items marked external-proof pending until the required credentials, signing assets, vendor SDKs, and hardware are available.
+1. Capture the failing EP-05.8 production TimingMap and compare it with manually prepared ground truth.
+2. Fix the production learning quality root cause or replace the fixture if the source recording is unsuitable.
+3. Provision the real model manifest and model artifacts with SHA256 hashes.
+4. Run a real production-mode Learn Song pass through the operator UI.
+5. Capture Gate B QA evidence for timing accuracy, progress, cancellation, and fallback.
+6. Keep Gate C/D/E items marked external-proof pending until the required credentials, signing assets, vendor SDKs, and hardware are available.
 
 ## External Inputs Needed Before Final Production Sign-Off
 

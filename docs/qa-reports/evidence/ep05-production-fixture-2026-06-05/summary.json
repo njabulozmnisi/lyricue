@@ -1,0 +1,163 @@
+{
+  "confidentRatio": 0.6923076923076923,
+  "confidentWordCount": 18,
+  "wordCount": 26,
+  "words": [
+    {
+      "confidence": 0.776,
+      "endMs": 6030,
+      "startMs": 2848,
+      "text": "Amazing"
+    },
+    {
+      "confidence": 0.753,
+      "endMs": 7391,
+      "startMs": 6170,
+      "text": "grace"
+    },
+    {
+      "confidence": 0.493,
+      "endMs": 8892,
+      "startMs": 7411,
+      "text": "how"
+    },
+    {
+      "confidence": 0.272,
+      "endMs": 9192,
+      "startMs": 8992,
+      "text": "sweet"
+    },
+    {
+      "confidence": 0.681,
+      "endMs": 11434,
+      "startMs": 9472,
+      "text": "the"
+    },
+    {
+      "confidence": 0.638,
+      "endMs": 12374,
+      "startMs": 11654,
+      "text": "sound"
+    },
+    {
+      "confidence": 0.616,
+      "endMs": 13075,
+      "startMs": 12655,
+      "text": "That"
+    },
+    {
+      "confidence": 0.64,
+      "endMs": 13675,
+      "startMs": 13135,
+      "text": "saved"
+    },
+    {
+      "confidence": 0.551,
+      "endMs": 15657,
+      "startMs": 15637,
+      "text": "a"
+    },
+    {
+      "confidence": 0.192,
+      "endMs": 15857,
+      "startMs": 15697,
+      "text": "wretch"
+    },
+    {
+      "confidence": 0.626,
+      "endMs": 16798,
+      "startMs": 16057,
+      "text": "like"
+    },
+    {
+      "confidence": 0.768,
+      "endMs": 17018,
+      "startMs": 16818,
+      "text": "me"
+    },
+    {
+      "confidence": 0.008,
+      "endMs": 17418,
+      "startMs": 17398,
+      "text": "I"
+    },
+    {
+      "confidence": 0.539,
+      "endMs": 17838,
+      "startMs": 17438,
+      "text": "once"
+    },
+    {
+      "confidence": 0.859,
+      "endMs": 19039,
+      "startMs": 18099,
+      "text": "was"
+    },
+    {
+      "confidence": 0.633,
+      "endMs": 20620,
+      "startMs": 19159,
+      "text": "lost"
+    },
+    {
+      "confidence": 0.83,
+      "endMs": 22522,
+      "startMs": 21141,
+      "text": "but"
+    },
+    {
+      "confidence": 0.858,
+      "endMs": 24183,
+      "startMs": 22622,
+      "text": "now"
+    },
+    {
+      "confidence": 0.665,
+      "endMs": 25844,
+      "startMs": 25724,
+      "text": "am"
+    },
+    {
+      "confidence": 0.531,
+      "endMs": 26184,
+      "startMs": 25884,
+      "text": "found"
+    },
+    {
+      "confidence": 0.637,
+      "endMs": 27825,
+      "startMs": 26244,
+      "text": "Was"
+    },
+    {
+      "confidence": 0.329,
+      "endMs": 28166,
+      "startMs": 27986,
+      "text": "blind"
+    },
+    {
+      "confidence": 0.854,
+      "endMs": 29307,
+      "startMs": 28526,
+      "text": "but"
+    },
+    {
+      "confidence": 0.145,
+      "endMs": 29407,
+      "startMs": 29327,
+      "text": "now"
+    },
+    {
+      "confidence": 0.001,
+      "endMs": 29447,
+      "startMs": 29427,
+      "text": "I"
+    },
+    {
+      "confidence": 0.205,
+      "endMs": 29647,
+      "startMs": 29567,
+      "text": "see"
+    }
+  ]
+}
