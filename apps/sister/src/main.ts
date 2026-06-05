@@ -92,6 +92,7 @@ const RENDERER_PERF_MODE = process.env.LC_RENDERER_PERF_MODE === "1"
 const MODEL_MANIFEST_PATH = process.env.LC_MODEL_MANIFEST_PATH
 const MODEL_MIRROR_URL = process.env.LC_MODEL_MIRROR_URL
 const REQUIRE_MODEL_MANIFEST = process.env.LC_REQUIRE_MODEL_MANIFEST === "1"
+const SMOKE_TEST_MODE = process.env.LC_SMOKE_TEST === "1"
 /**
  * End-to-end mode (LC_E2E_MODE=1). Replaces DemoSyncEngine with the real composition:
  *   SyntheticAudioDriver (BpmEstimator + VadDetector) → SyncEngine → OutputAdapter.
@@ -111,6 +112,12 @@ const E2E_MODE = process.env.LC_E2E_MODE === "1"
  */
 function log(line: string): void {
     process.stderr.write(`[lyricue:sister] ${line}\n`)
+}
+
+function recordSmokeFailure(label: string, err?: unknown): void {
+    const message = err instanceof Error ? `${label}: ${err.message}` : err ? `${label}: ${String(err)}` : label
+    smokeFailures.push(message)
+    log(`[smoke] FAIL ${message}`)
 }
 
 /**
@@ -218,6 +225,7 @@ let ipcReadyHandler: ((event: Electron.IpcMainEvent) => void) | null = null
 let sidecarController: SidecarController | null = null
 let modelManifestCache: ModelManifest | null | undefined
 let rehearsalCaptureSession: RehearsalCaptureSession | null = null
+let smokeFailures: string[] = []
 
 async function startSisterMode(): Promise<void> {
     adapter = new OwnWindowOutputAdapter({
@@ -1332,9 +1340,11 @@ async function captureEp06Evidence(): Promise<void> {
                 log(`[capture] wrote ${path}`)
             } catch (err) {
                 log(`[capture] karaoke ${step.label} failed: ${(err as Error).message}`)
+                if (SMOKE_TEST_MODE) recordSmokeFailure(`karaoke capture ${step.label}`, err)
             }
         } else {
             log(`[capture] no karaoke window for step ${step.label}`)
+            if (SMOKE_TEST_MODE) recordSmokeFailure(`missing karaoke window for ${step.label}`)
         }
 
         if (E2E_MODE && opWindow) {
@@ -1345,24 +1355,37 @@ async function captureEp06Evidence(): Promise<void> {
                 log(`[capture] wrote ${path}`)
             } catch (err) {
                 log(`[capture] operator ${step.label} failed: ${(err as Error).message}`)
+                if (SMOKE_TEST_MODE) recordSmokeFailure(`operator capture ${step.label}`, err)
             }
+        } else if (SMOKE_TEST_MODE && E2E_MODE) {
+            recordSmokeFailure(`missing operator window for ${step.label}`)
         }
     }
-    if (E2E_MODE && process.env.LC_CAPTURE_OPERATOR_TOOLS === "1") {
+    if (E2E_MODE && (process.env.LC_CAPTURE_OPERATOR_TOOLS === "1" || SMOKE_TEST_MODE)) {
         const opWindow = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : null
         if (opWindow) {
             await captureOperatorTool(opWindow, operatorDir, "05-arrangement-builder-operator", "[data-testid=\"edit-arrangement\"]")
             await captureOperatorTool(opWindow, operatorDir, "06-translation-editor-operator", "[data-testid=\"translate-song\"]")
             await captureOperatorTool(opWindow, operatorDir, "07-rehearsal-mode-operator", "[data-testid=\"toggle-rehearsal\"]")
-            if (process.env.LC_CAPTURE_OPERATOR_PERSISTENCE === "1") {
+            if (SMOKE_TEST_MODE) {
+                await exerciseLearnSongWizard(opWindow)
+            }
+            if (process.env.LC_CAPTURE_OPERATOR_PERSISTENCE === "1" || SMOKE_TEST_MODE) {
                 await exerciseOperatorPersistence(opWindow)
             }
-            if (process.env.LC_CAPTURE_REHEARSAL_CAPTURE === "1") {
+            if (process.env.LC_CAPTURE_REHEARSAL_CAPTURE === "1" || SMOKE_TEST_MODE) {
                 await exerciseRehearsalCapture(opWindow)
             }
         } else {
             log("[capture] operator tool capture skipped: operator window missing")
+            if (SMOKE_TEST_MODE) recordSmokeFailure("operator tool capture skipped: operator window missing")
         }
+    }
+    if (SMOKE_TEST_MODE && smokeFailures.length > 0) {
+        process.exitCode = 1
+        log(`[smoke] complete with ${smokeFailures.length} failure(s): ${smokeFailures.join(" | ")}`)
+    } else if (SMOKE_TEST_MODE) {
+        log("[smoke] complete: pass")
     }
     log("[capture] evidence run complete; quitting")
     setTimeout(() => app.quit(), 500)
@@ -1385,6 +1408,7 @@ async function captureOperatorTool(
         `)
         if (opened !== "opened") {
             log(`[capture] ${label} failed to open: ${opened}`)
+            if (SMOKE_TEST_MODE) recordSmokeFailure(`${label} failed to open`, opened)
             return
         }
         await new Promise<void>((r) => setTimeout(r, 500))
@@ -1401,6 +1425,7 @@ async function captureOperatorTool(
         await new Promise<void>((r) => setTimeout(r, 250))
     } catch (err) {
         log(`[capture] ${label} failed: ${(err as Error).message}`)
+        if (SMOKE_TEST_MODE) recordSmokeFailure(label, err)
     }
 }
 
@@ -1447,8 +1472,59 @@ async function exerciseOperatorPersistence(opWindow: BrowserWindow): Promise<voi
             })()
         `)
         log(`[capture] operator persistence exercise result=${result}`)
+        if (SMOKE_TEST_MODE && result !== "persisted") recordSmokeFailure("operator persistence exercise", result)
     } catch (err) {
         log(`[capture] operator persistence exercise failed: ${(err as Error).message}`)
+        if (SMOKE_TEST_MODE) recordSmokeFailure("operator persistence exercise", err)
+    }
+}
+
+async function exerciseLearnSongWizard(opWindow: BrowserWindow): Promise<void> {
+    try {
+        const result = await opWindow.webContents.executeJavaScript(`
+            (async () => {
+                const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+                const clickButton = (text) => {
+                    const button = [...document.querySelectorAll("button")].find((candidate) => candidate.textContent?.includes(text));
+                    if (!(button instanceof HTMLButtonElement) || button.disabled) return false;
+                    button.click();
+                    return true;
+                };
+                const setInput = (selector, value) => {
+                    const element = document.querySelector(selector);
+                    if (!(element instanceof HTMLInputElement) && !(element instanceof HTMLTextAreaElement)) return false;
+                    element.value = value;
+                    element.dispatchEvent(new Event("input", { bubbles: true }));
+                    return true;
+                };
+
+                if (!clickButton("Learn Song")) return "missing-learn-song-button";
+                await sleep(150);
+                if (!document.querySelector(".learn-song-overlay")) return "missing-learn-song-overlay";
+                if (!setInput("input[placeholder='Optional song title']", "Smoke Harness Song")) return "missing-title-input";
+                if (!setInput("textarea.lyrics-input", "[Verse 1]\\nSmoke harness line\\n\\n[Chorus]\\nReady for review")) return "missing-lyrics-input";
+                await sleep(100);
+                if (!clickButton("Next")) return "source-next-disabled";
+                await sleep(100);
+                if (!clickButton("Next")) return "sections-next-disabled";
+                await sleep(100);
+                if (!clickButton("Skip audio")) return "missing-skip-audio";
+                await sleep(100);
+                if (!clickButton("Create manual preview")) return "missing-manual-preview";
+                await sleep(250);
+                if (!document.body.textContent?.includes("2 sections ready for manual mode")) return "missing-preview-summary";
+                if (!clickButton("Finish")) return "missing-finish";
+                await sleep(150);
+                return document.querySelector(".learn-song-overlay") ? "overlay-still-open" : "learn-song-complete";
+            })()
+        `)
+        log(`[capture] learn song exercise result=${result}`)
+        if (SMOKE_TEST_MODE && result !== "learn-song-complete") {
+            recordSmokeFailure("learn song exercise", result)
+        }
+    } catch (err) {
+        log(`[capture] learn song exercise failed: ${(err as Error).message}`)
+        if (SMOKE_TEST_MODE) recordSmokeFailure("learn song exercise", err)
     }
 }
 
@@ -1482,8 +1558,12 @@ async function exerciseRehearsalCapture(opWindow: BrowserWindow): Promise<void> 
             })()
         `)
         log(`[capture] rehearsal capture exercise result=${JSON.stringify(result)}`)
+        if (SMOKE_TEST_MODE && result?.status !== "captured-approved" && result?.status !== "captured-no-match") {
+            recordSmokeFailure("rehearsal capture exercise", JSON.stringify(result))
+        }
     } catch (err) {
         log(`[capture] rehearsal capture exercise failed: ${(err as Error).message}`)
+        if (SMOKE_TEST_MODE) recordSmokeFailure("rehearsal capture exercise", err)
     }
 }
 
