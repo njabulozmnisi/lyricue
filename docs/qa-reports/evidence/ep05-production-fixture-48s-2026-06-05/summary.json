@@ -1,0 +1,212 @@
+{
+  "confidentRatio": 0.9615384615384616,
+  "confidentWordCount": 25,
+  "wordCount": 26,
+  "durationSeconds": 48.0,
+  "warnings": [
+    "torchcodec warning emitted; run completed using preloaded in-memory waveform path"
+  ],
+  "words": [
+    {
+      "text": "Amazing",
+      "startMs": 2827,
+      "endMs": 6048,
+      "confidence": 0.757,
+      "lineIndex": 0,
+      "held": true
+    },
+    {
+      "text": "grace",
+      "startMs": 6148,
+      "endMs": 7428,
+      "confidence": 0.666,
+      "lineIndex": 0,
+      "held": true
+    },
+    {
+      "text": "how",
+      "startMs": 8128,
+      "endMs": 9188,
+      "confidence": 0.843,
+      "lineIndex": 0,
+      "held": true
+    },
+    {
+      "text": "sweet",
+      "startMs": 9328,
+      "endMs": 11428,
+      "confidence": 0.708,
+      "lineIndex": 0,
+      "held": true
+    },
+    {
+      "text": "the",
+      "startMs": 11648,
+      "endMs": 12368,
+      "confidence": 0.787,
+      "lineIndex": 0
+    },
+    {
+      "text": "sound",
+      "startMs": 12628,
+      "endMs": 13609,
+      "confidence": 0.815,
+      "lineIndex": 0,
+      "held": true
+    },
+    {
+      "text": "That",
+      "startMs": 14689,
+      "endMs": 15849,
+      "confidence": 0.597,
+      "lineIndex": 1,
+      "held": true
+    },
+    {
+      "text": "saved",
+      "startMs": 16029,
+      "endMs": 17849,
+      "confidence": 0.584,
+      "lineIndex": 1,
+      "held": true
+    },
+    {
+      "text": "a",
+      "startMs": 18729,
+      "endMs": 18749,
+      "confidence": 0.813,
+      "lineIndex": 1
+    },
+    {
+      "text": "wretch",
+      "startMs": 18829,
+      "endMs": 20609,
+      "confidence": 0.566,
+      "lineIndex": 1,
+      "held": true
+    },
+    {
+      "text": "like",
+      "startMs": 21130,
+      "endMs": 22490,
+      "confidence": 0.602,
+      "lineIndex": 1,
+      "held": true
+    },
+    {
+      "text": "me",
+      "startMs": 22610,
+      "endMs": 24170,
+      "confidence": 0.804,
+      "lineIndex": 1,
+      "held": true
+    },
+    {
+      "text": "I",
+      "startMs": 25710,
+      "endMs": 25830,
+      "confidence": 0.775,
+      "lineIndex": 2
+    },
+    {
+      "text": "once",
+      "startMs": 26030,
+      "endMs": 28150,
+      "confidence": 0.366,
+      "lineIndex": 2,
+      "held": true
+    },
+    {
+      "text": "was",
+      "startMs": 28490,
+      "endMs": 29671,
+      "confidence": 0.831,
+      "lineIndex": 2,
+      "held": true
+    },
+    {
+      "text": "lost",
+      "startMs": 29811,
+      "endMs": 30611,
+      "confidence": 0.653,
+      "lineIndex": 2
+    },
+    {
+      "text": "but",
+      "startMs": 31391,
+      "endMs": 32511,
+      "confidence": 0.815,
+      "lineIndex": 2,
+      "held": true
+    },
+    {
+      "text": "now",
+      "startMs": 32671,
+      "endMs": 34451,
+      "confidence": 0.694,
+      "lineIndex": 2,
+      "held": true
+    },
+    {
+      "text": "am",
+      "startMs": 35111,
+      "endMs": 35551,
+      "confidence": 0.652,
+      "lineIndex": 2
+    },
+    {
+      "text": "found",
+      "startMs": 35731,
+      "endMs": 36532,
+      "confidence": 0.801,
+      "lineIndex": 2,
+      "held": true
+    },
+    {
+      "text": "Was",
+      "startMs": 37572,
+      "endMs": 39152,
+      "confidence": 0.835,
+      "lineIndex": 3,
+      "held": true
+    },
+    {
+      "text": "blind",
+      "startMs": 39292,
+      "endMs": 40672,
+      "confidence": 0.63,
+      "lineIndex": 3,
+      "held": true
+    },
+    {
+      "text": "but",
+      "startMs": 41392,
+      "endMs": 42612,
+      "confidence": 0.617,
+      "lineIndex": 3,
+      "held": true
+    },
+    {
+      "text": "now",
+      "startMs": 42672,
+      "endMs": 44353,
+      "confidence": 0.74,
+      "lineIndex": 3,
+      "held": true
+    },
+    {
+      "text": "I",
+      "startMs": 45413,
+      "endMs": 45733,
+      "confidence": 0.851,
+      "lineIndex": 3
+    },
+    {
+      "text": "see",
+      "startMs": 45853,
+      "endMs": 46053,
+      "confidence": 0.549,
+      "lineIndex": 3
+    }
+  ]
+}

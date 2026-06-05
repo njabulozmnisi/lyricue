@@ -15,7 +15,7 @@ from lyricue_sidecar.learning import learn_song_handler
 
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "ep05-public-domain"
-AUDIO_FIXTURE = FIXTURE_DIR / "amazing-grace-30s.wav"
+AUDIO_FIXTURE = FIXTURE_DIR / "amazing-grace-48s.wav"
 
 
 @pytest.mark.skipif(
@@ -62,7 +62,7 @@ def test_production_learning_on_public_domain_amazing_grace_fixture():
     words = timing_map["sections"][0]["words"]
     assert len(words) >= 20
     assert [word["text"].lower() for word in words[:2]] == ["amazing", "grace"]
-    assert all(0 <= word["startMs"] < word["endMs"] <= 30_500 for word in words)
+    assert all(0 <= word["startMs"] < word["endMs"] <= 48_500 for word in words)
     assert all(left["endMs"] <= right["startMs"] for left, right in zip(words, words[1:]))
 
     confident_words = [

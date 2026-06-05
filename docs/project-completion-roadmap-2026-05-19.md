@@ -24,7 +24,7 @@ The project is not yet production-shippable for a multi-campus rollout because s
 | EP-02 OutputAdapter walking skeleton | Complete | 100% | Sister mode proven; fork adapter contract present | FreeShow vendor SDKs make fork runtime verification external |
 | EP-03 Timing map/storage | Complete | 100% | Atomic storage and migrations are in place | Crash-safe writes became a load-bearing invariant across later modules |
 | EP-04 Sidecar infra | Locally strong, packaging locally proven for macOS arm64 protocol smoke | 88% | JSON-RPC, controller, model manifest/download manager, subprocess smoke pass, Python 3.11 ML venv validated, PyInstaller darwin-arm64 binary smoke passed | First PyInstaller entry failed on package-relative imports; root `build:sidecar` also exposed a bare-`python` clean-env defect. Both are fixed. Full ML-runtime packaging and real model mirror remain release gates |
-| EP-05 Song learning | Production fixture repeatable, quality gate failing | 76% | Deterministic path works; production stage contracts and progress are wired; Demucs/WhisperX packages install/import; public-domain opt-in fixture exists; model loader cache hooks are wired | Real fixture runs completed but only 18-19/26 words met confidence gate; real model artifact layout still needs cache-only release proof |
+| EP-05 Song learning | Production fixture gate passing, release offline proof pending | 82% | Deterministic path works; production stage contracts and progress are wired; Demucs/WhisperX packages install/import; public-domain opt-in fixture passes at 25/26 confident words; model loader cache hooks are wired | The first 30-second fixture clipped the final phrase and falsely failed the quality gate; extending the excerpt to 48 seconds fixed the local production fixture. Real model artifact layout still needs cache-only release proof |
 | EP-06 Karaoke renderer | Complete for sister-mode local use | 95% | Renderer, easing, next-section preview, perf harness pass | Visual QA mattered more than unit tests; tempo-adaptive easing arrived from operator feedback |
 | EP-07 Audio input/beat detection | Mostly complete | 85% | Synthetic and pure module tests pass | Physical microphone/loopback QA remains a hardware gate |
 | EP-08 VAD/STT correction | Partial | 45% | VAD and phrase matcher exist; SyncEngine accepts correction events | Whisper.cpp native addon is the main missing platform-specific dependency |
@@ -62,8 +62,6 @@ Completed local work:
 
 Goal: real song learning produces acceptable timing maps using local Demucs/WhisperX.
 
-Remaining work:
-
 Completed local work:
 
 1. Installed and validated `python-sidecar[ml]` in a Python 3.11 ML venv.
@@ -72,12 +70,14 @@ Completed local work:
 4. Added the EP-05.8 public-domain audio fixture and opt-in production ML test.
 5. Ran the real production fixture; it completed model inference but failed the current quality gate at 18-19/26 confident words across two runs.
 6. Added Demucs/WhisperX local-cache and cache-only hooks for release-owned offline model directories.
+7. Diagnosed the fixture failure as a clipped 30-second excerpt and replaced it with a 48-second excerpt from the same public-domain source.
+8. Re-ran the opt-in production fixture successfully: `1 passed`, with evidence at 25/26 confident words.
 
 Remaining work:
 
-1. Capture and inspect the failing production TimingMap against manually prepared ground truth.
-2. Decide whether the failure is fixture quality, lyric-window mismatch, model selection, vocal isolation, or alignment mapping.
-3. Provision a real model manifest and loader-compatible model artifact directories with SHA256 hashes.
+1. Provision a real model manifest and loader-compatible model artifact directories with SHA256 hashes.
+2. Run the production fixture with `LYRICUE_MODEL_CACHE_ONLY=1` against those release-owned model directories.
+3. Build the packaged sidecar from the Python 3.11 ML venv and smoke `learn_song` from the packaged executable.
 4. Run a real production-mode Learn Song pass through the operator UI.
 5. Capture QA evidence for timing accuracy, progress, cancellation, and fallback.
 
@@ -138,13 +138,12 @@ Work proceeds in this order:
 
 ## Immediate Queue
 
-1. Capture the failing EP-05.8 production TimingMap and compare it with manually prepared ground truth.
-2. Fix the production learning quality root cause or replace the fixture if the source recording is unsuitable.
-3. Provision the real model manifest and loader-compatible model artifact directories with SHA256 hashes.
-4. Build the release sidecar from the Python 3.11 ML venv and smoke `learn_song` from the packaged executable.
-5. Run a real production-mode Learn Song pass through the operator UI.
-6. Capture Gate B QA evidence for timing accuracy, progress, cancellation, and fallback.
-7. Keep Gate C/D/E items marked external-proof pending until the required credentials, signing assets, vendor SDKs, and hardware are available.
+1. Provision the real model manifest and loader-compatible model artifact directories with SHA256 hashes.
+2. Run the EP-05.8 production fixture with `LYRICUE_MODEL_CACHE_ONLY=1`.
+3. Build the release sidecar from the Python 3.11 ML venv and smoke `learn_song` from the packaged executable.
+4. Run a real production-mode Learn Song pass through the operator UI.
+5. Capture Gate B QA evidence for timing accuracy, progress, cancellation, and fallback.
+6. Keep Gate C/D/E items marked external-proof pending until the required credentials, signing assets, vendor SDKs, and hardware are available.
 
 ## External Inputs Needed Before Final Production Sign-Off
 
