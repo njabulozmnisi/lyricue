@@ -1,0 +1,52 @@
+{
+  "artifacts": [
+    {
+      "bytes": 21,
+      "name": "demucs-yaml",
+      "path": "/Users/njabulomnisi/Projects/Dojo/worshipsync/build/models/release/demucs-repo/htdemucs.yaml",
+      "sha256": "239c445d0b14454d541ad8bd9bb271c9e536d267e8a4625208744cbb2e7bb66c"
+    },
+    {
+      "bytes": 84141911,
+      "name": "demucs-955717e8",
+      "path": "/Users/njabulomnisi/Projects/Dojo/worshipsync/build/models/release/demucs-repo/955717e8-8726e21a.th",
+      "sha256": "8726e21a993978c7ba086d3872e7608d7d5bfca646ca4aca459ffda844faa8b4"
+    },
+    {
+      "bytes": 483546902,
+      "name": "whisperx-3e305921506d",
+      "path": "/Users/njabulomnisi/Projects/Dojo/worshipsync/build/models/release/huggingface/models--Systran--faster-whisper-small/blobs/3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671",
+      "sha256": "3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671"
+    },
+    {
+      "bytes": 2203239,
+      "name": "whisperx-7818adb6de9f",
+      "path": "/Users/njabulomnisi/Projects/Dojo/worshipsync/build/models/release/huggingface/models--Systran--faster-whisper-small/blobs/7818adb6de9fa3064d3ff81226fdd675be1f6344",
+      "sha256": "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab"
+    },
+    {
+      "bytes": 459861,
+      "name": "whisperx-c9074644d9d1",
+      "path": "/Users/njabulomnisi/Projects/Dojo/worshipsync/build/models/release/huggingface/models--Systran--faster-whisper-small/blobs/c9074644d9d1205686f16d411564729461324b75",
+      "sha256": "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913"
+    },
+    {
+      "bytes": 2370,
+      "name": "whisperx-e5047537059b",
+      "path": "/Users/njabulomnisi/Projects/Dojo/worshipsync/build/models/release/huggingface/models--Systran--faster-whisper-small/blobs/e5047537059bd8f182d9ca64c470201585015187",
+      "sha256": "b55496ac7940a7ae47d2c01eab40edfd8701feec1229d9cce3b40014383fb828"
+    },
+    {
+      "bytes": 377664473,
+      "name": "whisperx-align",
+      "path": "/Users/njabulomnisi/Projects/Dojo/worshipsync/build/models/release/torchaudio-checkpoints/wav2vec2_fairseq_base_ls960_asr_ls960.pth",
+      "sha256": "488fd4f16de84438ffc945334278c1b9fb9b7159a806c1080b16111a958c945d"
+    }
+  ],
+  "environment": {
+    "LYRICUE_DEMUCS_REPO": "/Users/njabulomnisi/Projects/Dojo/worshipsync/build/models/release/demucs-repo",
+    "LYRICUE_MODEL_CACHE_ONLY": "1",
+    "LYRICUE_WHISPERX_ALIGN_MODEL_DIR": "/Users/njabulomnisi/Projects/Dojo/worshipsync/build/models/release/torchaudio-checkpoints",
+    "LYRICUE_WHISPERX_DOWNLOAD_ROOT": "/Users/njabulomnisi/Projects/Dojo/worshipsync/build/models/release/huggingface"
+  }
+}

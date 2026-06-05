@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -89,7 +90,7 @@ def _run_demucs(decoded: DecodedAudio, model_name: str, *, model_repo: str | Pat
     device = _select_device(torch)
     try:
         repo_path = Path(model_repo) if model_repo is not None else None
-        model = get_model(model_name, repo=repo_path)
+        model = _load_demucs_model(get_model, model_name, repo_path)
         model.to(device)
         model.eval()
         mono = np.asarray(decoded.samples, dtype="float32")
@@ -120,7 +121,7 @@ def _run_demucs_cpu(
     model_repo: str | Path | None = None,
 ) -> Any:
     repo_path = Path(model_repo) if model_repo is not None else None
-    model = get_model(model_name, repo=repo_path)
+    model = _load_demucs_model(get_model, model_name, repo_path)
     model.to("cpu")
     model.eval()
     mono = np.asarray(decoded.samples, dtype="float32")
@@ -139,6 +140,21 @@ def _select_device(torch: Any) -> str:
     if getattr(torch.cuda, "is_available", lambda: False)():
         return "cuda"
     return "cpu"
+
+
+def _load_demucs_model(get_model: Any, model_name: str, repo_path: Path | None) -> Any:
+    if repo_path is None:
+        return get_model(model_name, repo=None)
+
+    previous = os.environ.get("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD")
+    os.environ["TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"] = "1"
+    try:
+        return get_model(model_name, repo=repo_path)
+    finally:
+        if previous is None:
+            os.environ.pop("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", None)
+        else:
+            os.environ["TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"] = previous
 
 
 def _looks_like_oom(err: RuntimeError) -> bool:

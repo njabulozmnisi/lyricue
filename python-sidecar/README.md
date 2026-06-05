@@ -45,6 +45,35 @@ Production learning can be forced to use local model caches instead of package-m
 - `params.options.whisperxAlignModelDir` or `LYRICUE_WHISPERX_ALIGN_MODEL_DIR` — WhisperX alignment model cache directory.
 - `params.options.modelCacheOnly` or `LYRICUE_MODEL_CACHE_ONLY=1` — require local cached model files and prevent WhisperX downloads.
 
+To stage a release-owned cache layout from the local ML caches:
+
+```bash
+cd python-sidecar
+.venv-ml/bin/python scripts/stage_release_models.py --output-root ../build/models/release
+```
+
+The script creates:
+
+- `build/models/release/demucs-repo` — Demucs local repo with `htdemucs.yaml` plus the referenced `.th` checkpoint.
+- `build/models/release/huggingface` — Faster Whisper Hugging Face cache root.
+- `build/models/release/torchaudio-checkpoints` — WhisperX English alignment checkpoint directory.
+- `build/models/release/manifest.json` — SHA256/size manifest plus the environment variables needed for cache-only validation.
+
+Run the production fixture against the staged cache with:
+
+```bash
+cd python-sidecar
+export LYRICUE_DEMUCS_REPO="../build/models/release/demucs-repo"
+export LYRICUE_WHISPERX_DOWNLOAD_ROOT="../build/models/release/huggingface"
+export LYRICUE_WHISPERX_ALIGN_MODEL_DIR="../build/models/release/torchaudio-checkpoints"
+export LYRICUE_MODEL_CACHE_ONLY=1
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+LYRICUE_RUN_ML_FIXTURE=1 .venv-ml/bin/pytest tests/test_learning_production_fixture.py -q
+```
+
+The staged model directory is intentionally build output and is not committed.
+
 ## Protocol
 
 JSON-RPC 2.0 over stdin (requests) / stdout (responses + notifications). stderr is reserved for logging.

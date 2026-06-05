@@ -7,8 +7,8 @@ This roadmap supersedes the stale 2026-05-16 handoff snapshot. It reflects curre
 LyriCue has a working sister-mode vertical slice: dual Electron windows, real SyncEngine, synthetic audio driver, operator control panel, karaoke output, local sidecar song-learning contracts, setlist/arrangement/translation/rehearsal/library surfaces, and a local quality gate. The current local test floor is:
 
 - TypeScript/Vitest: 703 tests passing.
-- Python sidecar: 79 tests passing, 1 skipped.
-- Python sidecar with optional ML dependencies on Python 3.11: 77 tests passing.
+- Python sidecar: 82 tests passing, 1 skipped.
+- Python sidecar with optional ML dependencies on Python 3.11: 82 tests passing, 1 skipped.
 - `svelte-check`: 0 errors / 0 warnings on the current UI slice.
 - Sister karaoke and operator renderer bundles build.
 - Gate A Electron smoke passes with `LC_SMOKE_TEST=1` against the real sister-mode dual-window app.
@@ -24,7 +24,7 @@ The project is not yet production-shippable for a multi-campus rollout because s
 | EP-02 OutputAdapter walking skeleton | Complete | 100% | Sister mode proven; fork adapter contract present | FreeShow vendor SDKs make fork runtime verification external |
 | EP-03 Timing map/storage | Complete | 100% | Atomic storage and migrations are in place | Crash-safe writes became a load-bearing invariant across later modules |
 | EP-04 Sidecar infra | Locally strong, packaging locally proven for macOS arm64 protocol smoke | 88% | JSON-RPC, controller, model manifest/download manager, subprocess smoke pass, Python 3.11 ML venv validated, PyInstaller darwin-arm64 binary smoke passed | First PyInstaller entry failed on package-relative imports; root `build:sidecar` also exposed a bare-`python` clean-env defect. Both are fixed. Full ML-runtime packaging and real model mirror remain release gates |
-| EP-05 Song learning | Production fixture gate passing, release offline proof pending | 82% | Deterministic path works; production stage contracts and progress are wired; Demucs/WhisperX packages install/import; public-domain opt-in fixture passes at 25/26 confident words; model loader cache hooks are wired | The first 30-second fixture clipped the final phrase and falsely failed the quality gate; extending the excerpt to 48 seconds fixed the local production fixture. Real model artifact layout still needs cache-only release proof |
+| EP-05 Song learning | Production fixture and cache-only model proof passing locally | 88% | Deterministic path works; production stage contracts and progress are wired; Demucs/WhisperX packages install/import; public-domain opt-in fixture passes at 25/26 confident words; staged release-owned model cache runs with `LYRICUE_MODEL_CACHE_ONLY=1` | The first 30-second fixture clipped the final phrase and falsely failed the quality gate. Demucs local-repo loading also failed under PyTorch 2.8 safe-load defaults until LyriCue scoped trusted local artifact loading |
 | EP-06 Karaoke renderer | Complete for sister-mode local use | 95% | Renderer, easing, next-section preview, perf harness pass | Visual QA mattered more than unit tests; tempo-adaptive easing arrived from operator feedback |
 | EP-07 Audio input/beat detection | Mostly complete | 85% | Synthetic and pure module tests pass | Physical microphone/loopback QA remains a hardware gate |
 | EP-08 VAD/STT correction | Partial | 45% | VAD and phrase matcher exist; SyncEngine accepts correction events | Whisper.cpp native addon is the main missing platform-specific dependency |
@@ -72,14 +72,16 @@ Completed local work:
 6. Added Demucs/WhisperX local-cache and cache-only hooks for release-owned offline model directories.
 7. Diagnosed the fixture failure as a clipped 30-second excerpt and replaced it with a 48-second excerpt from the same public-domain source.
 8. Re-ran the opt-in production fixture successfully: `1 passed`, with evidence at 25/26 confident words.
+9. Added a release model staging utility that builds a loader-compatible local cache layout for Demucs, Faster Whisper, and WhisperX alignment checkpoints.
+10. Fixed Demucs local-repo loading under PyTorch 2.8 safe-load defaults for trusted release-owned artifacts.
+11. Re-ran the production fixture with `LYRICUE_MODEL_CACHE_ONLY=1`, `HF_HUB_OFFLINE=1`, and `TRANSFORMERS_OFFLINE=1` against the staged model directory successfully.
 
 Remaining work:
 
-1. Provision a real model manifest and loader-compatible model artifact directories with SHA256 hashes.
-2. Run the production fixture with `LYRICUE_MODEL_CACHE_ONLY=1` against those release-owned model directories.
-3. Build the packaged sidecar from the Python 3.11 ML venv and smoke `learn_song` from the packaged executable.
-4. Run a real production-mode Learn Song pass through the operator UI.
-5. Capture QA evidence for timing accuracy, progress, cancellation, and fallback.
+1. Build the packaged sidecar from the Python 3.11 ML venv and smoke `learn_song` from the packaged executable.
+2. Run a real production-mode Learn Song pass through the operator UI.
+3. Capture QA evidence for timing accuracy, progress, cancellation, and fallback.
+4. Resolve or certify the torchcodec warning in the packaged ML runtime.
 
 ### Gate C — Multi-Campus Library/Publishing Certification
 
@@ -138,12 +140,10 @@ Work proceeds in this order:
 
 ## Immediate Queue
 
-1. Provision the real model manifest and loader-compatible model artifact directories with SHA256 hashes.
-2. Run the EP-05.8 production fixture with `LYRICUE_MODEL_CACHE_ONLY=1`.
-3. Build the release sidecar from the Python 3.11 ML venv and smoke `learn_song` from the packaged executable.
-4. Run a real production-mode Learn Song pass through the operator UI.
-5. Capture Gate B QA evidence for timing accuracy, progress, cancellation, and fallback.
-6. Keep Gate C/D/E items marked external-proof pending until the required credentials, signing assets, vendor SDKs, and hardware are available.
+1. Build the release sidecar from the Python 3.11 ML venv and smoke `learn_song` from the packaged executable.
+2. Run a real production-mode Learn Song pass through the operator UI.
+3. Capture Gate B QA evidence for timing accuracy, progress, cancellation, and fallback.
+4. Keep Gate C/D/E items marked external-proof pending until the required credentials, signing assets, vendor SDKs, and hardware are available.
 
 ## External Inputs Needed Before Final Production Sign-Off
 
