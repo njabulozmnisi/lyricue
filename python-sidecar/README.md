@@ -28,6 +28,15 @@ python -m lyricue_sidecar
 # {"jsonrpc": "2.0", "method": "ready", "params": {"version": "0.1.0", "phase": "ep17-rehearsal-mode", ...}}
 ```
 
+For production-learning validation on macOS arm64, use Python 3.11 for the ML venv. The regular development venv may run on newer Python versions, but the Demucs/WhisperX dependency stack is validated here against Python 3.11:
+
+```bash
+cd python-sidecar
+/opt/homebrew/bin/python3.11 -m venv .venv-ml
+.venv-ml/bin/pip install -e ".[dev,ml]"
+.venv-ml/bin/pytest -q
+```
+
 ## Protocol
 
 JSON-RPC 2.0 over stdin (requests) / stdout (responses + notifications). stderr is reserved for logging.

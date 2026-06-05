@@ -26,12 +26,15 @@ def test_sidecar_emits_ready_then_handles_ping():
     assert proc.stdin is not None
     assert proc.stdout is not None
 
-    # Write a ping request, then close stdin to signal EOF and let the loop exit cleanly.
-    proc.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {"trace": "ok"}}) + "\n")
-    proc.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 2, "method": "shutdown"}) + "\n")
-    proc.stdin.close()
+    request_body = "\n".join(
+        [
+            json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {"trace": "ok"}}),
+            json.dumps({"jsonrpc": "2.0", "id": 2, "method": "shutdown"}),
+            "",
+        ]
+    )
 
-    stdout_data, _stderr_data = proc.communicate(timeout=10)
+    stdout_data, _stderr_data = proc.communicate(input=request_body, timeout=10)
     exit_code = proc.returncode
 
     lines = [json.loads(line) for line in stdout_data.splitlines() if line.strip()]
@@ -77,36 +80,37 @@ def test_sidecar_learn_song_emits_progress_then_timing_map(tmp_path: Path):
     assert proc.stdin is not None
     assert proc.stdout is not None
 
-    proc.stdin.write(
-        json.dumps(
-            {
-                "jsonrpc": "2.0",
-                "id": "learn-1",
-                "method": "learn_song",
-                "params": {
-                    "jobId": "entry-learn",
-                    "showId": "entry-show",
-                    "audioPath": str(audio_path),
-                    "lyrics": [
-                        {
-                            "id": "verse-1",
-                            "type": "verse",
-                            "label": "Verse 1",
-                            "text": "Amazing grace\nHow sweet the sound",
-                            "lines": ["Amazing grace", "How sweet the sound"],
-                        }
-                    ],
-                    "options": {"language": "en", "detectSections": True},
-                },
-            }
-        )
-        + "\n"
+    request_body = "\n".join(
+        [
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "learn-1",
+                    "method": "learn_song",
+                    "params": {
+                        "jobId": "entry-learn",
+                        "showId": "entry-show",
+                        "audioPath": str(audio_path),
+                        "lyrics": [
+                            {
+                                "id": "verse-1",
+                                "type": "verse",
+                                "label": "Verse 1",
+                                "text": "Amazing grace\nHow sweet the sound",
+                                "lines": ["Amazing grace", "How sweet the sound"],
+                            }
+                        ],
+                        "options": {"language": "en", "detectSections": True},
+                    },
+                }
+            ),
+            json.dumps({"jsonrpc": "2.0", "id": "shutdown-1", "method": "shutdown"}),
+            "",
+        ]
     )
-    proc.stdin.write(json.dumps({"jsonrpc": "2.0", "id": "shutdown-1", "method": "shutdown"}) + "\n")
-    proc.stdin.close()
 
     try:
-        stdout_data, _stderr_data = proc.communicate(timeout=45)
+        stdout_data, _stderr_data = proc.communicate(input=request_body, timeout=45)
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.communicate(timeout=5)
@@ -186,13 +190,17 @@ def test_sidecar_ensure_models_downloads_from_file_mirror(tmp_path: Path):
             ],
         },
     }
-    proc.stdin.write(json.dumps(request) + "\n")
-    proc.stdin.write(json.dumps({"jsonrpc": "2.0", "id": "models-2", "method": "ensure_models", "params": request["params"]}) + "\n")
-    proc.stdin.write(json.dumps({"jsonrpc": "2.0", "id": "shutdown-1", "method": "shutdown"}) + "\n")
-    proc.stdin.close()
+    request_body = "\n".join(
+        [
+            json.dumps(request),
+            json.dumps({"jsonrpc": "2.0", "id": "models-2", "method": "ensure_models", "params": request["params"]}),
+            json.dumps({"jsonrpc": "2.0", "id": "shutdown-1", "method": "shutdown"}),
+            "",
+        ]
+    )
 
     try:
-        stdout_data, _stderr_data = proc.communicate(timeout=20)
+        stdout_data, _stderr_data = proc.communicate(input=request_body, timeout=20)
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.communicate(timeout=5)
