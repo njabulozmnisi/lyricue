@@ -1,0 +1,28 @@
+{
+  "status": "completed_with_quality_defect",
+  "binaryBytes": 313306786,
+  "readyMs": 117230,
+  "totalMs": 237636,
+  "invalidStdout": [],
+  "result": {
+    "stage": "timing_map_ready",
+    "wordCount": 26,
+    "confidentWords": 22,
+    "confidenceRatio": 0.8461538461538461,
+    "threshold": 0.85,
+    "bpm": 117,
+    "durationSeconds": 48.0
+  },
+  "packagingFixes": [
+    "Collected WhisperX submodules for dynamic ASR imports.",
+    "Copied torchcodec package metadata for Transformer lazy import checks.",
+    "Collected Pyannote package data for telemetry config.",
+    "Collected WhisperX package data for bundled VAD assets.",
+    "Collected Pyannote audio submodules for runtime segmentation imports.",
+    "Redirected WhisperX logger/stdout output to stderr during alignment so JSON-RPC stdout remains protocol-only."
+  ],
+  "remainingDefects": [
+    "Packaged fixture returns a TimingMap but fails the existing confidence quality gate by one word: 22/26 confident words, ratio 0.8461538461538461.",
+    "Packaged runtime still emits torchcodec/FFmpeg and torchaudio libsox warnings on stderr; current LyriCue path uses in-memory audio, but release packaging should certify or resolve them."
+  ]
+}

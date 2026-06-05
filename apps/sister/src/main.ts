@@ -1252,7 +1252,7 @@ function getSidecarController(): SidecarController {
                 : nodePythonResolver,
         pythonOverride: launch.mode === "source" && existsSync(venvPython) ? venvPython : null,
         moduleArgs: launch.mode === "bundled" ? [] : ["-m", "lyricue_sidecar"],
-        readyTimeoutMs: 30_000,
+        readyTimeoutMs: launch.mode === "bundled" ? 180_000 : 30_000,
         cwd: sidecarRoot,
         onStderrLine: (line) => log(`sidecar: ${line}`)
     }

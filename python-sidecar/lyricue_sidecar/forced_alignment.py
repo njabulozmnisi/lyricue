@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+import sys
+from contextlib import redirect_stdout
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -90,33 +93,35 @@ def _run_whisperx(
         ) from err
 
     try:
-        known_text = "\n".join(section.text for section in sections)
-        model = whisperx.load_model(
-            model_name,
-            device="cpu",
-            language=language,
-            download_root=download_root,
-            local_files_only=model_cache_only,
-        )
-        transcription = model.transcribe(vocals.samples, batch_size=8, language=language)
-        segments = transcription.get("segments", [])
-        if known_text.strip():
-            segments = _forced_segments(known_text, segments, vocals)
-        align_model, metadata = whisperx.load_align_model(
-            language_code=language,
-            device="cpu",
-            model_name=align_model_name,
-            model_dir=align_model_dir,
-            model_cache_only=model_cache_only,
-        )
-        aligned = whisperx.align(
-            segments,
-            align_model,
-            metadata,
-            vocals.samples,
-            "cpu",
-            return_char_alignments=False,
-        )
+        _route_whisperx_logs_to_stderr()
+        with redirect_stdout(sys.stderr):
+            known_text = "\n".join(section.text for section in sections)
+            model = whisperx.load_model(
+                model_name,
+                device="cpu",
+                language=language,
+                download_root=download_root,
+                local_files_only=model_cache_only,
+            )
+            transcription = model.transcribe(vocals.samples, batch_size=8, language=language)
+            segments = transcription.get("segments", [])
+            if known_text.strip():
+                segments = _forced_segments(known_text, segments, vocals)
+            align_model, metadata = whisperx.load_align_model(
+                language_code=language,
+                device="cpu",
+                model_name=align_model_name,
+                model_dir=align_model_dir,
+                model_cache_only=model_cache_only,
+            )
+            aligned = whisperx.align(
+                segments,
+                align_model,
+                metadata,
+                vocals.samples,
+                "cpu",
+                return_char_alignments=False,
+            )
     except JsonRpcError:
         raise
     except Exception as err:  # noqa: BLE001 - convert to structured protocol error.
@@ -204,7 +209,17 @@ def _alignment_error(message: str, *, reason: str, details: dict[str, Any] | Non
     return JsonRpcError(ERROR_ALIGNMENT_FAILED, message, data)
 
 
+def _route_whisperx_logs_to_stderr() -> None:
+    for handler in logging.getLogger("whisperx").handlers:
+        if isinstance(handler, logging.StreamHandler):
+            handler.setStream(sys.stderr)
+
+
 def _safe_error_message(err: BaseException) -> str:
     msg = str(err) or err.__class__.__name__
+    chained = err.__cause__ or err.__context__
+    if chained is not None:
+        chained_msg = str(chained) or chained.__class__.__name__
+        msg = f"{msg} | caused by {chained.__class__.__name__}: {chained_msg}"
     msg = msg.replace("\n", " ").replace("\r", " ")
     return msg[:240]
