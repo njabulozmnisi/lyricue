@@ -7,7 +7,7 @@ This roadmap supersedes the stale 2026-05-16 handoff snapshot. It reflects curre
 LyriCue has a working sister-mode vertical slice: dual Electron windows, real SyncEngine, synthetic audio driver, operator control panel, karaoke output, local sidecar song-learning contracts, setlist/arrangement/translation/rehearsal/library surfaces, and a local quality gate. The current local test floor is:
 
 - TypeScript/Vitest: 703 tests passing.
-- Python sidecar: 77 tests passing.
+- Python sidecar: 79 tests passing, 1 skipped.
 - Python sidecar with optional ML dependencies on Python 3.11: 77 tests passing.
 - `svelte-check`: 0 errors / 0 warnings on the current UI slice.
 - Sister karaoke and operator renderer bundles build.
@@ -23,7 +23,7 @@ The project is not yet production-shippable for a multi-campus rollout because s
 | EP-01 Foundation | Mostly complete, local CI added | 85% | Local development foundation works | Full 10-job installer matrix is blocked by platform runners/signing/vendor SDKs; stale shell `NODE_PATH` required the `env -i` wrapper everywhere |
 | EP-02 OutputAdapter walking skeleton | Complete | 100% | Sister mode proven; fork adapter contract present | FreeShow vendor SDKs make fork runtime verification external |
 | EP-03 Timing map/storage | Complete | 100% | Atomic storage and migrations are in place | Crash-safe writes became a load-bearing invariant across later modules |
-| EP-04 Sidecar infra | Locally strong, packaging incomplete | 82% | JSON-RPC, controller, model manifest/download manager, subprocess smoke pass, Python 3.11 ML venv validated | PyInstaller bundle and real model mirror remain external release gates |
+| EP-04 Sidecar infra | Locally strong, packaging locally proven for macOS arm64 protocol smoke | 88% | JSON-RPC, controller, model manifest/download manager, subprocess smoke pass, Python 3.11 ML venv validated, PyInstaller darwin-arm64 binary smoke passed | First PyInstaller entry failed on package-relative imports; root `build:sidecar` also exposed a bare-`python` clean-env defect. Both are fixed. Full ML-runtime packaging and real model mirror remain release gates |
 | EP-05 Song learning | Production fixture repeatable, quality gate failing | 76% | Deterministic path works; production stage contracts and progress are wired; Demucs/WhisperX packages install/import; public-domain opt-in fixture exists; model loader cache hooks are wired | Real fixture runs completed but only 18-19/26 words met confidence gate; real model artifact layout still needs cache-only release proof |
 | EP-06 Karaoke renderer | Complete for sister-mode local use | 95% | Renderer, easing, next-section preview, perf harness pass | Visual QA mattered more than unit tests; tempo-adaptive easing arrived from operator feedback |
 | EP-07 Audio input/beat detection | Mostly complete | 85% | Synthetic and pure module tests pass | Physical microphone/loopback QA remains a hardware gate |
@@ -96,12 +96,20 @@ Remaining work:
 
 Goal: signed installers for target platforms.
 
+Completed local work:
+
+1. Added a PyInstaller sidecar build script with a package-safe entry wrapper.
+2. Built and smoke-tested the local macOS arm64 `lyricue-sidecar` executable through JSON-RPC `ready`, `ping`, and `shutdown`.
+3. Wired the sister Electron package to copy `build/sidecar` into `extraResources`.
+4. Updated production sidecar path resolution to use Electron `process.resourcesPath`.
+5. Fixed the root `build:sidecar` script to use the project sidecar `.venv` interpreter under the clean environment wrapper.
+
 Remaining work:
 
-1. PyInstaller sidecar build script and per-platform binary smoke.
-2. Electron-builder `extraResources` wiring for sidecar binaries.
-3. GitHub Actions platform matrix and artifact retention.
-4. macOS signing/notarization and Windows signing.
+1. Build the packaged sidecar from the Python 3.11 ML venv and prove `learn_song` from the packaged executable.
+2. GitHub Actions platform matrix and artifact retention.
+3. macOS signing/notarization and Windows signing.
+4. Packaged sister-app smoke that proves Electron launches the bundled sidecar from `process.resourcesPath`.
 5. Fork-mode verification after FreeShow native vendor SDKs are installed.
 
 ### Gate E — Hardware/Live Worship Certification
@@ -133,9 +141,10 @@ Work proceeds in this order:
 1. Capture the failing EP-05.8 production TimingMap and compare it with manually prepared ground truth.
 2. Fix the production learning quality root cause or replace the fixture if the source recording is unsuitable.
 3. Provision the real model manifest and loader-compatible model artifact directories with SHA256 hashes.
-4. Run a real production-mode Learn Song pass through the operator UI.
-5. Capture Gate B QA evidence for timing accuracy, progress, cancellation, and fallback.
-6. Keep Gate C/D/E items marked external-proof pending until the required credentials, signing assets, vendor SDKs, and hardware are available.
+4. Build the release sidecar from the Python 3.11 ML venv and smoke `learn_song` from the packaged executable.
+5. Run a real production-mode Learn Song pass through the operator UI.
+6. Capture Gate B QA evidence for timing accuracy, progress, cancellation, and fallback.
+7. Keep Gate C/D/E items marked external-proof pending until the required credentials, signing assets, vendor SDKs, and hardware are available.
 
 ## External Inputs Needed Before Final Production Sign-Off
 

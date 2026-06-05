@@ -20,7 +20,7 @@
     "build:ui": "npm -w @lyricue/ui run build",
     "build:fork": "npm -w @lyricue/fork run build",
     "build:sister": "npm -w @lyricue/sister run build",
-    "build:sidecar": "cd python-sidecar && python -m build",
+    "build:sidecar": "cd python-sidecar && .venv/bin/python build.py",
     "dev:fork": "npm -w @lyricue/fork run dev",
     "dev:sister": "npm -w @lyricue/sister run dev",
     "lint": "npm run lint:ts && npm run lint:py",

@@ -44,6 +44,7 @@ describe("resolveSidecarLaunch — production mode", () => {
     it("returns the platform-specific binary path on macOS arm64", () => {
         const result = resolveSidecarLaunch({
             appPath: "/Applications/LyriCue.app/Contents/Resources/app",
+            resourcesPath: "/Applications/LyriCue.app/Contents/Resources",
             nodeEnv: "production",
             platform: "darwin",
             arch: "arm64",
@@ -52,7 +53,7 @@ describe("resolveSidecarLaunch — production mode", () => {
         expect(result.mode).toBe("bundled")
         if (result.mode === "bundled") {
             expect(result.binaryPath).toBe(
-                "/Applications/LyriCue.app/Contents/Resources/app/resources/sidecar/darwin-arm64/lyricue-sidecar"
+                "/Applications/LyriCue.app/Contents/Resources/sidecar/darwin-arm64/lyricue-sidecar"
             )
         }
     })
@@ -89,6 +90,7 @@ describe("resolveSidecarLaunch — production mode", () => {
         try {
             resolveSidecarLaunch({
                 appPath: "/Applications/LyriCue.app/Contents/Resources/app",
+                resourcesPath: "/Applications/LyriCue.app/Contents/Resources",
                 nodeEnv: "production",
                 platform: "darwin",
                 arch: "arm64",

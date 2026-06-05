@@ -17,6 +17,30 @@
         "test:renderer-perf": "node --experimental-strip-types scripts/karaoke-renderer-perf.ts",
         "test": "vitest run"
     },
+    "build": {
+        "appId": "app.lyricue.sister",
+        "productName": "LyriCue",
+        "directories": {
+            "output": "release"
+        },
+        "files": [
+            "dist-electron/**",
+            "public/**",
+            "package.json"
+        ],
+        "extraResources": [
+            {
+                "from": "../../build/sidecar",
+                "to": "sidecar",
+                "filter": [
+                    "**/*"
+                ]
+            }
+        ],
+        "asarUnpack": [
+            "**/sidecar/**"
+        ]
+    },
     "dependencies": {
         "@lyricue/core": "*",
         "@lyricue/ui": "*",

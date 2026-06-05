@@ -8,12 +8,13 @@
  *   1. NODE_ENV === "development" → source mode (python -m lyricue_sidecar against the
  *      `python-sidecar/` directory). The caller's PythonResolver picks the interpreter.
  *   2. NODE_ENV === "production" → bundled binary at
- *      `<appPath>/resources/sidecar/<platform>-<arch>/lyricue-sidecar`.
+ *      `<resourcesPath>/sidecar/<platform>-<arch>/lyricue-sidecar`.
  *      Verifies the file exists. Throws SIDECAR_BINARY_MISSING otherwise.
  *
  * The caller (Electron main) provides:
- *   - `appPath`: the directory containing the packaged app's resources. Electron's
- *      app.getAppPath() in production, or the repo root in development.
+ *   - `appPath`: the repo root in development, or Electron's app.getAppPath() in
+ *      production for diagnostics.
+ *   - `resourcesPath`: Electron's process.resourcesPath in production.
  *   - `nodeEnv`: process.env.NODE_ENV (or undefined). Anything other than "production"
  *      is treated as development.
  *
@@ -49,6 +50,8 @@ export type SidecarLaunch = SidecarLaunchSource | SidecarLaunchBundled
 export interface ResolveSidecarLaunchOptions {
     /** Production: Electron's app.getAppPath(). Development: the monorepo root. */
     appPath: string
+    /** Production: Electron's process.resourcesPath, where extraResources are copied. */
+    resourcesPath?: string
     /** process.env.NODE_ENV (or undefined). */
     nodeEnv: string | undefined
     /** Override the auto-detected platform — used by tests. Defaults to process.platform. */
@@ -75,7 +78,8 @@ export function resolveSidecarLaunch(opts: ResolveSidecarLaunchOptions): Sidecar
     const arch = opts.arch ?? process.arch
     const platformDir = `${platformKey(platform)}-${arch}`
     const binaryName = platform === "win32" ? "lyricue-sidecar.exe" : "lyricue-sidecar"
-    const binaryPath = join(opts.appPath, "resources", "sidecar", platformDir, binaryName)
+    const resourcesPath = opts.resourcesPath ?? join(opts.appPath, "resources")
+    const binaryPath = join(resourcesPath, "sidecar", platformDir, binaryName)
 
     if (!exists(binaryPath)) {
         throw new SidecarLifecycleError(

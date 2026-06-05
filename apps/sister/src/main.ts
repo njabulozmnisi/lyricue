@@ -69,6 +69,7 @@ import {
     loadModelManifestFile,
     nodePythonResolver,
     nodeSidecarSpawner,
+    resolveSidecarLaunch,
     type ModelManifest,
     type SidecarControllerOptions
 } from "@lyricue/core/sidecar"
@@ -1235,12 +1236,22 @@ function lyricsTextForTimingMap(map: TimingMap): string {
 
 function getSidecarController(): SidecarController {
     if (sidecarController) return sidecarController
-    const sidecarRoot = resolve(here, "..", "..", "..", "python-sidecar")
+    const repoRoot = resolve(here, "..", "..", "..")
+    const launch = resolveSidecarLaunch({
+        appPath: repoRoot,
+        resourcesPath: process.resourcesPath,
+        nodeEnv: process.env.NODE_ENV
+    })
+    const sidecarRoot = launch.mode === "source" ? launch.sourceDir : dirname(launch.binaryPath)
     const venvPython = resolve(sidecarRoot, ".venv", "bin", "python")
     const opts: SidecarControllerOptions = {
         spawn: nodeSidecarSpawner,
-        resolvePython: nodePythonResolver,
-        pythonOverride: existsSync(venvPython) ? venvPython : null,
+        resolvePython:
+            launch.mode === "bundled"
+                ? async () => ({ pythonPath: launch.binaryPath, version: "bundled" })
+                : nodePythonResolver,
+        pythonOverride: launch.mode === "source" && existsSync(venvPython) ? venvPython : null,
+        moduleArgs: launch.mode === "bundled" ? [] : ["-m", "lyricue_sidecar"],
         readyTimeoutMs: 30_000,
         cwd: sidecarRoot,
         onStderrLine: (line) => log(`sidecar: ${line}`)
