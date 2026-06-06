@@ -155,6 +155,47 @@ describe("library bundles", () => {
             })
         ).rejects.toThrow(/SHA256 mismatch/)
     })
+
+    it("aborts bundle downloads when timeoutMs elapses", async () => {
+        const fetchImpl = vi.fn(
+            async (_url: string | URL | Request, init?: RequestInit) =>
+                new Promise<Response>((_resolve, reject) => {
+                    init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")))
+                })
+        ) as typeof fetch
+
+        await expect(
+            downloadBundle(
+                {
+                    songId: "slow",
+                    title: "Slow",
+                    bundleVersion: "1",
+                    bundleUrl: "https://cdn.example/slow.lcbundle",
+                    sha256: "unused"
+                },
+                { fetchImpl, timeoutMs: 1 }
+            )
+        ).rejects.toThrow("Bundle download timed out after 1ms")
+        expect(fetchImpl).toHaveBeenCalledWith("https://cdn.example/slow.lcbundle", { signal: expect.any(AbortSignal) })
+    })
+
+    it("rejects invalid bundle download timeout configuration before fetching", async () => {
+        const fetchImpl = vi.fn() as unknown as typeof fetch
+
+        await expect(
+            downloadBundle(
+                {
+                    songId: "bad-timeout",
+                    title: "Bad Timeout",
+                    bundleVersion: "1",
+                    bundleUrl: "https://cdn.example/bad-timeout.lcbundle",
+                    sha256: "unused"
+                },
+                { fetchImpl, timeoutMs: 0 }
+            )
+        ).rejects.toThrow("Bundle download timeoutMs must be a positive finite number")
+        expect(fetchImpl).not.toHaveBeenCalled()
+    })
 })
 
 describe("library publishing", () => {
@@ -348,6 +389,40 @@ describe("library project plans", () => {
             campusId: "pretoria-north",
             diverged: false
         })
+    })
+
+    it("passes bundle download timeouts through central project plan loading", async () => {
+        const remoteSong = { songId: "song-remote", bundleVersion: "2.0.0" }
+        const remoteBundle = exportBundle({
+            songId: remoteSong.songId,
+            title: "Remote Song",
+            bundleVersion: remoteSong.bundleVersion,
+            show: { id: "show-remote", title: "Remote Song" },
+            timingMap: makeMap("show-remote")
+        })
+        const fetchImpl = vi.fn(async () => new Response(remoteBundle, { status: 200 })) as typeof fetch
+
+        await expect(
+            loadProjectPlanBundles(
+                { id: "sunday", name: "Sunday", songs: [remoteSong] },
+                {
+                    catalog: makeCatalog([
+                        {
+                            songId: remoteSong.songId,
+                            title: "Remote Song",
+                            bundleVersion: remoteSong.bundleVersion,
+                            bundleUrl: "https://cdn.example/song-remote.lcbundle",
+                            sha256: sha256(remoteBundle)
+                        }
+                    ]),
+                    fetchImpl,
+                    downloadTimeoutMs: 1000,
+                    saveTimingMap: async () => undefined,
+                    saveArrangements: async () => undefined
+                }
+            )
+        ).resolves.toMatchObject({ imported: [{ songId: "song-remote", bundleVersion: "2.0.0", showId: "show-remote", title: "Remote Song" }] })
+        expect(fetchImpl).toHaveBeenCalledWith("https://cdn.example/song-remote.lcbundle", { signal: expect.any(AbortSignal) })
     })
 
     it("fails closed when a project plan references a bundle missing from the catalog", async () => {

@@ -74,6 +74,7 @@ export interface LoadProjectPlanOptions {
     catalog: LibraryCatalog
     filter?: ProjectPlanFilter
     fetchImpl?: typeof fetch
+    downloadTimeoutMs?: number
     resolveLocalShow?(song: ProjectPlanSong): Promise<ProjectShowRef | null> | ProjectShowRef | null
     saveTimingMap(showId: string, map: TimingMap): Promise<void>
     saveArrangements(showId: string, arrangements: Arrangement[]): Promise<void>
@@ -236,7 +237,10 @@ export async function loadProjectPlanBundles(
         }
 
         const entry = findCatalogEntry(opts.catalog, song)
-        const bytes = await downloadBundle(entry, { ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}) })
+        const bytes = await downloadBundle(entry, {
+            ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
+            ...(opts.downloadTimeoutMs !== undefined ? { timeoutMs: opts.downloadTimeoutMs } : {})
+        })
         const result = await importBundle(bytes, {
             saveTimingMap: opts.saveTimingMap,
             saveArrangements: opts.saveArrangements,
@@ -268,18 +272,26 @@ export async function loadProjectPlanBundles(
 
 export async function downloadBundle(
     entry: LibraryCatalogEntry,
-    opts: { fetchImpl?: typeof fetch; onProgress?: (progress: { receivedBytes: number; totalBytes: number | null }) => void } = {}
+    opts: { fetchImpl?: typeof fetch; onProgress?: (progress: { receivedBytes: number; totalBytes: number | null }) => void; timeoutMs?: number } = {}
 ): Promise<Uint8Array> {
     const fetchImpl = opts.fetchImpl ?? fetch
-    const response = await fetchImpl(entry.bundleUrl)
-    if (!response.ok) throw new Error(`Bundle download failed: ${response.status} ${response.statusText}`.trim())
-    const bytes = new Uint8Array(await response.arrayBuffer())
-    opts.onProgress?.({ receivedBytes: bytes.byteLength, totalBytes: bytes.byteLength })
-    const actual = sha256(bytes)
-    if (actual !== entry.sha256) {
-        throw new Error(`Bundle SHA256 mismatch for ${entry.songId}: expected ${entry.sha256}, got ${actual}`)
+    const timeout = createBundleDownloadTimeout(opts.timeoutMs)
+    try {
+        const response = timeout ? await fetchImpl(entry.bundleUrl, { signal: timeout.signal }) : await fetchImpl(entry.bundleUrl)
+        if (!response.ok) throw new Error(`Bundle download failed: ${response.status} ${response.statusText}`.trim())
+        const bytes = new Uint8Array(await response.arrayBuffer())
+        opts.onProgress?.({ receivedBytes: bytes.byteLength, totalBytes: bytes.byteLength })
+        const actual = sha256(bytes)
+        if (actual !== entry.sha256) {
+            throw new Error(`Bundle SHA256 mismatch for ${entry.songId}: expected ${entry.sha256}, got ${actual}`)
+        }
+        return bytes
+    } catch (err) {
+        if (timeout?.timedOut) throw new Error(`Bundle download timed out after ${opts.timeoutMs}ms`)
+        throw err
+    } finally {
+        timeout?.dispose()
     }
-    return bytes
 }
 
 export function exportBundle(input: {
@@ -416,6 +428,22 @@ function findCatalogEntry(catalog: LibraryCatalog, song: ProjectPlanSong): Libra
 
 function projectSongKey(song: ProjectPlanSong): string {
     return `${song.songId}@${song.bundleVersion}`
+}
+
+function createBundleDownloadTimeout(timeoutMs: number | undefined): { signal: AbortSignal; timedOut: boolean; dispose(): void } | null {
+    if (timeoutMs === undefined) return null
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error("Bundle download timeoutMs must be a positive finite number")
+    const controller = new AbortController()
+    const timeout = {
+        signal: controller.signal,
+        timedOut: false,
+        dispose: () => clearTimeout(timer)
+    }
+    const timer = setTimeout(() => {
+        timeout.timedOut = true
+        controller.abort()
+    }, timeoutMs)
+    return timeout
 }
 
 async function fetchJson(fetchImpl: typeof fetch, url: string): Promise<unknown> {
