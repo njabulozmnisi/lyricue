@@ -95,8 +95,19 @@ export class LiveSttCorrectionController {
         })
         if (!decision) return { status: "no-correction", transcript: result.transcript }
 
-        this.#dispatch(decision.event)
-        this.#onDecision?.(decision)
+        try {
+            this.#dispatch(decision.event)
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err))
+            this.#onError?.(error)
+            return { status: "error", error }
+        }
+        try {
+            this.#onDecision?.(decision)
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err))
+            this.#onError?.(error)
+        }
         return { status: "corrected", transcript: result.transcript, decision }
     }
 }

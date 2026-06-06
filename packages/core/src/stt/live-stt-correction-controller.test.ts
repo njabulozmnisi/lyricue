@@ -40,6 +40,7 @@ function makeController(opts: {
     sttEnabled?: boolean
     transcribeThrows?: boolean
     dispatch?: (event: Extract<SyncEvent, { kind: "positionCorrection" }>) => void
+    onDecision?: ConstructorParameters<typeof LiveSttCorrectionController>[0]["onDecision"]
     onError?: (error: Error) => void
 } = {}): LiveSttCorrectionController {
     return new LiveSttCorrectionController({
@@ -52,6 +53,7 @@ function makeController(opts: {
         sttEnabled: opts.sttEnabled,
         getContext: () => ({ currentSlideIndex: 0, currentWordIndex: 2, currentRefMs: 1_000 }),
         dispatch: opts.dispatch ?? vi.fn(),
+        onDecision: opts.onDecision,
         onError: opts.onError,
         transcribe: async () => {
             if (opts.transcribeThrows) throw new Error("stt engine unavailable")
@@ -106,5 +108,38 @@ describe("LiveSttCorrectionController", () => {
         expect(result.status).toBe("error")
         expect(dispatch).not.toHaveBeenCalled()
         expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: "stt engine unavailable" }))
+    })
+
+    it("does not throw when position-correction dispatch fails", async () => {
+        const onError = vi.fn()
+        const controller = makeController({
+            dispatch: () => {
+                throw new Error("sync dispatch unavailable")
+            },
+            onError
+        })
+
+        const result = await tickWithAudio(controller)
+
+        expect(result.status).toBe("error")
+        expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: "sync dispatch unavailable" }))
+    })
+
+    it("does not throw when the decision observer fails after dispatch", async () => {
+        const dispatch = vi.fn()
+        const onError = vi.fn()
+        const controller = makeController({
+            dispatch,
+            onError,
+            onDecision: () => {
+                throw new Error("decision observer unavailable")
+            }
+        })
+
+        const result = await tickWithAudio(controller)
+
+        expect(result.status).toBe("corrected")
+        expect(dispatch).toHaveBeenCalledWith({ kind: "positionCorrection", targetRefMs: 3_000, wallTime: 1_000 })
+        expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: "decision observer unavailable" }))
     })
 })
