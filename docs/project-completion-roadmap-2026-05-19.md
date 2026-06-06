@@ -118,10 +118,11 @@ Completed local work:
 8. Fixed sister packaging metadata so Electron is a pinned dev dependency and electron-builder is explicit for release builds.
 9. Fixed packaged-host sidecar resolution to use `app.isPackaged` instead of assuming packaged Electron sets `NODE_ENV=production`.
 10. Added `npm -w @lyricue/sister run smoke:packaged` to capture packaged smoke stdout/stderr and a JSON summary artifact for release jobs.
+11. Added a manual release matrix skeleton for unsigned sister packages across macOS arm64, macOS Intel, Windows x64, Linux x64, and Linux arm64.
 
 Remaining work:
 
-1. GitHub Actions platform matrix and artifact retention.
+1. Run the manual release matrix on the hosted repository and retain unsigned artifacts.
 2. macOS signing/notarization and Windows signing.
 3. Fork-mode verification after FreeShow native vendor SDKs are installed.
 
@@ -152,7 +153,7 @@ Work proceeds in this order:
 ## Immediate Queue
 
 1. Keep Gate C/D/E items marked external-proof pending until the required credentials, signing assets, vendor SDKs, and hardware are available.
-2. Next local hardening target: prepare the release CI matrix skeleton without marking external signing/notarization complete.
+2. Next local hardening target: document the exact external sign-off checklist for Gate C publishing, Gate D signing, and Gate E hardware/live drills.
 
 ## External Inputs Needed Before Final Production Sign-Off
 
