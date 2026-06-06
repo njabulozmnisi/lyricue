@@ -2,6 +2,7 @@
     import type { InstallIdentity } from "@lyricue/core"
 
     interface PublishDialogPayload {
+        mode: "song" | "project"
         title: string
         tags: string[]
         attribution: string
@@ -11,9 +12,11 @@
 
     export let identity: InstallIdentity
     export let hasCredential = false
+    export let credentialTargets: { central?: boolean; campus?: boolean } | null = null
     export let initialTitle = ""
-    export let onPublish: (payload: PublishDialogPayload) => Promise<{ bundleUrl: string }>
+    export let onPublish: (payload: PublishDialogPayload) => Promise<{ bundleUrl?: string; projectUrl?: string }>
 
+    let mode: "song" | "project" = "song"
     let title = initialTitle
     let tagsText = ""
     let attribution = ""
@@ -21,20 +24,22 @@
     let anonymous = identity.user?.isAnonymous ?? true
     let status = ""
     let publishing = false
+    $: targetHasCredential = credentialTargets ? credentialTargets[target] === true : hasCredential
 
     async function publish(): Promise<void> {
-        if (!hasCredential || !title.trim()) return
+        if (!targetHasCredential || !title.trim()) return
         publishing = true
         status = ""
         try {
             const result = await onPublish({
+                mode,
                 title: title.trim(),
                 tags: tagsText.split(",").map((tag) => tag.trim()).filter(Boolean),
                 attribution: attribution.trim(),
                 target,
                 anonymous
             })
-            status = `Published: ${result.bundleUrl}`
+            status = `Published: ${result.projectUrl ?? result.bundleUrl ?? "complete"}`
         } catch (err) {
             status = (err as Error).message
         } finally {
@@ -45,6 +50,11 @@
 
 <section class="publish-dialog" aria-label="Publish to Library">
     <h2>Publish to Library</h2>
+    <fieldset>
+        <legend>Type</legend>
+        <label><input type="radio" bind:group={mode} value="song" /> Song</label>
+        <label><input type="radio" bind:group={mode} value="project" /> Project</label>
+    </fieldset>
     <label>
         Title
         <input aria-label="Publish title" bind:value={title} />
@@ -66,8 +76,8 @@
         <input type="checkbox" bind:checked={anonymous} />
         Publish anonymously
     </label>
-    {#if !hasCredential}<p class="error">No publish credential configured for this install.</p>{/if}
-    <button class="primary" disabled={!hasCredential || !title.trim() || publishing} on:click={publish}>
+    {#if !targetHasCredential}<p class="error">No publish credential configured for {target} publishing.</p>{/if}
+    <button class="primary" disabled={!targetHasCredential || !title.trim() || publishing} on:click={publish}>
         {publishing ? "Publishing..." : "Publish"}
     </button>
     {#if status}<p class="status">{status}</p>{/if}

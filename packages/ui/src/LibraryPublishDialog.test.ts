@@ -50,6 +50,7 @@ describe("LibraryPublishDialog", () => {
         await settle()
 
         expect(onPublish).toHaveBeenCalledWith({
+            mode: "song",
             title: "Song One",
             tags: ["fast", "opener"],
             attribution: "Central team",
@@ -57,6 +58,41 @@ describe("LibraryPublishDialog", () => {
             anonymous: true
         })
         expect(target.textContent).toContain("https://cdn.example/song.lcbundle")
+        cmp.$destroy()
+    })
+
+    it("supports project publish mode and gates credentials by selected target", async () => {
+        const onPublish = vi.fn(async () => ({ projectUrl: "https://cdn.example/projects/conference.json" }))
+        const cmp = new LibraryPublishDialog({
+            target,
+            props: {
+                identity,
+                hasCredential: true,
+                credentialTargets: { central: false, campus: true },
+                initialTitle: "Regional Conference",
+                onPublish
+            }
+        })
+
+        expect((target.querySelector("button.primary") as HTMLButtonElement).disabled).toBe(true)
+        const radios = Array.from(target.querySelectorAll('input[type="radio"]')) as HTMLInputElement[]
+        radios.find((radio) => radio.value === "project")!.click()
+        radios.find((radio) => radio.value === "campus")!.click()
+        await settle()
+        expect((target.querySelector("button.primary") as HTMLButtonElement).disabled).toBe(false)
+        ;(target.querySelector("button.primary") as HTMLButtonElement).click()
+        await settle()
+        await settle()
+
+        expect(onPublish).toHaveBeenCalledWith({
+            mode: "project",
+            title: "Regional Conference",
+            tags: [],
+            attribution: "",
+            target: "campus",
+            anonymous: true
+        })
+        expect(target.textContent).toContain("https://cdn.example/projects/conference.json")
         cmp.$destroy()
     })
 })

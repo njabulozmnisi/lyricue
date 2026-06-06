@@ -6,7 +6,7 @@ This roadmap supersedes the stale 2026-05-16 handoff snapshot. It reflects curre
 
 LyriCue has a working sister-mode vertical slice: dual Electron windows, real SyncEngine, synthetic audio driver, operator control panel, karaoke output, local sidecar song-learning contracts, setlist/arrangement/translation/rehearsal/library surfaces, and a local quality gate. The current local test floor is:
 
-- TypeScript/Vitest: 736 tests passing.
+- TypeScript/Vitest: 737 tests passing.
 - Python sidecar: 88 tests passing, 1 skipped.
 - Python sidecar with optional ML dependencies on Python 3.11: 88 tests passing, 1 skipped.
 - `svelte-check`: 0 errors / 0 warnings on the current UI slice.
@@ -34,7 +34,7 @@ The project is not yet production-shippable for a multi-campus rollout because s
 | EP-12 Setlist/continuous playback | Locally strong | 85% | Sync badges, jump-to-song, next-up, auto-advance, disk-backed active project state | Real FreeShow REST project ingestion remains an external integration layer |
 | EP-13 Library manager | Locally strong | 80% | ZIP `.lcbundle`, integrity, import/export, signing contracts tested | Original JSON-only bundle shape had to be replaced by ZIP |
 | EP-14 Library hosting | Locally strong, externally unverified | 70% | Worker, setup script, signing/trust, GitHub mirror logic exist | Real Cloudflare R2/KV/Worker + GitHub mirror credentials are required for production proof |
-| EP-15 Identity/publishing | Locally testable | 75% | Identity, publish credentials, safe-storage backend, publish dialog/browser exist | Secure storage wiring had a high-severity gap and was fixed locally |
+| EP-15 Identity/publishing | Locally testable | 80% | Identity, publish credentials, safe-storage backend, publish dialog/browser, project publish mode, and per-target credential gating exist | Secure storage wiring had a high-severity gap and was fixed locally; real packaged safe-storage and Worker credentials still need external proof |
 | EP-16 Project plans | Locally strong, external publish proof pending | 75% | Source picker, plan schema/storage, central/campus plan metadata, campus publish hook, and central plan bundle loading exist | Real Worker catalog update and two-install subscribe flow still require external deployment |
 | EP-17 Rehearsal mode | Locally strong | 85% | Capture, segmentation, summary, variants, review/promotion work, Electron smoke approval path | Physical microphone QA and real multi-song rehearsal capture remain hardware gates |
 | EP-18 Arrangement builder | Mostly complete | 80% | Drag/drop, parser, named arrangements, operator persistence work | Modal mounting and persistence were the real defects, not the pure arrangement logic |
