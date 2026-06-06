@@ -31,8 +31,12 @@
     "format:check": "prettier --config .prettierrc.yaml --check \"{apps,packages,infra}/**/*.{ts,tsx,svelte,json,md}\"",
     "test": "npm run test:ts && npm run test:py",
     "test:ts": "vitest run --workspace=vitest.workspace.ts",
-    "test:py": "cd python-sidecar && pytest",
+    "test:py": "cd python-sidecar && .venv/bin/pytest -q",
+    "test:py:ml": "cd python-sidecar && .venv-ml/bin/pytest -q",
+    "test:worker": "cd infra/publish-worker && vitest run --config vitest.config.ts",
+    "check:ui": "npm -w @lyricue/ui run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "verify:local": "npx tsc -b && npm run test:ts && npm run check:ui && npm run test:worker && npm run test:py && npm run test:py:ml && npm run build:sister",
     "demo:walking-skeleton:fork": "npm -w @lyricue/fork run demo:walking-skeleton",
     "demo:walking-skeleton:sister": "npm -w @lyricue/sister run demo:walking-skeleton"
   },

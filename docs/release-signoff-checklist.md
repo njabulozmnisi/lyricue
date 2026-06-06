@@ -13,6 +13,13 @@ This checklist defines the evidence required before LyriCue can be called produc
 - Gate D packaged sister-app smoke: passing locally on macOS arm64 with retained log/summary evidence.
 - Release matrix skeleton: present at `.github/workflows/release-matrix.yml`, manual-only, unsigned by default.
 
+Current local aggregate command:
+
+```bash
+env -i HOME="$HOME" PWD="$PWD" PATH="/opt/homebrew/opt/node@25/bin:$PWD/node_modules/.bin:/usr/bin:/bin" \
+  npm run verify:local
+```
+
 ## Gate B — Production ML Artifact Sign-Off
 
 Goal: every release artifact ships with known-good local model assets and the packaged sidecar can learn a real song offline.

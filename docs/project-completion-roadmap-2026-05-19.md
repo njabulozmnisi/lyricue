@@ -12,6 +12,7 @@ LyriCue has a working sister-mode vertical slice: dual Electron windows, real Sy
 - Python sidecar with optional ML dependencies on Python 3.11: 88 tests passing, 1 skipped.
 - `svelte-check`: 0 errors / 0 warnings on the current UI slice.
 - Sister karaoke and operator renderer bundles build.
+- `npm run verify:local` passes the aggregate local gate: TypeScript build/tests, UI diagnostics, Worker tests, both Python sidecar suites, and sister renderer builds.
 - Gate A Electron smoke passes with `LC_SMOKE_TEST=1` against the real sister-mode dual-window app.
 - Local Gate A close QA has no open critical/high walking-skeleton defects.
 
@@ -21,7 +22,7 @@ The project is not yet production-shippable for a multi-campus rollout because s
 
 | Epic | Current status | Completion | Local ship state | Unexpected things that popped |
 |---|---:|---:|---|---|
-| EP-01 Foundation | Mostly complete, local CI strengthened | 88% | Local development foundation works; hosted quality gate now covers TypeScript build/tests, Python sidecar tests, Svelte diagnostics, Worker tests, and sister renderer builds | Full 10-job installer matrix is blocked by platform runners/signing/vendor SDKs; stale shell `NODE_PATH` required the `env -i` wrapper everywhere; CI originally lagged the local gate by missing `svelte-check` and Worker tests |
+| EP-01 Foundation | Mostly complete, local CI strengthened | 90% | Local development foundation works; hosted quality gate now covers TypeScript build/tests, Python sidecar tests, Svelte diagnostics, Worker tests, and sister renderer builds; `npm run verify:local` reproduces the full local gate | Full 10-job installer matrix is blocked by platform runners/signing/vendor SDKs; stale shell `NODE_PATH` required the `env -i` wrapper everywhere; CI originally lagged the local gate by missing `svelte-check` and Worker tests; local verification previously relied on copied command sequences |
 | EP-02 OutputAdapter walking skeleton | Complete | 100% | Sister mode proven; fork adapter contract present | FreeShow vendor SDKs make fork runtime verification external |
 | EP-03 Timing map/storage | Complete | 100% | Atomic storage and migrations are in place | Crash-safe writes became a load-bearing invariant across later modules |
 | EP-04 Sidecar infra | Locally strong, packaging locally proven for macOS arm64 protocol + packaged host smoke | 90% | JSON-RPC, controller, model manifest/download manager, subprocess smoke pass, Python 3.11 ML venv validated, PyInstaller darwin-arm64 binary smoke passed, packaged sister app launches the bundled sidecar from `process.resourcesPath` | First PyInstaller entry failed on package-relative imports; root `build:sidecar` exposed a bare-`python` clean-env defect. Packaged Electron also did not set `NODE_ENV=production`, so sidecar resolution had to key off `app.isPackaged`. Full platform packaging and real model mirror remain release gates |
