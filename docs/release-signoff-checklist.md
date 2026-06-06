@@ -4,7 +4,7 @@ This checklist defines the evidence required before LyriCue can be called produc
 
 ## Current Local Baseline
 
-- TypeScript/Vitest: 716 tests passing.
+- TypeScript/Vitest: 765 tests passing.
 - Python sidecar: 88 passing, 1 skipped in the regular venv.
 - Python sidecar with ML dependencies: 88 passing, 1 skipped, 1 known third-party `librosa` deprecation warning.
 - `svelte-check`: 0 errors, 0 warnings.
