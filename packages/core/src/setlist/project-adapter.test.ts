@@ -42,6 +42,25 @@ describe("project plans", () => {
         })
     })
 
+    it("converts campus project plans into linked local projects with campus source metadata", () => {
+        const project = projectFromPlan(
+            {
+                id: "conference",
+                name: "Regional Conference",
+                songs: [{ songId: "song-1", bundleVersion: "1.0.0" }]
+            },
+            (song) => ({ id: `show-${song.songId}`, title: "Song One" }),
+            { sourceKind: "campus", campusId: "pretoria-north" }
+        )
+
+        expect(project.source).toEqual({
+            kind: "campus",
+            planId: "conference",
+            campusId: "pretoria-north",
+            diverged: false
+        })
+    })
+
     it("tracks central divergence and can fork back to fully local", () => {
         const linked = projectFromPlan({ id: "p1", name: "Plan", songs: [] }, () => ({ id: "s1", title: "Song" }))
         expect(markProjectDiverged(linked).source).toMatchObject({ kind: "central", diverged: true })

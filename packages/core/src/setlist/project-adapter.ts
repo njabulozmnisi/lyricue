@@ -97,13 +97,20 @@ export function createRestProjectAdapter(opts: RestProjectAdapterOptions): Proje
 
 export function projectFromPlan(
     plan: ProjectPlan,
-    resolveShow: (song: ProjectPlanSong) => ProjectShowRef
+    resolveShow: (song: ProjectPlanSong) => ProjectShowRef,
+    opts: { sourceKind?: "central" | "campus"; campusId?: string } = {}
 ): Project {
+    const sourceKind = opts.sourceKind ?? "central"
     return {
         id: plan.id,
         title: plan.name,
         ...(plan.date ? { date: plan.date } : {}),
-        source: { kind: "central", planId: plan.id, diverged: false },
+        source: {
+            kind: sourceKind,
+            planId: plan.id,
+            ...(sourceKind === "campus" && opts.campusId ? { campusId: opts.campusId } : {}),
+            diverged: false
+        },
         shows: plan.songs.map((song) => ({
             ...resolveShow(song),
             songId: song.songId,

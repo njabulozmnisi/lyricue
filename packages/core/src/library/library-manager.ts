@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 import { inflateRawSync } from "node:zlib"
-import type { ProjectPlan } from "../setlist/project-adapter.js"
+import { projectFromPlan, type Project, type ProjectPlan, type ProjectPlanSong, type ProjectShowRef } from "../setlist/project-adapter.js"
 import type { TimingMap, Arrangement } from "../types/timing-map.js"
 import { validateArrangements, validateTimingMap } from "../types/timing-map-schema.js"
 import { SCHEMA_LYRICUE_BUNDLE_V1, SCHEMA_LYRICUE_CATALOG_V1 } from "../types/schema-versions.js"
@@ -68,6 +68,22 @@ export interface PublishBundleResult {
 export interface ProjectPlanFilter {
     scope?: "central" | "campus"
     campusId?: string
+}
+
+export interface LoadProjectPlanOptions {
+    catalog: LibraryCatalog
+    filter?: ProjectPlanFilter
+    fetchImpl?: typeof fetch
+    resolveLocalShow?(song: ProjectPlanSong): Promise<ProjectShowRef | null> | ProjectShowRef | null
+    saveTimingMap(showId: string, map: TimingMap): Promise<void>
+    saveArrangements(showId: string, arrangements: Arrangement[]): Promise<void>
+    createShow?(show: unknown): Promise<void>
+}
+
+export interface LoadProjectPlanResult {
+    project: Project
+    imported: Array<{ songId: string; bundleVersion: string; showId: string; title: string }>
+    skipped: ProjectShowRef[]
 }
 
 export async function fetchCatalog(
@@ -200,6 +216,54 @@ export async function publishProjectPlan(
     const body = (await response.json()) as { ok: true; projectId: string; projectUrl: string } | { message?: string }
     if (!response.ok) throw new Error("message" in body && body.message ? body.message : `Project publish failed: ${response.status}`)
     return body as { ok: true; projectId: string; projectUrl: string }
+}
+
+export async function loadProjectPlanBundles(
+    plan: ProjectPlan,
+    opts: LoadProjectPlanOptions
+): Promise<LoadProjectPlanResult> {
+    const resolvedShows = new Map<string, ProjectShowRef>()
+    const imported: LoadProjectPlanResult["imported"] = []
+    const skipped: ProjectShowRef[] = []
+
+    for (const song of plan.songs) {
+        const key = projectSongKey(song)
+        const local = await opts.resolveLocalShow?.(song)
+        if (local) {
+            resolvedShows.set(key, local)
+            skipped.push(local)
+            continue
+        }
+
+        const entry = findCatalogEntry(opts.catalog, song)
+        const bytes = await downloadBundle(entry, { ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}) })
+        const result = await importBundle(bytes, {
+            saveTimingMap: opts.saveTimingMap,
+            saveArrangements: opts.saveArrangements,
+            ...(opts.createShow ? { createShow: opts.createShow } : {})
+        })
+        const show = {
+            id: result.showId,
+            title: result.title,
+            songId: song.songId,
+            bundleVersion: song.bundleVersion,
+            ...(song.arrangementId ? { arrangementId: song.arrangementId } : {})
+        }
+        resolvedShows.set(key, show)
+        imported.push({ songId: song.songId, bundleVersion: song.bundleVersion, showId: result.showId, title: result.title })
+    }
+
+    const project = projectFromPlan(
+        plan,
+        (song) => {
+            const show = resolvedShows.get(projectSongKey(song))
+            if (!show) throw new Error(`Project plan song '${song.songId}' was not resolved`)
+            return show
+        },
+        { sourceKind: opts.filter?.scope ?? "central", ...(opts.filter?.scope === "campus" && opts.filter.campusId ? { campusId: opts.filter.campusId } : {}) }
+    )
+
+    return { project, imported, skipped }
 }
 
 export async function downloadBundle(
@@ -342,6 +406,16 @@ function validateProjectPlan(input: unknown): ProjectPlan {
         }
     }
     return plan
+}
+
+function findCatalogEntry(catalog: LibraryCatalog, song: ProjectPlanSong): LibraryCatalogEntry {
+    const entry = catalog.songs.find((candidate) => candidate.songId === song.songId && candidate.bundleVersion === song.bundleVersion)
+    if (!entry) throw new Error(`Catalog does not contain ${song.songId}@${song.bundleVersion}`)
+    return entry
+}
+
+function projectSongKey(song: ProjectPlanSong): string {
+    return `${song.songId}@${song.bundleVersion}`
 }
 
 async function fetchJson(fetchImpl: typeof fetch, url: string): Promise<unknown> {

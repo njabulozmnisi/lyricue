@@ -9,6 +9,7 @@ import {
     fetchCatalog,
     importBundle,
     fetchProject,
+    loadProjectPlanBundles,
     listProjects,
     publishBundle,
     publishProjectPlan,
@@ -251,5 +252,114 @@ describe("library project plans", () => {
                 }
             )
         ).resolves.toMatchObject({ ok: true, projectId: "conference" })
+    })
+
+    it("loads a central project plan by skipping local bundles and importing missing bundles", async () => {
+        const localSong = { songId: "song-local", bundleVersion: "1.0.0" }
+        const remoteSong = { songId: "song-remote", bundleVersion: "2.0.0", arrangementId: "main" }
+        const remoteBundle = exportBundle({
+            songId: remoteSong.songId,
+            title: "Remote Song",
+            bundleVersion: remoteSong.bundleVersion,
+            show: { id: "show-remote", title: "Remote Song" },
+            timingMap: makeMap("show-remote"),
+            arrangements: [
+                {
+                    id: "main",
+                    name: "Main",
+                    showId: "show-remote",
+                    isDefault: true,
+                    sequence: [{ sectionId: "verse1" }],
+                    createdAt: "2026-06-06T00:00:00.000Z",
+                    updatedAt: "2026-06-06T00:00:00.000Z"
+                }
+            ]
+        })
+        const catalog = makeCatalog([
+            {
+                songId: remoteSong.songId,
+                title: "Remote Song",
+                bundleVersion: remoteSong.bundleVersion,
+                bundleUrl: "https://cdn.example/song-remote.lcbundle",
+                sha256: sha256(remoteBundle)
+            }
+        ])
+        const fetchImpl = vi.fn(async () => new Response(remoteBundle, { status: 200 })) as typeof fetch
+        const savedTiming: string[] = []
+        const savedArrangements: string[] = []
+        const createdShows: unknown[] = []
+
+        const result = await loadProjectPlanBundles(
+            {
+                id: "sunday",
+                name: "Sunday",
+                date: "2026-06-07",
+                songs: [localSong, remoteSong]
+            },
+            {
+                catalog,
+                fetchImpl,
+                resolveLocalShow: (song) => (song.songId === localSong.songId ? { id: "show-local", title: "Local Song" } : null),
+                saveTimingMap: async (showId) => {
+                    savedTiming.push(showId)
+                },
+                saveArrangements: async (showId) => {
+                    savedArrangements.push(showId)
+                },
+                createShow: async (show) => {
+                    createdShows.push(show)
+                }
+            }
+        )
+
+        expect(fetchImpl).toHaveBeenCalledWith("https://cdn.example/song-remote.lcbundle")
+        expect(savedTiming).toEqual(["show-remote"])
+        expect(savedArrangements).toEqual(["show-remote"])
+        expect(createdShows).toEqual([{ id: "show-remote", title: "Remote Song" }])
+        expect(result.imported).toEqual([{ songId: "song-remote", bundleVersion: "2.0.0", showId: "show-remote", title: "Remote Song" }])
+        expect(result.skipped).toEqual([{ id: "show-local", title: "Local Song" }])
+        expect(result.project).toEqual({
+            id: "sunday",
+            title: "Sunday",
+            date: "2026-06-07",
+            source: { kind: "central", planId: "sunday", diverged: false },
+            shows: [
+                { id: "show-local", title: "Local Song", songId: "song-local", bundleVersion: "1.0.0" },
+                { id: "show-remote", title: "Remote Song", songId: "song-remote", bundleVersion: "2.0.0", arrangementId: "main" }
+            ]
+        })
+    })
+
+    it("loads campus plans with campus source metadata", async () => {
+        const result = await loadProjectPlanBundles(
+            { id: "conference", name: "Conference", songs: [{ songId: "song-1", bundleVersion: "1.0.0" }] },
+            {
+                catalog: makeCatalog([]),
+                filter: { scope: "campus", campusId: "pretoria-north" },
+                resolveLocalShow: () => ({ id: "show-1", title: "Song One" }),
+                saveTimingMap: async () => undefined,
+                saveArrangements: async () => undefined
+            }
+        )
+
+        expect(result.project.source).toEqual({
+            kind: "campus",
+            planId: "conference",
+            campusId: "pretoria-north",
+            diverged: false
+        })
+    })
+
+    it("fails closed when a project plan references a bundle missing from the catalog", async () => {
+        await expect(
+            loadProjectPlanBundles(
+                { id: "sunday", name: "Sunday", songs: [{ songId: "missing", bundleVersion: "1.0.0" }] },
+                {
+                    catalog: makeCatalog([]),
+                    saveTimingMap: async () => undefined,
+                    saveArrangements: async () => undefined
+                }
+            )
+        ).rejects.toThrow("Catalog does not contain missing@1.0.0")
     })
 })
