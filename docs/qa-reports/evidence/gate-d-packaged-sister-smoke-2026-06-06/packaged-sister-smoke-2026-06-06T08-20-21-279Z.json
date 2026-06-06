@@ -1,0 +1,17 @@
+{
+  "status": "pass",
+  "smokePassed": true,
+  "smokeFailures": [],
+  "packagedAppLoaded": true,
+  "operatorPersistencePassed": true,
+  "sidecarStarted": true,
+  "segmentationReady": true,
+  "capturedApproved": true,
+  "sourcePythonFallback": false,
+  "appExecutable": "/Users/njabulomnisi/Projects/Dojo/worshipsync/apps/sister/release/mac-arm64/LyriCue.app/Contents/MacOS/LyriCue",
+  "logPath": "/Users/njabulomnisi/Projects/Dojo/worshipsync/docs/qa-reports/evidence/gate-d-packaged-sister-smoke-2026-06-06/packaged-sister-smoke-2026-06-06T08-20-21-279Z.log",
+  "exitCode": 0,
+  "signal": null,
+  "timedOut": false,
+  "timeoutMs": 300000
+}

@@ -14,6 +14,7 @@
         "build": "npm run build:main && npm run build:preload && npm run build:renderer && npm run build:operator",
         "dev": "echo 'sister-mode dev runner not yet wired (post-MVP polish)' && exit 0",
         "demo:walking-skeleton": "node --experimental-strip-types scripts/demo.ts",
+        "smoke:packaged": "node --experimental-strip-types scripts/smoke-packaged-sister.ts",
         "test:renderer-perf": "node --experimental-strip-types scripts/karaoke-renderer-perf.ts",
         "test": "vitest run"
     },

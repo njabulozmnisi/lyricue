@@ -15,6 +15,8 @@ Packaged sister-app smoke passes locally after fixing one **HIGH** packaged-runt
 - Package command: `cd apps/sister && npx -p electron-builder@26.8.1 electron-builder --dir --mac`.
 - Packaged app: `apps/sister/release/mac-arm64/LyriCue.app/Contents/MacOS/LyriCue`.
 - Sidecar resource check: `apps/sister/release/mac-arm64/LyriCue.app/Contents/Resources/sidecar/darwin-arm64/lyricue-sidecar`, executable, 306 MB.
+- Scripted smoke command: `npm -w @lyricue/sister run smoke:packaged`.
+- Retained evidence: `docs/qa-reports/evidence/gate-d-packaged-sister-smoke-2026-06-06/packaged-sister-smoke-2026-06-06T08-20-21-279Z.json` and matching `.log`.
 - Persona: local operator via packaged Electron operator window.
 
 ## Test cases executed
@@ -26,6 +28,7 @@ Packaged sister-app smoke passes locally after fixing one **HIGH** packaged-runt
 | GD-SIS-03 | Packaged smoke harness | Release operator | Smoke harness completes without smoke failures | `[smoke] complete: pass` | Pass |
 | GD-SIS-04 | Bundled sidecar boundary | Release operator | Rehearsal segmentation launches bundled sidecar, not source Python | Sidecar stderr logged `server loop started; 7 handlers registered`; segmentation returned `stage: "segments_ready"` | Pass |
 | GD-SIS-05 | Operator persistence inside package | Release operator | Arrangement and translation commands persist and reload map | `operator persistence exercise result=persisted` | Pass |
+| GD-SIS-06 | Release artifact capture | Release operator | Packaged smoke writes durable stdout/stderr log and parseable summary | JSON summary reports `status: "pass"`, `sidecarStarted: true`, `segmentationReady: true`, `capturedApproved: true`, `sourcePythonFallback: false` | Pass |
 
 ## Defects surfaced + fixed
 
@@ -75,7 +78,7 @@ Packaged sister-app smoke passes locally after fixing one **HIGH** packaged-runt
 ## Recommendations before production shipping
 
 1. **HIGH:** Add packaged sister-app smoke to CI/release jobs on every target platform after signing assets are available.
-2. **MEDIUM:** Capture packaged smoke stdout/stderr to a timestamped artifact during release packaging so sidecar launch evidence is preserved without overwriting legacy screenshot evidence.
+2. **MEDIUM:** Wire `npm -w @lyricue/sister run smoke:packaged` into release CI once signed platform artifacts are produced.
 3. **MEDIUM:** Revisit onefile sidecar startup time before production rollout; local packaged smoke stayed stable, but startup took roughly two minutes before `server loop started`.
 
 ## Final verdict

@@ -6,7 +6,7 @@ This roadmap supersedes the stale 2026-05-16 handoff snapshot. It reflects curre
 
 LyriCue has a working sister-mode vertical slice: dual Electron windows, real SyncEngine, synthetic audio driver, operator control panel, karaoke output, local sidecar song-learning contracts, setlist/arrangement/translation/rehearsal/library surfaces, and a local quality gate. The current local test floor is:
 
-- TypeScript/Vitest: 713 tests passing.
+- TypeScript/Vitest: 716 tests passing.
 - Python sidecar: 88 tests passing, 1 skipped.
 - Python sidecar with optional ML dependencies on Python 3.11: 88 tests passing, 1 skipped.
 - `svelte-check`: 0 errors / 0 warnings on the current UI slice.
@@ -117,6 +117,7 @@ Completed local work:
 7. Built a local macOS arm64 sister `.app` directory package and proved the packaged host launches the bundled sidecar from `process.resourcesPath` during rehearsal segmentation.
 8. Fixed sister packaging metadata so Electron is a pinned dev dependency and electron-builder is explicit for release builds.
 9. Fixed packaged-host sidecar resolution to use `app.isPackaged` instead of assuming packaged Electron sets `NODE_ENV=production`.
+10. Added `npm -w @lyricue/sister run smoke:packaged` to capture packaged smoke stdout/stderr and a JSON summary artifact for release jobs.
 
 Remaining work:
 
@@ -151,7 +152,7 @@ Work proceeds in this order:
 ## Immediate Queue
 
 1. Keep Gate C/D/E items marked external-proof pending until the required credentials, signing assets, vendor SDKs, and hardware are available.
-2. Next local hardening target: add release-job capture for packaged smoke stdout/stderr so bundled-sidecar evidence is retained as a build artifact.
+2. Next local hardening target: prepare the release CI matrix skeleton without marking external signing/notarization complete.
 
 ## External Inputs Needed Before Final Production Sign-Off
 
