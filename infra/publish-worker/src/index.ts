@@ -78,7 +78,7 @@ async function publishProject(request: Request, env: Env): Promise<Response> {
     const { token, credential } = await requireCredential(request, env)
     await enforceRateLimit(token, env)
     const plan = validateProjectPlan(await request.json())
-    const target = request.headers.get("X-LC-Target") ?? "central"
+    const target = readPublishTarget(request)
     if (target === "central" && credential.role !== "central") {
         throw new HttpError(403, "Only central credentials can publish central project plans.")
     }
@@ -86,6 +86,14 @@ async function publishProject(request: Request, env: Env): Promise<Response> {
     const key = `projects/${scope}/${plan.id}.json`
     await putLibraryObject(env, key, JSON.stringify(plan, null, 2), "application/json", `publish-project(${plan.id}): by ${credential.campusId}`)
     await regenerateProjectIndex(env, scope)
+    await appendPublishLog(env, {
+        at: new Date().toISOString(),
+        projectId: plan.id,
+        campusId: credential.campusId,
+        keyId: credential.keyId ?? null,
+        target,
+        key
+    })
     return json({ ok: true, projectId: plan.id, projectUrl: publicUrl(env, key) })
 }
 
@@ -102,7 +110,7 @@ async function publish(request: Request, env: Env): Promise<Response> {
         throw new HttpError(400, "Bundle manifest must include songId, title, and bundleVersion.")
     }
 
-    const target = request.headers.get("X-LC-Target") ?? "central"
+    const target = readPublishTarget(request)
     if (target === "central" && credential.role !== "central") {
         throw new HttpError(403, "Only central credentials can publish to the central library.")
     }
@@ -191,6 +199,12 @@ async function enforceRateLimit(token: string, env: Env): Promise<void> {
     const count = Number.parseInt((await env.RATE_LIMITS.get(key)) ?? "0", 10)
     if (count >= limit) throw new HttpError(429, "Publish credential exceeded the hourly write limit.")
     await env.RATE_LIMITS.put(key, String(count + 1), { expirationTtl: 7200 })
+}
+
+function readPublishTarget(request: Request): "central" | "campus" {
+    const target = request.headers.get("X-LC-Target") ?? "central"
+    if (target !== "central" && target !== "campus") throw new HttpError(400, "X-LC-Target must be 'central' or 'campus'.")
+    return target
 }
 
 async function putLibraryObject(

@@ -259,5 +259,23 @@ describe("publish worker", () => {
         const index = JSON.parse(new TextDecoder().decode(env.objects.get("projects/campuses/central/index.json")!))
         expect(index.projects).toHaveLength(1)
         expect(index.projects[0]).toMatchObject({ id: "regional-conference", name: "Regional Conference" })
+        const log = new TextDecoder().decode(env.objects.get("meta/publish-log.jsonl")!)
+        expect(log).toContain("\"projectId\":\"regional-conference\"")
+        expect(log).toContain("\"target\":\"campus\"")
+    })
+
+    it("rejects unsupported publish targets", async () => {
+        const env = makeEnv()
+        const response = await worker.fetch(
+            new Request("https://worker.test/publish/project", {
+                method: "PUT",
+                headers: { "X-LC-Credential": "central-token", "X-LC-Target": "region" },
+                body: JSON.stringify({ id: "regional-conference", name: "Regional Conference", songs: [] })
+            }),
+            env
+        )
+
+        expect(response.status).toBe(400)
+        await expect(response.json()).resolves.toMatchObject({ message: "X-LC-Target must be 'central' or 'campus'." })
     })
 })
