@@ -126,7 +126,7 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
         ready = wait_for_message(stdout, invalid_stdout, args.ready_timeout_ms, started, lambda msg: msg.get("method") == "ready")
         ready_ms = elapsed_ms(started)
         if ready is None:
-            return finish(proc, started, ready_ms, invalid_stdout, progress_stages, None, "ready-timeout", "Timed out waiting for ready notification.")
+            return finish(proc, started, ready_ms, invalid_stdout, progress_stages, stderr_lines, None, "ready-timeout", "Timed out waiting for ready notification.")
 
         request_id = 1
         write_request(
@@ -160,7 +160,7 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
         if response is None:
             error = "Timed out waiting for learn_song response."
 
-        return finish(proc, started, ready_ms, invalid_stdout, progress_stages, response, "request-timeout" if error else None, error, args.min_confidence_ratio)
+        return finish(proc, started, ready_ms, invalid_stdout, progress_stages, stderr_lines, response, "request-timeout" if error else None, error, args.min_confidence_ratio)
     finally:
         if proc.poll() is None:
             terminate_process(proc)
@@ -232,6 +232,7 @@ def finish(
     ready_ms: int | None,
     invalid_stdout: list[str],
     progress_stages: list[str],
+    stderr_lines: list[str],
     response: dict[str, Any] | None,
     failure_code: str | None,
     error: str | None,
@@ -274,6 +275,8 @@ def finish(
         "confidentWordCount": len(confident_words),
         "confidenceRatio": confidence_ratio,
         "schema": timing_map_schema(timing_map),
+        "stderrLineCount": len(stderr_lines),
+        "nativeWarnings": native_warnings(stderr_lines),
         "exitCode": proc.poll(),
     }
 
@@ -296,6 +299,11 @@ def timing_map_schema(timing_map: Any) -> str | None:
     return timing_map.get("$schema") if isinstance(timing_map, dict) and isinstance(timing_map.get("$schema"), str) else None
 
 
+def native_warnings(stderr_lines: list[str]) -> list[str]:
+    needles = ("torchcodec", "libtorchcodec", "libavutil", "libtorchaudio_sox", "_torchaudio_sox", "libsox")
+    return [line for line in stderr_lines if any(needle in line for needle in needles)]
+
+
 def failure(code: str, message: str) -> dict[str, Any]:
     return {
         "status": "fail",
@@ -311,6 +319,8 @@ def failure(code: str, message: str) -> dict[str, Any]:
         "confidentWordCount": 0,
         "confidenceRatio": 0.0,
         "schema": None,
+        "stderrLineCount": 0,
+        "nativeWarnings": [],
         "exitCode": None,
     }
 

@@ -3,8 +3,8 @@
   "failureCode": null,
   "error": null,
   "responseError": null,
-  "readyMs": 115935,
-  "totalMs": 229603,
+  "readyMs": 118540,
+  "totalMs": 224819,
   "invalidStdout": [],
   "progressStages": [
     "decode",
@@ -20,5 +20,19 @@
   "confidentWordCount": 24,
   "confidenceRatio": 0.9230769230769231,
   "schema": "lyricue-timing-v1",
+  "stderrLineCount": 35,
+  "nativeWarnings": [
+    "torchcodec is not installed correctly so built-in audio decoding will fail. Solutions are:",
+    "* fix torchcodec installation. Error message was:",
+    "Could not load libtorchcodec. Likely causes:",
+    "             https://github.com/pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec.",
+    "        The following exceptions were raised as we tried to load libtorchcodec:",
+    "[start of libtorchcodec loading traceback]",
+    "FFmpeg version 7: No spec found for libtorchcodec_core7",
+    "FFmpeg version 6: No spec found for libtorchcodec_core6",
+    "FFmpeg version 5: No spec found for libtorchcodec_core5",
+    "FFmpeg version 4: No spec found for libtorchcodec_core4",
+    "[end of libtorchcodec loading traceback]."
+  ],
   "exitCode": null
 }

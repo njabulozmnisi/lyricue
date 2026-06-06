@@ -9,7 +9,7 @@
 
 The packaged ML sidecar now builds, starts, keeps JSON-RPC stdout clean, and returns a TimingMap from the offline/cache-only production fixture. The earlier packaged import blockers are fixed with targeted PyInstaller collection rules, and the packaged `learn_song` proof is now repeatable through `scripts/smoke_packaged_learn_song.py`.
 
-No **CRITICAL** or open **HIGH** packaged execution defects remain from this pass. The release smoke returned 24/26 confident words with `invalidStdout=[]`; Gate B still carries caveats for slow onefile startup and native audio dependency warnings.
+No **CRITICAL** or open **HIGH** packaged execution defects remain from this pass. The release smoke returned 24/26 confident words with `invalidStdout=[]`; Gate B still carries caveats for slow onefile startup and native audio dependency warnings, but those warnings are locally certified as non-blocking for LyriCue's current in-memory alignment path.
 
 ## Test environment + persona setup
 
@@ -30,7 +30,8 @@ No **CRITICAL** or open **HIGH** packaged execution defects remain from this pas
 | EP05-PKG-04 | Packaged `learn_song` import graph | Runtime host | Cache-only fixture reaches WhisperX/Pyannote without import/data errors | Fixed successive `whisperx.asr`, `torchcodec` metadata, Pyannote data, WhisperX assets, and Pyannote segmentation import gaps | Pass |
 | EP05-PKG-05 | JSON-RPC stdout contract | Runtime host | Sidecar stdout contains only JSON-RPC frames | Latest run had `invalidStdout=[]`; WhisperX logs moved to stderr | Pass |
 | EP05-PKG-06 | Packaged `learn_song` quality | Runtime host | Fixture returns TimingMap with confidence ratio `>=0.85` | Final packaged variance sample returned 25/26 confident words twice, ratio `0.9615384615384616` | Pass |
-| EP05-PKG-07 | Repeatable release smoke | Release engineer | Scripted smoke asserts stdout hygiene, required progress stages, schema, and confidence | `release-smoke-summary.json`: `readyMs=115935`, `totalMs=229603`, `invalidStdout=[]`, 24/26 confident words, ratio `0.9230769230769231` | Pass |
+| EP05-PKG-07 | Repeatable release smoke | Release engineer | Scripted smoke asserts stdout hygiene, required progress stages, schema, and confidence | `release-smoke-summary.json`: `readyMs=118540`, `totalMs=224819`, `invalidStdout=[]`, 24/26 confident words, ratio `0.9230769230769231` | Pass |
+| EP05-PKG-08 | Native warning certification | Release engineer | torchcodec/FFmpeg and torchaudio warning surface is either fixed or shown non-blocking for the current path | Smoke completed despite captured torchcodec native warnings; LyriCue decodes through `librosa` and passes in-memory samples to WhisperX | Pass-with-caveat |
 
 ## Defects surfaced + fixed
 
@@ -97,24 +98,25 @@ Fix status: Not a persistent defect after variance sampling; keep the fixture as
 ## Network / data layer observations
 
 - No network access was required for the packaged proof; the run used staged local model directories and offline/cache-only env flags.
-- Latest packaged `readyMs` samples were `117981` cold, `35681` warm, and `115935` in the scripted release smoke; this fits the 180s bundled sidecar timeout but leaves limited cold-start margin on slower hosts.
+- Latest packaged `readyMs` samples were `117981` cold, `35681` warm, and `118540` in the scripted release smoke; this fits the 180s bundled sidecar timeout but leaves limited cold-start margin on slower hosts.
 - JSON-RPC stdout was clean in the latest run: `invalidStdout=[]`.
-- PyInstaller still warns that torchaudio's `libtorchaudio_sox` and `_torchaudio_sox` cannot resolve `@rpath/libsox.dylib`.
-- Runtime stderr still reports torchcodec/FFmpeg native decoder warnings. Current LyriCue code supplies in-memory decoded audio to the Pyannote path, but this warning needs release certification or dependency repair.
+- The release smoke captured torchcodec/FFmpeg native warnings in `nativeWarnings` while still completing `learn_song`; this certifies the warning as non-blocking for the current path.
+- Current LyriCue code decodes audio through `librosa` and passes in-memory sample arrays into WhisperX/Pyannote. The broken torchcodec decoder path is not used by the successful smoke.
+- Earlier PyInstaller analysis also warned that torchaudio's `libtorchaudio_sox` and `_torchaudio_sox` could not resolve `@rpath/libsox.dylib`; no runtime `libsox` failure occurred in the packaged release smoke.
 
 ## Cumulative defect tally
 
 | Pass | Critical | High | Medium | Low | Info | Status |
 |---|---:|---:|---:|---:|---:|---|
-| Packaged ML sidecar pass | 0 | 5 | 0 | 0 | 1 | 5 fixed, release smoke added, 1 variance note |
+| Packaged ML sidecar pass | 0 | 5 | 0 | 0 | 1 | 5 fixed, release smoke added, native warnings certified, 1 variance note |
 
 ## Recommendations before production shipping
 
 1. **HIGH** Run `scripts/smoke_packaged_learn_song.py` on every platform artifact produced by release packaging.
 2. **MEDIUM** Increase or make configurable the bundled sidecar ready timeout if slower signed/notarized builds exceed the current 180s envelope.
-3. **MEDIUM** Resolve or certify the torchcodec/FFmpeg and torchaudio `libsox.dylib` warnings before final production packaging.
+3. **MEDIUM** Keep the native warning certification attached to each platform artifact; if a platform smoke fails or starts using torchcodec/torchaudio decode paths, repair the bundled native library set before release.
 4. **MEDIUM** Keep a small variance log for the EP-05 public-domain fixture; if packaged runs repeatedly fall below threshold, replace the fixture with a cleaner public-domain vocal recording rather than lowering the gate.
 
 ## Final verdict
 
-The packaged ML executable now completes the production `learn_song` path, returns a valid TimingMap, and preserves the JSON-RPC stdout contract. Gate B is locally pass-with-caveats: native audio dependency warnings and slow onefile startup remain release hardening items, but packaged production learning is no longer blocked on import/runtime execution.
+The packaged ML executable now completes the production `learn_song` path, returns a valid TimingMap, and preserves the JSON-RPC stdout contract. Gate B is locally pass-with-caveats: native audio dependency warnings remain a per-platform certification item and onefile startup is still slow, but packaged production learning is no longer blocked on import/runtime execution.

@@ -38,6 +38,7 @@ def test_finish_passes_clean_timing_map():
         ready_ms=100,
         invalid_stdout=[],
         progress_stages=["decode", "bpm", "demucs", "whisperx", "timing_map", "complete"],
+        stderr_lines=[],
         response=response,
         failure_code=None,
         error=None,
@@ -48,6 +49,7 @@ def test_finish_passes_clean_timing_map():
     assert summary["wordCount"] == 3
     assert summary["confidentWordCount"] == 2
     assert summary["schema"] == "lyricue-timing-v1"
+    assert summary["nativeWarnings"] == []
 
 
 def test_finish_fails_dirty_stdout():
@@ -68,6 +70,7 @@ def test_finish_fails_dirty_stdout():
         ready_ms=100,
         invalid_stdout=["INFO not json"],
         progress_stages=["decode", "bpm", "demucs", "whisperx", "timing_map", "complete"],
+        stderr_lines=[],
         response=response,
         failure_code=None,
         error=None,
@@ -95,6 +98,7 @@ def test_finish_fails_missing_progress_stage():
         ready_ms=100,
         invalid_stdout=[],
         progress_stages=["decode", "bpm", "demucs", "whisperx", "timing_map"],
+        stderr_lines=[],
         response=response,
         failure_code=None,
         error=None,
@@ -102,3 +106,18 @@ def test_finish_fails_missing_progress_stage():
 
     assert summary["status"] == "fail"
     assert summary["missingStages"] == ["complete"]
+
+
+def test_native_warnings_extracts_known_dependency_lines():
+    assert smoke.native_warnings(
+        [
+            "ordinary log",
+            "torchcodec is not installed correctly",
+            "Library not loaded: @rpath/libavutil.59.dylib",
+            "torchaudio could not load libsox.dylib",
+        ]
+    ) == [
+        "torchcodec is not installed correctly",
+        "Library not loaded: @rpath/libavutil.59.dylib",
+        "torchaudio could not load libsox.dylib",
+    ]
