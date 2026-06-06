@@ -6,7 +6,7 @@ This roadmap supersedes the stale 2026-05-16 handoff snapshot. It reflects curre
 
 LyriCue has a working sister-mode vertical slice: dual Electron windows, real SyncEngine, synthetic audio driver, operator control panel, karaoke output, local sidecar song-learning contracts, setlist/arrangement/translation/rehearsal/library surfaces, and a local quality gate. The current local test floor is:
 
-- TypeScript/Vitest: 753 tests passing.
+- TypeScript/Vitest: 755 tests passing.
 - Publish Worker Vitest: 11 tests passing.
 - Python sidecar: 88 tests passing, 1 skipped.
 - Python sidecar with optional ML dependencies on Python 3.11: 88 tests passing, 1 skipped.
@@ -32,7 +32,7 @@ The project is not yet production-shippable for a multi-campus rollout because s
 | EP-09 SyncEngine core | Complete | 100% | Real SyncEngine drives E2E demo | Operator-state IPC had to be throttled separately from karaoke frames |
 | EP-10 Operator UI | Complete for M2 | 95% | D13-D18 closed; controls usable in sister mode | Hydration and keyboard-focus bugs were integration defects not caught by pure tests |
 | EP-11 Lyrics sourcing/show creation | Locally strong | 90% | Learn Song wizard, parsing, import, production controls, sidecar trigger work, timing review/manual word adjustment | Browser screenshot policy blocked `file://` evidence capture; Electron smoke now covers the real renderer path |
-| EP-12 Setlist/continuous playback | Locally strong | 85% | Sync badges, jump-to-song, next-up, auto-advance, disk-backed active project state | Real FreeShow REST project ingestion remains an external integration layer |
+| EP-12 Setlist/continuous playback | Locally strong | 88% | Sync badges, jump-to-song, next-up, auto-advance, disk-backed active project state, REST project adapter normalization, and opt-in refresh timeout support exist | Real FreeShow REST project ingestion remains an external integration layer; local QA surfaced the need for bounded refreshes when FreeShow is unreachable |
 | EP-13 Library manager | Locally strong | 80% | ZIP `.lcbundle`, integrity, import/export, signing contracts tested | Original JSON-only bundle shape had to be replaced by ZIP |
 | EP-14 Library hosting | Locally strong, externally unverified | 75% | Worker, setup script, signing/trust, GitHub mirror logic, project publish audit logging, target validation, and local Worker tests exist | Real Cloudflare R2/KV/Worker + GitHub mirror credentials are required for production proof |
 | EP-15 Identity/publishing | Locally testable | 80% | Identity, publish credentials, safe-storage backend, publish dialog/browser, project publish mode, and per-target credential gating exist | Secure storage wiring had a high-severity gap and was fixed locally; real packaged safe-storage and Worker credentials still need external proof |

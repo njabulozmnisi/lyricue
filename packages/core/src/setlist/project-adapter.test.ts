@@ -118,4 +118,23 @@ describe("createRestProjectAdapter", () => {
 
         await expect(adapter.refresh!()).rejects.toThrow(/500 Server Error/)
     })
+
+    it("aborts active project refreshes that exceed the configured timeout", async () => {
+        const fetchImpl = vi.fn(
+            (_url: RequestInfo | URL, init?: RequestInit) =>
+                new Promise<Response>((_resolve, reject) => {
+                    init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")))
+                })
+        ) as unknown as typeof fetch
+        const adapter = createRestProjectAdapter({ baseUrl: "https://freeshow.local", fetchImpl, timeoutMs: 1 })
+
+        await expect(adapter.refresh!()).rejects.toThrow(/timed out after 1ms/)
+        expect(fetchImpl).toHaveBeenCalledWith("https://freeshow.local/v1/projects/active", { signal: expect.any(AbortSignal) })
+    })
+
+    it("rejects invalid timeout configuration", async () => {
+        const adapter = createRestProjectAdapter({ baseUrl: "https://freeshow.local", timeoutMs: 0 })
+
+        await expect(adapter.refresh!()).rejects.toThrow(/timeoutMs must be positive/)
+    })
 })

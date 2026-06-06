@@ -69,6 +69,7 @@ export function createMemoryProjectAdapter(initialProject: Project | null = null
 export interface RestProjectAdapterOptions {
     baseUrl: string
     fetchImpl?: typeof fetch
+    timeoutMs?: number
 }
 
 export function createRestProjectAdapter(opts: RestProjectAdapterOptions): ProjectAdapter {
@@ -78,20 +79,41 @@ export function createRestProjectAdapter(opts: RestProjectAdapterOptions): Proje
 
     async function refresh(): Promise<Project | null> {
         const url = `${opts.baseUrl.replace(/\/+$/, "")}/v1/projects/active`
-        const response = await fetchImpl(url)
-        if (!response.ok) {
-            throw new Error(`Project fetch failed: ${response.status} ${response.statusText}`.trim())
+        const timeout = createRefreshTimeout(opts.timeoutMs)
+        try {
+            const response = timeout ? await fetchImpl(url, { signal: timeout.signal }) : await fetchImpl(url)
+            if (!response.ok) {
+                throw new Error(`Project fetch failed: ${response.status} ${response.statusText}`.trim())
+            }
+            const payload = await response.json()
+            current = normalizeProject(payload)
+            store.set(current)
+            return current
+        } catch (err) {
+            if (timeout?.signal.aborted) {
+                throw new Error(`Project fetch timed out after ${opts.timeoutMs}ms`)
+            }
+            throw err
+        } finally {
+            timeout?.clear()
         }
-        const payload = await response.json()
-        current = normalizeProject(payload)
-        store.set(current)
-        return current
     }
 
     return {
         activeProject: { subscribe: (run) => store.subscribe(run) },
         getActiveProject: () => current,
         refresh
+    }
+}
+
+function createRefreshTimeout(timeoutMs: number | undefined): { signal: AbortSignal; clear: () => void } | null {
+    if (timeoutMs === undefined) return null
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error("RestProjectAdapter timeoutMs must be positive")
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    return {
+        signal: controller.signal,
+        clear: () => clearTimeout(timer)
     }
 }
 
