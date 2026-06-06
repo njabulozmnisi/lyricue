@@ -1,0 +1,24 @@
+{
+  "status": "pass",
+  "failureCode": null,
+  "error": null,
+  "responseError": null,
+  "readyMs": 115935,
+  "totalMs": 229603,
+  "invalidStdout": [],
+  "progressStages": [
+    "decode",
+    "bpm",
+    "demucs",
+    "whisperx",
+    "timing_map",
+    "section_detection",
+    "complete"
+  ],
+  "missingStages": [],
+  "wordCount": 26,
+  "confidentWordCount": 24,
+  "confidenceRatio": 0.9230769230769231,
+  "schema": "lyricue-timing-v1",
+  "exitCode": null
+}
