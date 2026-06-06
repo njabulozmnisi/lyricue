@@ -6,7 +6,7 @@ This roadmap supersedes the stale 2026-05-16 handoff snapshot. It reflects curre
 
 LyriCue has a working sister-mode vertical slice: dual Electron windows, real SyncEngine, synthetic audio driver, operator control panel, karaoke output, local sidecar song-learning contracts, setlist/arrangement/translation/rehearsal/library surfaces, and a local quality gate. The current local test floor is:
 
-- TypeScript/Vitest: 749 tests passing.
+- TypeScript/Vitest: 752 tests passing.
 - Publish Worker Vitest: 11 tests passing.
 - Python sidecar: 88 tests passing, 1 skipped.
 - Python sidecar with optional ML dependencies on Python 3.11: 88 tests passing, 1 skipped.
@@ -39,7 +39,7 @@ The project is not yet production-shippable for a multi-campus rollout because s
 | EP-16 Project plans | Locally strong, external publish proof pending | 75% | Source picker, plan schema/storage, central/campus plan metadata, campus publish hook, and central plan bundle loading exist | Real Worker catalog update and two-install subscribe flow still require external deployment |
 | EP-17 Rehearsal mode | Locally strong | 85% | Capture, segmentation, summary, variants, review/promotion work, Electron smoke approval path | Physical microphone QA and real multi-song rehearsal capture remain hardware gates |
 | EP-18 Arrangement builder | Mostly complete | 90% | Drag/drop, parser, named arrangements, operator persistence, refreshed modal hydration, renderer current-section save guards, and main-process IPC normalization exist | Modal mounting and persistence were the real defects, not the pure arrangement logic; same-ID arrangement updates and stale IPC payloads exposed data-integrity risk |
-| EP-19 Multilingual lyrics | Mostly complete | 85% | Translation editor, rendering, language swap, sizing, operator mounting, and stale-draft protection exist | Translated-primary karaoke needs a learned timing map per primary language; mounted editor QA surfaced a stale timing-map draft hazard before it could become operator data loss |
+| EP-19 Multilingual lyrics | Mostly complete | 90% | Translation editor, rendering, language swap, sizing, operator mounting, stale-draft protection, and main-process translation IPC narrowing exist | Translated-primary karaoke needs a learned timing map per primary language; mounted editor QA surfaced stale timing-map draft and full-map IPC overwrite hazards before they could become operator data loss |
 | EP-20 FreeShow upstream/caption injection | Local fallback complete | 70% | Discussion/PR draft, fallback plan, caption injection adapter contract exist | Actual upstream acceptance and real FreeShow WebSocket verification are external |
 
 ## Release Gates

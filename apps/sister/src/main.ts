@@ -80,6 +80,7 @@ import { withRequiredModelSpecs } from "./model-manifest.js"
 import { learnSongTimeoutMs, resolveSourceSidecarPythonOverride } from "./learn-song-sidecar-options.js"
 import { sidecarResolverNodeEnv } from "./sidecar-runtime.js"
 import { prepareOperatorArrangementSave } from "./operator-arrangements.js"
+import { prepareOperatorTranslationSave } from "./operator-translations.js"
 
 // Fail fast if launched with the wrong mode. The fork-mode entry has the same guard;
 // this prevents a misconfigured build from silently doing the wrong thing.
@@ -835,18 +836,14 @@ function selectDemoArrangement(showId: unknown, arrangementId: unknown): void {
 }
 
 async function saveDemoTranslation(input: unknown): Promise<void> {
-    const result = validateTimingMap(input)
+    const result = prepareOperatorTranslationSave(input, (showId, variant) => activeDemoTimingMap(showId, variant))
     if (!result.ok) {
-        log(`operator translation save rejected: ${result.errors[0]?.message ?? "invalid timing map"}`)
+        log(`operator translation save rejected: ${result.message}`)
         return
     }
-    const map = result.value
-    if (!DEMO_TIMING_MAPS.has(map.showId)) {
-        log(`operator translation save rejected: unknown showId=${map.showId}`)
-        return
-    }
+    const { map, variant } = result.value
     try {
-        if (map.learnedFrom.method === "rehearsal") {
+        if (variant === "rehearsal") {
             DEMO_TIMING_MAP_VARIANTS.set(demoVariantKey(map.showId, "rehearsal"), map)
             await getTimingMapStorage().saveVariant(map.showId, "rehearsal", map)
         } else {
