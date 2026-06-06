@@ -1,6 +1,6 @@
 <script lang="ts">
     import { dndzone } from "svelte-dnd-action"
-    import { createArrangement, duplicateArrangementStep, moveArrangementStep, parseArrangementShorthand, removeArrangementStep, selectActiveArrangement } from "@lyricue/core/arrangements"
+    import { createArrangement, duplicateArrangementStep, moveArrangementStep, normalizeArrangementSequence, parseArrangementShorthand, removeArrangementStep, selectActiveArrangement } from "@lyricue/core/arrangements"
     import type { Arrangement, ArrangementStep, TimingMap, TimingSection } from "@lyricue/core/types"
 
     export let timingMap: TimingMap
@@ -18,15 +18,16 @@
     let shorthand = ""
     let sequence: SequenceItem[] = []
     let unknownTokens: string[] = []
-    let hydratedSelectionKey = ""
+    let hydratedTimingMap: TimingMap | null = null
+    let hydratedArrangement: Arrangement | null = null
     let nextItemId = 0
 
     $: sectionById = new Map(timingMap.sections.map((section) => [section.id, section]))
     $: {
         const selectedArrangement = selectActiveArrangement(arrangements, activeArrangementId)
-        const selectionKey = `${timingMap.showId}:${selectedArrangement?.id ?? ""}:${arrangements.length}`
-        if (selectionKey !== hydratedSelectionKey) {
-            hydratedSelectionKey = selectionKey
+        if (timingMap !== hydratedTimingMap || selectedArrangement !== hydratedArrangement) {
+            hydratedTimingMap = timingMap
+            hydratedArrangement = selectedArrangement
             selectedArrangementId = selectedArrangement?.id ?? ""
             arrangementName = selectedArrangement?.name ?? ""
             sequence = selectedArrangement ? toItems(selectedArrangement.sequence) : []
@@ -82,12 +83,13 @@
         const id = selectedArrangementId || slugify(arrangementName || "arrangement")
         const existing = arrangements.find((arrangement) => arrangement.id === id)
         const now = new Date().toISOString()
+        const saveSequence = normalizeArrangementSequence(timingMap, toSteps(sequence))
         onSave({
             ...createArrangement({
                 id,
                 name: arrangementName.trim(),
                 showId: timingMap.showId,
-                sequence: toSteps(sequence),
+                sequence: saveSequence,
                 isDefault: existing?.isDefault ?? arrangements.length === 0,
                 now: existing?.createdAt ?? now
             }),
@@ -118,7 +120,7 @@
         return items.map((step) => ({ sectionId: step.sectionId }))
     }
 
-    $: canSave = arrangementName.trim().length > 0 && sequence.length > 0
+    $: canSave = arrangementName.trim().length > 0 && normalizeArrangementSequence(timingMap, toSteps(sequence)).length > 0
 </script>
 
 <section class="arrangement-builder" aria-label="Arrangement Builder">

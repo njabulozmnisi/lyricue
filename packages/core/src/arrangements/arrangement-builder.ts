@@ -106,6 +106,11 @@ export function removeArrangementStep(sequence: ArrangementStep[], index: number
     return sequence.filter((_step, i) => i !== index)
 }
 
+export function normalizeArrangementSequence(map: TimingMap, sequence: ArrangementStep[]): ArrangementStep[] {
+    const sectionIds = new Set(map.sections.map((section) => section.id))
+    return sequence.filter((step) => sectionIds.has(step.sectionId)).map((step) => ({ sectionId: step.sectionId }))
+}
+
 export function selectActiveArrangement(arrangements: Arrangement[], id?: string | null): Arrangement | null {
     if (id) return arrangements.find((arrangement) => arrangement.id === id) ?? null
     return arrangements.find((arrangement) => arrangement.isDefault) ?? arrangements[0] ?? null

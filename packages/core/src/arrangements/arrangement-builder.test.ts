@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { arrangementToFreeShowLayout, createArrangement, duplicateArrangementStep, moveArrangementStep, parseArrangementShorthand, removeArrangementStep, selectActiveArrangement } from "./arrangement-builder.js"
+import { arrangementToFreeShowLayout, createArrangement, duplicateArrangementStep, moveArrangementStep, normalizeArrangementSequence, parseArrangementShorthand, removeArrangementStep, selectActiveArrangement } from "./arrangement-builder.js"
 import type { Arrangement, TimingMap, TimingSection, TimingSectionType } from "../types/timing-map.js"
 import { SCHEMA_LYRICUE_TIMING_V1 } from "../types/schema-versions.js"
 
@@ -58,6 +58,10 @@ describe("arrangement builder", () => {
         expect(duplicateArrangementStep(sequence, 1).map((step) => step.sectionId)).toEqual(["verse1", "chorus", "chorus", "bridge1"])
         expect(removeArrangementStep(sequence, 0).map((step) => step.sectionId)).toEqual(["chorus", "bridge1"])
         expect(sequence.map((step) => step.sectionId)).toEqual(["verse1", "chorus", "bridge1"])
+    })
+
+    it("normalizes arrangement steps to sections in the current timing map", () => {
+        expect(normalizeArrangementSequence(map(), [{ sectionId: "verse1" }, { sectionId: "missing" }, { sectionId: "chorus" }])).toEqual([{ sectionId: "verse1" }, { sectionId: "chorus" }])
     })
 
     it("creates and selects named arrangements", () => {

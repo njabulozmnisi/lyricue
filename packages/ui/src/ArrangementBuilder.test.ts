@@ -40,6 +40,12 @@ const arrangement: Arrangement = {
     updatedAt: "2026-05-18T00:00:00Z"
 }
 
+const secondTimingMap: TimingMap = {
+    ...timingMap,
+    showId: "show-2",
+    sections: [section("chorus2", "chorus", "Chorus", 0)]
+}
+
 describe("ArrangementBuilder", () => {
     let target: HTMLElement
 
@@ -131,6 +137,60 @@ describe("ArrangementBuilder", () => {
         select.dispatchEvent(new Event("change", { bubbles: true }))
         expect(onSelectArrangement).toHaveBeenCalledWith(arrangement)
         expect((target.querySelector('input[aria-label="Arrangement name"]') as HTMLInputElement).value).toBe("Default")
+        cmp.$destroy()
+    })
+
+    it("refreshes when the selected arrangement object changes without changing id or count", async () => {
+        const cmp = new ArrangementBuilder({
+            target,
+            props: {
+                timingMap,
+                arrangements: [arrangement],
+                activeArrangementId: "default",
+                onSave: vi.fn()
+            }
+        })
+        await settle()
+
+        const updatedArrangement: Arrangement = {
+            ...arrangement,
+            name: "Updated Default",
+            sequence: [{ sectionId: "chorus" }]
+        }
+        cmp.$set({ arrangements: [updatedArrangement] })
+        await settle()
+
+        expect((target.querySelector('input[aria-label="Arrangement name"]') as HTMLInputElement).value).toBe("Updated Default")
+        expect((target.querySelector(".sequence li span") as HTMLSpanElement).textContent).toBe("Chorus")
+        cmp.$destroy()
+    })
+
+    it("saves only sections that exist in the active timing map", async () => {
+        const onSave = vi.fn()
+        const staleArrangement: Arrangement = {
+            ...arrangement,
+            showId: "show-2",
+            sequence: [{ sectionId: "verse1" }, { sectionId: "chorus2" }]
+        }
+        const cmp = new ArrangementBuilder({
+            target,
+            props: {
+                timingMap: secondTimingMap,
+                arrangements: [staleArrangement],
+                activeArrangementId: "default",
+                onSave
+            }
+        })
+        await settle()
+
+        ;(Array.from(target.querySelectorAll("button")).find((button) => button.textContent === "Save Arrangement") as HTMLButtonElement).click()
+
+        expect(onSave).toHaveBeenCalledWith(
+            expect.objectContaining({
+                showId: "show-2",
+                sequence: [{ sectionId: "chorus2" }]
+            })
+        )
         cmp.$destroy()
     })
 })
