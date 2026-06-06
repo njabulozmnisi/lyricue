@@ -49,6 +49,16 @@ jobs:
             - name: TypeScript tests
               run: npm run test:ts
 
+            - name: UI Svelte diagnostics
+              run: |
+                  cd packages/ui
+                  npx svelte-check --tsconfig tsconfig.json
+
+            - name: Publish Worker tests
+              run: |
+                  cd infra/publish-worker
+                  npx vitest run --config vitest.config.ts
+
             - name: Python sidecar tests
               run: |
                   cd python-sidecar
