@@ -6,7 +6,7 @@ This roadmap supersedes the stale 2026-05-16 handoff snapshot. It reflects curre
 
 LyriCue has a working sister-mode vertical slice: dual Electron windows, real SyncEngine, synthetic audio driver, operator control panel, karaoke output, local sidecar song-learning contracts, setlist/arrangement/translation/rehearsal/library surfaces, and a local quality gate. The current local test floor is:
 
-- TypeScript/Vitest: 711 tests passing.
+- TypeScript/Vitest: 713 tests passing.
 - Python sidecar: 88 tests passing, 1 skipped.
 - Python sidecar with optional ML dependencies on Python 3.11: 88 tests passing, 1 skipped.
 - `svelte-check`: 0 errors / 0 warnings on the current UI slice.
@@ -23,8 +23,8 @@ The project is not yet production-shippable for a multi-campus rollout because s
 | EP-01 Foundation | Mostly complete, local CI added | 85% | Local development foundation works | Full 10-job installer matrix is blocked by platform runners/signing/vendor SDKs; stale shell `NODE_PATH` required the `env -i` wrapper everywhere |
 | EP-02 OutputAdapter walking skeleton | Complete | 100% | Sister mode proven; fork adapter contract present | FreeShow vendor SDKs make fork runtime verification external |
 | EP-03 Timing map/storage | Complete | 100% | Atomic storage and migrations are in place | Crash-safe writes became a load-bearing invariant across later modules |
-| EP-04 Sidecar infra | Locally strong, packaging locally proven for macOS arm64 protocol smoke | 88% | JSON-RPC, controller, model manifest/download manager, subprocess smoke pass, Python 3.11 ML venv validated, PyInstaller darwin-arm64 binary smoke passed | First PyInstaller entry failed on package-relative imports; root `build:sidecar` also exposed a bare-`python` clean-env defect. Both are fixed. Full ML-runtime packaging and real model mirror remain release gates |
-| EP-05 Song learning | Local packaged/operator production proof passing with caveats | 99% | Deterministic path works; production stage contracts and progress are wired; Demucs/WhisperX packages install/import; public-domain opt-in fixture passes in source mode; staged release-owned model cache runs with `LYRICUE_MODEL_CACHE_ONLY=1`; packaged sidecar returns TimingMaps with clean JSON-RPC stdout and 25/26 confident words in the final variance sample; packaged release smoke is scripted and passing at 24/26 confident words; native warnings are captured and locally certified for the current in-memory path; operator bridge production Learn Song pass returns a valid TimingMap at 24/26 confident words; operator cancellation/fallback is proven locally | The first 30-second fixture clipped the final phrase and falsely failed the quality gate. Demucs local-repo loading failed under PyTorch 2.8 safe-load defaults until LyriCue scoped trusted local artifact loading. Packaged ML required targeted PyInstaller rules for WhisperX, Pyannote, and torchcodec metadata. Operator production alignment needed a longer timeout than deterministic learning and a source-mode ML venv override. Active ML cancellation had to terminate the sidecar because the sidecar JSON-RPC loop cannot process `cancel_job` while inside Demucs/WhisperX work. Slow onefile startup remains a release-hardening item |
+| EP-04 Sidecar infra | Locally strong, packaging locally proven for macOS arm64 protocol + packaged host smoke | 90% | JSON-RPC, controller, model manifest/download manager, subprocess smoke pass, Python 3.11 ML venv validated, PyInstaller darwin-arm64 binary smoke passed, packaged sister app launches the bundled sidecar from `process.resourcesPath` | First PyInstaller entry failed on package-relative imports; root `build:sidecar` exposed a bare-`python` clean-env defect. Packaged Electron also did not set `NODE_ENV=production`, so sidecar resolution had to key off `app.isPackaged`. Full platform packaging and real model mirror remain release gates |
+| EP-05 Song learning | Local packaged/operator production proof passing with caveats | 99% | Deterministic path works; production stage contracts and progress are wired; Demucs/WhisperX packages install/import; public-domain opt-in fixture passes in source mode; staged release-owned model cache runs with `LYRICUE_MODEL_CACHE_ONLY=1`; packaged sidecar returns TimingMaps with clean JSON-RPC stdout and 25/26 confident words in the final variance sample; packaged release smoke is scripted and passing at 24/26 confident words; native warnings are captured and locally certified for the current in-memory path; operator bridge production Learn Song pass returns a valid TimingMap at 24/26 confident words; operator cancellation/fallback is proven locally; packaged sister smoke proves the host can launch the bundled sidecar for rehearsal segmentation | The first 30-second fixture clipped the final phrase and falsely failed the quality gate. Demucs local-repo loading failed under PyTorch 2.8 safe-load defaults until LyriCue scoped trusted local artifact loading. Packaged ML required targeted PyInstaller rules for WhisperX, Pyannote, and torchcodec metadata. Operator production alignment needed a longer timeout than deterministic learning and a source-mode ML venv override. Active ML cancellation had to terminate the sidecar because the sidecar JSON-RPC loop cannot process `cancel_job` while inside Demucs/WhisperX work. Slow onefile startup remains a release-hardening item |
 | EP-06 Karaoke renderer | Complete for sister-mode local use | 95% | Renderer, easing, next-section preview, perf harness pass | Visual QA mattered more than unit tests; tempo-adaptive easing arrived from operator feedback |
 | EP-07 Audio input/beat detection | Mostly complete | 85% | Synthetic and pure module tests pass | Physical microphone/loopback QA remains a hardware gate |
 | EP-08 VAD/STT correction | Partial | 45% | VAD and phrase matcher exist; SyncEngine accepts correction events | Whisper.cpp native addon is the main missing platform-specific dependency |
@@ -114,13 +114,15 @@ Completed local work:
 4. Updated production sidecar path resolution to use Electron `process.resourcesPath`.
 5. Fixed the root `build:sidecar` script to use the project sidecar `.venv` interpreter under the clean environment wrapper.
 6. Built the packaged sidecar from the Python 3.11 ML venv and proved `learn_song` from the packaged executable with a repeatable release smoke.
+7. Built a local macOS arm64 sister `.app` directory package and proved the packaged host launches the bundled sidecar from `process.resourcesPath` during rehearsal segmentation.
+8. Fixed sister packaging metadata so Electron is a pinned dev dependency and electron-builder is explicit for release builds.
+9. Fixed packaged-host sidecar resolution to use `app.isPackaged` instead of assuming packaged Electron sets `NODE_ENV=production`.
 
 Remaining work:
 
 1. GitHub Actions platform matrix and artifact retention.
 2. macOS signing/notarization and Windows signing.
-3. Packaged sister-app smoke that proves Electron launches the bundled sidecar from `process.resourcesPath`.
-4. Fork-mode verification after FreeShow native vendor SDKs are installed.
+3. Fork-mode verification after FreeShow native vendor SDKs are installed.
 
 ### Gate E — Hardware/Live Worship Certification
 
@@ -148,8 +150,8 @@ Work proceeds in this order:
 
 ## Immediate Queue
 
-1. Run packaged sister-app smoke proving Electron launches the bundled sidecar from `process.resourcesPath`.
-2. Keep Gate C/D/E items marked external-proof pending until the required credentials, signing assets, vendor SDKs, and hardware are available.
+1. Keep Gate C/D/E items marked external-proof pending until the required credentials, signing assets, vendor SDKs, and hardware are available.
+2. Next local hardening target: add release-job capture for packaged smoke stdout/stderr so bundled-sidecar evidence is retained as a build artifact.
 
 ## External Inputs Needed Before Final Production Sign-Off
 

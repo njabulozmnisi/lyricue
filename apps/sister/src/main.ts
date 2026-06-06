@@ -78,6 +78,7 @@ import { createElectronBrowserWindowFactory } from "./output/electron-browser-wi
 import { createSyntheticAudioDriver, type SyntheticAudioDriver } from "./audio/synthetic-audio-driver.js"
 import { withRequiredModelSpecs } from "./model-manifest.js"
 import { learnSongTimeoutMs, resolveSourceSidecarPythonOverride } from "./learn-song-sidecar-options.js"
+import { sidecarResolverNodeEnv } from "./sidecar-runtime.js"
 
 // Fail fast if launched with the wrong mode. The fork-mode entry has the same guard;
 // this prevents a misconfigured build from silently doing the wrong thing.
@@ -1265,7 +1266,7 @@ function getSidecarController(): SidecarController {
     const launch = resolveSidecarLaunch({
         appPath: repoRoot,
         resourcesPath: process.resourcesPath,
-        nodeEnv: process.env.NODE_ENV
+        nodeEnv: sidecarResolverNodeEnv({ isPackaged: app.isPackaged, nodeEnv: process.env.NODE_ENV })
     })
     const sidecarRoot = launch.mode === "source" ? launch.sourceDir : dirname(launch.binaryPath)
     const opts: SidecarControllerOptions = {
@@ -1811,6 +1812,7 @@ async function exerciseRehearsalCapture(opWindow: BrowserWindow): Promise<void> 
                 }
                 await api.writeRehearsalChunk({ chunk });
                 const stopped = await api.stopRehearsalCapture();
+                if (stopped?.segmentation?.error) return { status: "captured-error", started, stopped };
                 const segment = stopped?.segmentation?.segments?.[0];
                 if (segment?.showId) {
                     api.sendCommand({
