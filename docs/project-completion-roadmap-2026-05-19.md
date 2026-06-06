@@ -1,6 +1,6 @@
 # LyriCue Completion Roadmap — 2026-05-19
 
-This roadmap supersedes the stale 2026-05-16 handoff snapshot. It reflects current `main` after M2-close work plus the Gate A local MVP hardening commits through 2026-06-05.
+This roadmap supersedes the stale 2026-05-16 handoff snapshot. It reflects current `main` after M2-close work plus Gate A/B/D local hardening through 2026-06-06.
 
 ## Current State
 
@@ -153,7 +153,7 @@ Work proceeds in this order:
 ## Immediate Queue
 
 1. Keep Gate C/D/E items marked external-proof pending until the required credentials, signing assets, vendor SDKs, and hardware are available.
-2. Next local hardening target: document the exact external sign-off checklist for Gate C publishing, Gate D signing, and Gate E hardware/live drills.
+2. Use `docs/release-signoff-checklist.md` as the production certification checklist once external inputs are available.
 
 ## External Inputs Needed Before Final Production Sign-Off
 
