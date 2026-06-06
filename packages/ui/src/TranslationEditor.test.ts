@@ -29,6 +29,27 @@ const timingMap: TimingMap = {
     ]
 }
 
+const secondTimingMap: TimingMap = {
+    ...timingMap,
+    showId: "show-2",
+    sections: [
+        {
+            id: "c1",
+            type: "chorus",
+            label: "Chorus",
+            slideIndex: 0,
+            startMs: 0,
+            endMs: 1000,
+            words: [
+                { text: "How", startMs: 0, endMs: 500, confidence: 0.9, lineIndex: 0 },
+                { text: "great", startMs: 500, endMs: 1000, confidence: 0.9, lineIndex: 0 }
+            ],
+            lines: [{ startMs: 0, endMs: 1000, wordStartIndex: 0, wordEndIndex: 2 }]
+        }
+    ],
+    parallel: [{ language: "zu-ZA", sections: [{ sectionId: "c1", text: "Mkhulu kangakanani" }] }]
+}
+
 describe("TranslationEditor", () => {
     let target: HTMLElement
 
@@ -55,6 +76,33 @@ describe("TranslationEditor", () => {
         expect(onSave).toHaveBeenCalledWith(
             expect.objectContaining({
                 parallel: [{ language: "zu-ZA", sections: [{ sectionId: "v1", text: "Umusa omangalisayo" }] }]
+            })
+        )
+        cmp.$destroy()
+    })
+
+    it("refreshes the draft when the active timing map changes", async () => {
+        const onSave = vi.fn()
+        const cmp = new TranslationEditor({ target, props: { timingMap, language: "zu-ZA", onSave } })
+
+        const firstTextarea = target.querySelector('textarea[aria-label="Translation for Verse 1"]') as HTMLTextAreaElement
+        firstTextarea.value = "Stale unsaved verse"
+        firstTextarea.dispatchEvent(new Event("input", { bubbles: true }))
+        await settle()
+
+        cmp.$set({ timingMap: secondTimingMap })
+        await settle()
+
+        expect(target.textContent).toContain("How great")
+        expect(target.querySelector('textarea[aria-label="Translation for Verse 1"]')).toBeNull()
+        const secondTextarea = target.querySelector('textarea[aria-label="Translation for Chorus"]') as HTMLTextAreaElement
+        expect(secondTextarea.value).toBe("Mkhulu kangakanani")
+
+        ;(target.querySelector("button") as HTMLButtonElement).click()
+        expect(onSave).toHaveBeenCalledWith(
+            expect.objectContaining({
+                showId: "show-2",
+                parallel: [{ language: "zu-ZA", sections: [{ sectionId: "c1", text: "Mkhulu kangakanani" }] }]
             })
         )
         cmp.$destroy()

@@ -6,9 +6,13 @@
     export let language = "zu-ZA"
     export let onSave: (map: TimingMap) => void
 
+    let draftMap: TimingMap = timingMap
+    let draftLanguage = language
     let draft: ParallelLyricsTrack = createParallelLyricsDraft(timingMap, language)
 
-    $: if (draft.language !== language) {
+    $: if (draftMap !== timingMap || draftLanguage !== language) {
+        draftMap = timingMap
+        draftLanguage = language
         draft = createParallelLyricsDraft(timingMap, language)
     }
 

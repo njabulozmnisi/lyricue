@@ -19,9 +19,18 @@ export function createParallelLyricsDraft(map: TimingMap, language: string): Par
     }
 }
 
+export function normalizeParallelLyricsTrack(map: TimingMap, track: ParallelLyricsTrack): ParallelLyricsTrack {
+    const sectionTextById = new Map(track.sections.map((section) => [section.sectionId, section.text]))
+    return {
+        language: track.language,
+        sections: map.sections.map((section) => ({ sectionId: section.id, text: sectionTextById.get(section.id) ?? "" }))
+    }
+}
+
 export function upsertParallelLyricsTrack(map: TimingMap, track: ParallelLyricsTrack): TimingMap {
+    const normalizedTrack = normalizeParallelLyricsTrack(map, track)
     const current = map.parallel ?? []
-    const next = current.some((candidate) => candidate.language === track.language) ? current.map((candidate) => (candidate.language === track.language ? track : candidate)) : [...current, track]
+    const next = current.some((candidate) => candidate.language === normalizedTrack.language) ? current.map((candidate) => (candidate.language === normalizedTrack.language ? normalizedTrack : candidate)) : [...current, normalizedTrack]
     return { ...map, parallel: next }
 }
 

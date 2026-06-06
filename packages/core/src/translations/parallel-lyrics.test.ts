@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest"
 import { SCHEMA_LYRICUE_TIMING_V1 } from "../types/schema-versions.js"
 import type { ParallelLyricsTrack, TimingMap, TimingSection } from "../types/timing-map.js"
-import { createParallelLyricsDraft, removeParallelLyricsTrack, sectionPlainText, upsertParallelLyricsTrack } from "./parallel-lyrics.js"
+import { createParallelLyricsDraft, normalizeParallelLyricsTrack, removeParallelLyricsTrack, sectionPlainText, upsertParallelLyricsTrack } from "./parallel-lyrics.js"
 
-function section(id: string): TimingSection {
+function section(id: string, label = "Verse 1"): TimingSection {
     return {
         id,
         type: "verse",
-        label: "Verse 1",
+        label,
         slideIndex: 0,
         startMs: 0,
         endMs: 1000,
@@ -29,6 +29,13 @@ function map(parallel: ParallelLyricsTrack[] = []): TimingMap {
         sections: [section("v1")],
         ...(parallel.length > 0 ? { parallel } : {}),
         metadata: { schemaVersion: "1", version: "1.0.0" }
+    }
+}
+
+function twoSectionMap(parallel: ParallelLyricsTrack[] = []): TimingMap {
+    return {
+        ...map(parallel),
+        sections: [section("v1", "Verse 1"), section("c1", "Chorus")]
     }
 }
 
@@ -62,5 +69,20 @@ describe("parallel lyrics helpers", () => {
         expect(replaced.parallel?.[0]?.sections[0]?.text).toBe("Updated")
 
         expect(removeParallelLyricsTrack(replaced, "zu-ZA").parallel).toBeUndefined()
+    })
+
+    it("normalizes translation tracks to current timing-map sections", () => {
+        const normalized = normalizeParallelLyricsTrack(twoSectionMap(), {
+            language: "zu-ZA",
+            sections: [
+                { sectionId: "stale", text: "Old song text" },
+                { sectionId: "v1", text: "Verse translation" }
+            ]
+        })
+
+        expect(normalized.sections).toEqual([
+            { sectionId: "v1", text: "Verse translation" },
+            { sectionId: "c1", text: "" }
+        ])
     })
 })
