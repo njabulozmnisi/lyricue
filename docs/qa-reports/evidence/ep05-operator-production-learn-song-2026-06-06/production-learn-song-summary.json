@@ -1,0 +1,20 @@
+{
+  "status": "pass",
+  "elapsedMs": 26497,
+  "audioPath": "/Users/njabulomnisi/Projects/Dojo/worshipsync/python-sidecar/tests/fixtures/ep05-public-domain/amazing-grace-48s.wav",
+  "progressStages": [
+    "decode",
+    "bpm",
+    "demucs",
+    "whisperx",
+    "timing_map",
+    "section_detection",
+    "complete"
+  ],
+  "missingStages": [],
+  "wordCount": 26,
+  "confidentWordCount": 24,
+  "confidenceRatio": 0.9230769230769231,
+  "error": null,
+  "validationErrors": []
+}

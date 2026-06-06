@@ -77,6 +77,7 @@ import { OwnWindowOutputAdapter } from "./output/OwnWindowOutputAdapter.js"
 import { createElectronBrowserWindowFactory } from "./output/electron-browser-window-factory.js"
 import { createSyntheticAudioDriver, type SyntheticAudioDriver } from "./audio/synthetic-audio-driver.js"
 import { withRequiredModelSpecs } from "./model-manifest.js"
+import { learnSongTimeoutMs, resolveSourceSidecarPythonOverride } from "./learn-song-sidecar-options.js"
 
 // Fail fast if launched with the wrong mode. The fork-mode entry has the same guard;
 // this prevents a misconfigured build from silently doing the wrong thing.
@@ -93,6 +94,7 @@ const RENDERER_PERF_MODE = process.env.LC_RENDERER_PERF_MODE === "1"
 const MODEL_MANIFEST_PATH = process.env.LC_MODEL_MANIFEST_PATH
 const MODEL_MIRROR_URL = process.env.LC_MODEL_MIRROR_URL
 const REQUIRE_MODEL_MANIFEST = process.env.LC_REQUIRE_MODEL_MANIFEST === "1"
+const SOURCE_SIDECAR_PYTHON = process.env.LC_SIDECAR_PYTHON
 const SMOKE_TEST_MODE = process.env.LC_SMOKE_TEST === "1"
 /**
  * End-to-end mode (LC_E2E_MODE=1). Replaces DemoSyncEngine with the real composition:
@@ -1090,7 +1092,7 @@ async function handleOperatorLearnSong(request: unknown): Promise<unknown> {
     const controller = getSidecarController()
     await controller.ensureRunning()
     return controller.request("learn_song", learnSongPayload, {
-        timeoutMs: 120_000,
+        timeoutMs: learnSongTimeoutMs(productionMode ? "production" : "deterministic"),
         onProgress: (notification) => {
             if (!operatorWindow || operatorWindow.isDestroyed()) return
             operatorWindow.webContents.send(OPERATOR_LEARN_SONG_PROGRESS_CHANNEL, notification.params ?? {})
@@ -1243,14 +1245,20 @@ function getSidecarController(): SidecarController {
         nodeEnv: process.env.NODE_ENV
     })
     const sidecarRoot = launch.mode === "source" ? launch.sourceDir : dirname(launch.binaryPath)
-    const venvPython = resolve(sidecarRoot, ".venv", "bin", "python")
     const opts: SidecarControllerOptions = {
         spawn: nodeSidecarSpawner,
         resolvePython:
             launch.mode === "bundled"
                 ? async () => ({ pythonPath: launch.binaryPath, version: "bundled" })
                 : nodePythonResolver,
-        pythonOverride: launch.mode === "source" && existsSync(venvPython) ? venvPython : null,
+        pythonOverride:
+            launch.mode === "source"
+                ? resolveSourceSidecarPythonOverride({
+                      sidecarRoot,
+                      envOverride: SOURCE_SIDECAR_PYTHON,
+                      exists: existsSync
+                  })
+                : null,
         moduleArgs: launch.mode === "bundled" ? [] : ["-m", "lyricue_sidecar"],
         readyTimeoutMs: launch.mode === "bundled" ? 180_000 : 30_000,
         cwd: sidecarRoot,
@@ -1387,6 +1395,16 @@ async function captureEp06Evidence(): Promise<void> {
             if (process.env.LC_CAPTURE_REHEARSAL_CAPTURE === "1" || SMOKE_TEST_MODE) {
                 await exerciseRehearsalCapture(opWindow)
             }
+            if (process.env.LC_CAPTURE_PRODUCTION_LEARN_SONG === "1") {
+                const productionDir = resolve(
+                    "docs",
+                    "qa-reports",
+                    "evidence",
+                    "ep05-operator-production-learn-song-2026-06-06"
+                )
+                mkdirSync(productionDir, { recursive: true })
+                await exerciseProductionLearnSong(opWindow, productionDir)
+            }
         } else {
             log("[capture] operator tool capture skipped: operator window missing")
             if (SMOKE_TEST_MODE) recordSmokeFailure("operator tool capture skipped: operator window missing")
@@ -1488,6 +1506,100 @@ async function exerciseOperatorPersistence(opWindow: BrowserWindow): Promise<voi
         log(`[capture] operator persistence exercise failed: ${(err as Error).message}`)
         if (SMOKE_TEST_MODE) recordSmokeFailure("operator persistence exercise", err)
     }
+}
+
+async function exerciseProductionLearnSong(opWindow: BrowserWindow, evidenceDir: string): Promise<void> {
+    const fixturePath = resolve("python-sidecar", "tests", "fixtures", "ep05-public-domain", "amazing-grace-48s.wav")
+    const summaryPath = join(evidenceDir, "production-learn-song-summary.json")
+    const startedAt = Date.now()
+    let response: unknown = null
+    let error: string | null = null
+
+    try {
+        const subscribeResult = await opWindow.webContents.executeJavaScript(`
+            (() => {
+                const host = window;
+                const api = host.lyricueOperator;
+                if (!api?.subscribeLearnSongProgress) return "missing-bridge";
+                if (typeof host.__lyricueQaProgressUnsub === "function") host.__lyricueQaProgressUnsub();
+                host.__lyricueQaProgress = [];
+                host.__lyricueQaProgressUnsub = api.subscribeLearnSongProgress((progress) => {
+                    host.__lyricueQaProgress.push(progress);
+                });
+                return "subscribed";
+            })()
+        `)
+        if (subscribeResult !== "subscribed") throw new Error(`operator progress subscription failed: ${subscribeResult}`)
+
+        response = await handleOperatorLearnSong({
+            jobId: "operator-production-learn-song-qa",
+            showId: "amazing-grace-operator-production",
+            audioPath: fixturePath,
+            lyrics: [
+                {
+                    id: "verse-1",
+                    type: "verse",
+                    label: "Verse 1",
+                    text: "Amazing grace how sweet the sound that saved a wretch like me I once was lost but now am found was blind but now I see",
+                    lines: [
+                        "Amazing grace how sweet the sound",
+                        "That saved a wretch like me",
+                        "I once was lost but now am found",
+                        "Was blind but now I see"
+                    ]
+                }
+            ],
+            options: {
+                alignmentMode: "production",
+                language: "en",
+                detectSections: true,
+                demucsModel: "htdemucs",
+                whisperxModel: "small"
+            }
+        })
+    } catch (err) {
+        error = (err as Error).message
+    }
+
+    const progress = await opWindow.webContents.executeJavaScript(`
+        (() => {
+            const host = window;
+            const progress = Array.isArray(host.__lyricueQaProgress) ? host.__lyricueQaProgress : [];
+            if (typeof host.__lyricueQaProgressUnsub === "function") host.__lyricueQaProgressUnsub();
+            host.__lyricueQaProgressUnsub = null;
+            return progress;
+        })()
+    `)
+    const elapsedMs = Date.now() - startedAt
+    const responseRecord = response && typeof response === "object" ? (response as Record<string, unknown>) : null
+    const timingMapResult = responseRecord?.timingMap ? validateTimingMap(responseRecord.timingMap) : null
+    const timingMap = timingMapResult?.ok ? timingMapResult.value : null
+    const words = timingMap ? timingMap.sections.flatMap((section) => section.words) : []
+    const confidentWords = words.filter((word) => typeof word.confidence === "number" && word.confidence >= 0.5)
+    const confidenceRatio = words.length > 0 ? confidentWords.length / words.length : 0
+    const stages = Array.isArray(progress)
+        ? progress
+              .map((entry) => (entry && typeof entry === "object" ? (entry as Record<string, unknown>).stage : null))
+              .filter((stage): stage is string => typeof stage === "string")
+        : []
+    const requiredStages = ["decode", "bpm", "demucs", "whisperx", "timing_map", "complete"]
+    const missingStages = requiredStages.filter((stage) => !stages.includes(stage))
+    const status = !error && timingMapResult?.ok && confidenceRatio >= 0.85 && missingStages.length === 0 ? "pass" : "fail"
+    const summary = {
+        status,
+        elapsedMs,
+        audioPath: fixturePath,
+        progressStages: stages,
+        missingStages,
+        wordCount: words.length,
+        confidentWordCount: confidentWords.length,
+        confidenceRatio,
+        error,
+        validationErrors: timingMapResult && !timingMapResult.ok ? timingMapResult.errors : []
+    }
+    writeFileSync(summaryPath, JSON.stringify(summary, null, 2))
+    log(`[capture] production learn song exercise ${status}; wrote ${summaryPath}`)
+    if (status !== "pass") recordSmokeFailure("production learn song exercise", error ?? JSON.stringify(summary))
 }
 
 async function exerciseLearnSongWizard(opWindow: BrowserWindow): Promise<void> {
