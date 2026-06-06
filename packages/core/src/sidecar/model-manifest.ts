@@ -3,7 +3,7 @@ import { z } from "zod"
 
 const Sha256 = z.string().regex(/^[0-9a-fA-F]{64}$/, "sha256 must be 64 hex characters")
 
-const ModelKindSchema = z.enum(["demucs", "whisperx"])
+const ModelKindSchema = z.enum(["demucs", "whisperx", "whispercpp"])
 
 const ModelManifestEntrySchema = z.object({
     kind: ModelKindSchema,
@@ -39,7 +39,16 @@ export interface SongLearningModelSelection {
     whisperxModel: string
 }
 
+export interface LiveSttModelSelection {
+    whispercppModel: string
+}
+
 export interface SongLearningModelRequirements {
+    requiredModels: SidecarModelSpec[]
+    modelMirrorUrl?: string
+}
+
+export interface LiveSttModelRequirements {
     requiredModels: SidecarModelSpec[]
     modelMirrorUrl?: string
 }
@@ -62,6 +71,19 @@ export function resolveSongLearningModelRequirements(
     const mirrorUrl = mirrorUrlOverride?.trim() || manifest.mirrorUrl
     return {
         requiredModels: [toSidecarSpec(demucs), toSidecarSpec(whisperx)],
+        ...(mirrorUrl ? { modelMirrorUrl: mirrorUrl } : {})
+    }
+}
+
+export function resolveLiveSttModelRequirements(
+    manifest: ModelManifest,
+    selection: LiveSttModelSelection,
+    mirrorUrlOverride?: string | null
+): LiveSttModelRequirements {
+    const whispercpp = findModel(manifest, "whispercpp", selection.whispercppModel)
+    const mirrorUrl = mirrorUrlOverride?.trim() || manifest.mirrorUrl
+    return {
+        requiredModels: [toSidecarSpec(whispercpp)],
         ...(mirrorUrl ? { modelMirrorUrl: mirrorUrl } : {})
     }
 }

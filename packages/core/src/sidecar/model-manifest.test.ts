@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest"
-import { parseModelManifest, resolveSongLearningModelRequirements } from "./model-manifest.js"
+import { parseModelManifest, resolveLiveSttModelRequirements, resolveSongLearningModelRequirements } from "./model-manifest.js"
 import {
     FIXTURE_DEMUCS_SHA256,
     FIXTURE_MODEL_MANIFEST,
+    FIXTURE_WHISPERCPP_SHA256,
     FIXTURE_WHISPERX_SHA256
 } from "./test-utils/model-manifest-fixture.js"
 
@@ -16,11 +17,12 @@ describe("model manifest", () => {
             mirrorUrl: "https://mirror.example/models/",
             models: [
                 { kind: "demucs", model: "htdemucs", version: "2026.05", sha256: SHA_A },
-                { kind: "whisperx", model: "small", version: "2026.05", sha256: SHA_B, artifactName: "small.bin", bytes: 123 }
+                { kind: "whisperx", model: "small", version: "2026.05", sha256: SHA_B, artifactName: "small.bin", bytes: 123 },
+                { kind: "whispercpp", model: "base.en", version: "ggml-v3", sha256: "c".repeat(64), artifactName: "ggml-base.en.bin", bytes: 78_000_000 }
             ]
         })
 
-        expect(manifest.models).toHaveLength(2)
+        expect(manifest.models).toHaveLength(3)
         expect(manifest.mirrorUrl).toBe("https://mirror.example/models/")
     })
 
@@ -77,6 +79,45 @@ describe("model manifest", () => {
         expect(requirements.modelMirrorUrl).toBe("https://install.example/models/")
     })
 
+    it("builds live STT model requirements for the Whisper.cpp base.en model", () => {
+        const manifest = parseModelManifest({
+            $schema: "lyricue-model-manifest-v1",
+            mirrorUrl: "https://mirror.example/models/",
+            models: [
+                {
+                    kind: "whispercpp",
+                    model: "base.en",
+                    version: "ggml-v3",
+                    sha256: SHA_A,
+                    artifactName: "ggml-base.en.bin",
+                    bytes: 78_000_000
+                }
+            ]
+        })
+
+        expect(resolveLiveSttModelRequirements(manifest, { whispercppModel: "base.en" })).toEqual({
+            modelMirrorUrl: "https://mirror.example/models/",
+            requiredModels: [
+                {
+                    name: "base.en",
+                    version: "ggml-v3",
+                    sha256: SHA_A,
+                    artifactName: "ggml-base.en.bin",
+                    bytes: 78_000_000
+                }
+            ]
+        })
+    })
+
+    it("fails when a selected live STT model is missing from the manifest", () => {
+        const manifest = parseModelManifest({
+            $schema: "lyricue-model-manifest-v1",
+            models: [{ kind: "whispercpp", model: "base", version: "ggml-v3", sha256: SHA_A }]
+        })
+
+        expect(() => resolveLiveSttModelRequirements(manifest, { whispercppModel: "base.en" })).toThrow("whispercpp model 'base.en'")
+    })
+
     it("fails when a selected model is missing from the manifest", () => {
         const manifest = parseModelManifest({
             $schema: "lyricue-model-manifest-v1",
@@ -111,6 +152,18 @@ describe("model manifest", () => {
                     sha256: FIXTURE_WHISPERX_SHA256,
                     artifactName: "weights.bin",
                     bytes: 22
+                }
+            ]
+        })
+        expect(resolveLiveSttModelRequirements(manifest, { whispercppModel: "fixture-base.en" })).toEqual({
+            modelMirrorUrl: "file:///tmp/lyricue-model-fixture/",
+            requiredModels: [
+                {
+                    name: "fixture-base.en",
+                    version: "v1",
+                    sha256: FIXTURE_WHISPERCPP_SHA256,
+                    artifactName: "ggml-base.en.bin",
+                    bytes: 24
                 }
             ]
         })
