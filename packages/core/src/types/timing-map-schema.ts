@@ -124,17 +124,32 @@ export const parallelLyricsTrackSchema = z.object({
  * `lyricue-timing-v1` schema URI so older readers can reject files they don't
  * understand and the migration framework (STORY-03.6) can dispatch on version.
  */
-export const timingMapSchema = z.object({
-    $schema: z.literal(SCHEMA_LYRICUE_TIMING_V1),
-    showId: z.string().min(1, "showId cannot be empty"),
-    learnedFrom: learnedFromSchema,
-    bpm: z.number().positive("bpm must be > 0"),
-    timeSignature: z.string().optional(),
-    language: z.string().min(2, "language must be a BCP-47 code, e.g. 'en'"),
-    sections: z.array(timingSectionSchema),
-    parallel: z.array(parallelLyricsTrackSchema).optional(),
-    metadata: timingMapMetadataSchema
-})
+export const timingMapSchema = z
+    .object({
+        $schema: z.literal(SCHEMA_LYRICUE_TIMING_V1),
+        showId: z.string().min(1, "showId cannot be empty"),
+        learnedFrom: learnedFromSchema,
+        bpm: z.number().positive("bpm must be > 0"),
+        timeSignature: z.string().optional(),
+        language: z.string().min(2, "language must be a BCP-47 code, e.g. 'en'"),
+        sections: z.array(timingSectionSchema),
+        parallel: z.array(parallelLyricsTrackSchema).optional(),
+        metadata: timingMapMetadataSchema
+    })
+    .superRefine((map, ctx) => {
+        const sectionIds = new Set(map.sections.map((section) => section.id))
+        map.parallel?.forEach((track, trackIndex) => {
+            track.sections.forEach((section, sectionIndex) => {
+                if (!sectionIds.has(section.sectionId)) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        path: ["parallel", trackIndex, "sections", sectionIndex, "sectionId"],
+                        message: `parallel lyric sectionId "${section.sectionId}" does not exist in timing map sections`
+                    })
+                }
+            })
+        })
+    })
 
 const arrangementStepSchema = z.object({
     sectionId: z.string().min(1)

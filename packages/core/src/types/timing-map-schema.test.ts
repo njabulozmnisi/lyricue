@@ -115,6 +115,22 @@ describe("validateTimingMap — happy path", () => {
         if (result.ok) expect(result.value.parallel?.[0]?.language).toBe("zu-ZA")
     })
 
+    it("rejects parallel lyric sections that do not belong to the timing map", () => {
+        const result = validateTimingMap(
+            makeValidMap({
+                parallel: [{ language: "zu-ZA", sections: [{ sectionId: "stale", text: "Old song text" }] }]
+            })
+        )
+
+        expect(result.ok).toBe(false)
+        if (!result.ok) {
+            expect(result.errors[0]).toMatchObject({
+                path: "parallel.0.sections.0.sectionId",
+                code: "custom"
+            })
+        }
+    })
+
     it("accepts null word confidence (WhisperX couldn't align that word)", () => {
         const map = makeValidMap({
             sections: [{ ...VALID_SECTION, words: [{ ...VALID_WORD, confidence: null }] }]
