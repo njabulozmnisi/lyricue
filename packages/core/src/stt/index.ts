@@ -1,1 +1,5 @@
 export * from "./phrase-matcher.js"
+export * from "./ring-buffer.js"
+export * from "./rolling-window-transcriber.js"
+export * from "./live-position-corrector.js"
+export * from "./position-correction-log.js"
