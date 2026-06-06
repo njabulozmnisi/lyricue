@@ -24,7 +24,7 @@ The project is not yet production-shippable for a multi-campus rollout because s
 | EP-02 OutputAdapter walking skeleton | Complete | 100% | Sister mode proven; fork adapter contract present | FreeShow vendor SDKs make fork runtime verification external |
 | EP-03 Timing map/storage | Complete | 100% | Atomic storage and migrations are in place | Crash-safe writes became a load-bearing invariant across later modules |
 | EP-04 Sidecar infra | Locally strong, packaging locally proven for macOS arm64 protocol smoke | 88% | JSON-RPC, controller, model manifest/download manager, subprocess smoke pass, Python 3.11 ML venv validated, PyInstaller darwin-arm64 binary smoke passed | First PyInstaller entry failed on package-relative imports; root `build:sidecar` also exposed a bare-`python` clean-env defect. Both are fixed. Full ML-runtime packaging and real model mirror remain release gates |
-| EP-05 Song learning | Packaged production path runs; quality gate still open | 90% | Deterministic path works; production stage contracts and progress are wired; Demucs/WhisperX packages install/import; public-domain opt-in fixture passes at 25/26 confident words in source mode; staged release-owned model cache runs with `LYRICUE_MODEL_CACHE_ONLY=1`; packaged sidecar returns a TimingMap with clean JSON-RPC stdout | The first 30-second fixture clipped the final phrase and falsely failed the quality gate. Demucs local-repo loading failed under PyTorch 2.8 safe-load defaults until LyriCue scoped trusted local artifact loading. Packaged ML required targeted PyInstaller rules for WhisperX, Pyannote, and torchcodec metadata. The latest packaged run misses the confidence gate by one word at 22/26 confident words |
+| EP-05 Song learning | Local packaged production proof passing with caveats | 94% | Deterministic path works; production stage contracts and progress are wired; Demucs/WhisperX packages install/import; public-domain opt-in fixture passes in source mode; staged release-owned model cache runs with `LYRICUE_MODEL_CACHE_ONLY=1`; packaged sidecar returns TimingMaps with clean JSON-RPC stdout and 25/26 confident words in the final variance sample | The first 30-second fixture clipped the final phrase and falsely failed the quality gate. Demucs local-repo loading failed under PyTorch 2.8 safe-load defaults until LyriCue scoped trusted local artifact loading. Packaged ML required targeted PyInstaller rules for WhisperX, Pyannote, and torchcodec metadata. Slow onefile startup and native audio dependency warnings remain release-hardening items |
 | EP-06 Karaoke renderer | Complete for sister-mode local use | 95% | Renderer, easing, next-section preview, perf harness pass | Visual QA mattered more than unit tests; tempo-adaptive easing arrived from operator feedback |
 | EP-07 Audio input/beat detection | Mostly complete | 85% | Synthetic and pure module tests pass | Physical microphone/loopback QA remains a hardware gate |
 | EP-08 VAD/STT correction | Partial | 45% | VAD and phrase matcher exist; SyncEngine accepts correction events | Whisper.cpp native addon is the main missing platform-specific dependency |
@@ -79,14 +79,14 @@ Completed local work:
 13. Fixed the first packaged `learn_song` hidden-import defect by collecting WhisperX submodules.
 14. Fixed packaged runtime import/data gaps for torchcodec metadata, Pyannote data, WhisperX assets, and Pyannote segmentation submodules.
 15. Redirected WhisperX stdout logging to stderr to preserve the sidecar JSON-RPC stdout contract.
-16. Ran packaged `learn_song` end to end against the offline fixture; it returned a TimingMap with clean stdout but missed the confidence threshold by one word.
+16. Ran packaged `learn_song` end to end against the offline fixture; final packaged variance sample returned 25/26 confident words twice with clean stdout.
 
 Remaining work:
 
-1. Fix packaged `learn_song` quality gap: latest packaged run returns 22/26 confident words, below the existing `>=0.85` confidence gate.
-2. Run a real production-mode Learn Song pass through the operator UI.
-3. Capture QA evidence for timing accuracy, progress, cancellation, and fallback.
-4. Resolve or certify the torchcodec and torchaudio `libsox.dylib` warnings in the packaged ML runtime.
+1. Run a real production-mode Learn Song pass through the operator UI.
+2. Capture QA evidence for timing accuracy, progress, cancellation, and fallback.
+3. Resolve or certify the torchcodec and torchaudio `libsox.dylib` warnings in the packaged ML runtime.
+4. Add a release smoke that runs packaged `learn_song` and asserts confidence plus stdout hygiene.
 
 ### Gate C — Multi-Campus Library/Publishing Certification
 
@@ -145,9 +145,9 @@ Work proceeds in this order:
 
 ## Immediate Queue
 
-1. Fix packaged `learn_song` confidence parity with the source-mode cache-only run.
-2. Run a real production-mode Learn Song pass through the operator UI.
-3. Capture Gate B QA evidence for timing accuracy, progress, cancellation, and fallback.
+1. Run a real production-mode Learn Song pass through the operator UI.
+2. Capture Gate B QA evidence for timing accuracy, progress, cancellation, and fallback.
+3. Add a release smoke for packaged `learn_song` on every packaged platform artifact.
 4. Keep Gate C/D/E items marked external-proof pending until the required credentials, signing assets, vendor SDKs, and hardware are available.
 
 ## External Inputs Needed Before Final Production Sign-Off

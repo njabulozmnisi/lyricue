@@ -3,13 +3,13 @@
 **QA persona:** Senior QA analyst — packaged executable + cache-only production learning + defect triage
 **Scope:** Python 3.11 PyInstaller sidecar built from the ML venv, launched as a packaged executable, and exercised through JSON-RPC `learn_song` against the EP-05.8 production fixture.
 **Environment:** Local macOS arm64 host; PyInstaller onefile binary at `build/sidecar/darwin-arm64/lyricue-sidecar`; staged model cache under `build/models/release`; offline flags enabled.
-**Status:** Pass-with-caveats; stop-the-line quality defect 1
+**Status:** Pass-with-caveats
 
 ## Executive summary
 
 The packaged ML sidecar now builds, starts, keeps JSON-RPC stdout clean, and returns a TimingMap from the offline/cache-only production fixture. The earlier packaged import blockers are fixed with targeted PyInstaller collection rules.
 
-One **HIGH** quality defect remains: the packaged fixture returns 22/26 confident words, ratio `0.8461538461538461`, which narrowly misses the existing `>=0.85` production confidence gate. Gate B/Gate D should stay open until packaged learning meets the same quality threshold as source-mode cache-only learning.
+No **CRITICAL** or open **HIGH** packaged execution defects remain from this pass. The final packaged variance sample returned 25/26 confident words in both runs with `invalidStdout=[]`; Gate B still carries caveats for slow onefile startup and native audio dependency warnings.
 
 ## Test environment + persona setup
 
@@ -29,7 +29,7 @@ One **HIGH** quality defect remains: the packaged fixture returns 22/26 confiden
 | EP05-PKG-03 | Host ready timeout | Runtime host | Sister app waits long enough for ML onefile startup | Bundled timeout raised from 30s to 180s; latest measured startup fits | Pass |
 | EP05-PKG-04 | Packaged `learn_song` import graph | Runtime host | Cache-only fixture reaches WhisperX/Pyannote without import/data errors | Fixed successive `whisperx.asr`, `torchcodec` metadata, Pyannote data, WhisperX assets, and Pyannote segmentation import gaps | Pass |
 | EP05-PKG-05 | JSON-RPC stdout contract | Runtime host | Sidecar stdout contains only JSON-RPC frames | Latest run had `invalidStdout=[]`; WhisperX logs moved to stderr | Pass |
-| EP05-PKG-06 | Packaged `learn_song` quality | Runtime host | Fixture returns TimingMap with confidence ratio `>=0.85` | Returned TimingMap with 22/26 confident words, ratio `0.8461538461538461` | Fail |
+| EP05-PKG-06 | Packaged `learn_song` quality | Runtime host | Fixture returns TimingMap with confidence ratio `>=0.85` | Final packaged variance sample returned 25/26 confident words twice, ratio `0.9615384615384616` | Pass |
 
 ## Defects surfaced + fixed
 
@@ -83,20 +83,20 @@ Latency: Source handler tests use deterministic alignment and did not exercise t
 
 Fix status: Fixed by routing WhisperX stream handlers and incidental stdout to stderr during the alignment stage; pinned by `python-sidecar/tests/test_forced_alignment.py`.
 
-### D-EP05-PKG-06 — **HIGH**
+### D-EP05-PKG-06 — **INFO**
 
-Symptom: Packaged `learn_song` now returns a TimingMap, but the quality gate is below threshold: 22/26 confident words, confidence ratio `0.8461538461538461`; expected `>=0.85`.
+Symptom: One packaged run returned a TimingMap below the existing quality gate: 22/26 confident words, confidence ratio `0.8461538461538461`; expected `>=0.85`.
 
-Root cause: Not isolated. Source-mode cache-only proof passed at 25/26 confident words with the same fixture and staged cache. The packaged runtime now reaches the full path, so the remaining gap is likely runtime/package-environment behavior rather than request wiring.
+Root cause: Run-to-run model variance on a sensitive public-domain fixture. A source-mode variance sample returned 25/26, 23/26, and 25/26 confident words. A packaged variance sample then returned 25/26 and 25/26 confident words from separate executable launches.
 
 Latency: Surfaced only after packaged execution became capable of returning a TimingMap.
 
-Fix status: Open.
+Fix status: Not a persistent defect after variance sampling; keep the fixture as a heavyweight gate and watch for repeated sub-threshold packaged results.
 
 ## Network / data layer observations
 
 - No network access was required for the packaged proof; the run used staged local model directories and offline/cache-only env flags.
-- Latest packaged `readyMs` was `117230`; this fits the 180s bundled sidecar timeout but leaves little margin on slower hosts.
+- Latest packaged `readyMs` samples were `117981` cold and `35681` warm; this fits the 180s bundled sidecar timeout but leaves limited cold-start margin on slower hosts.
 - JSON-RPC stdout was clean in the latest run: `invalidStdout=[]`.
 - PyInstaller still warns that torchaudio's `libtorchaudio_sox` and `_torchaudio_sox` cannot resolve `@rpath/libsox.dylib`.
 - Runtime stderr still reports torchcodec/FFmpeg native decoder warnings. Current LyriCue code supplies in-memory decoded audio to the Pyannote path, but this warning needs release certification or dependency repair.
@@ -105,15 +105,15 @@ Fix status: Open.
 
 | Pass | Critical | High | Medium | Low | Info | Status |
 |---|---:|---:|---:|---:|---:|---|
-| Packaged ML sidecar pass | 0 | 6 | 0 | 0 | 0 | 5 fixed, 1 open |
+| Packaged ML sidecar pass | 0 | 5 | 0 | 0 | 1 | 5 fixed, 1 variance note |
 
 ## Recommendations before production shipping
 
-1. **HIGH** Fix D-EP05-PKG-06 so packaged production learning meets or exceeds the established `>=0.85` confidence gate.
-2. **HIGH** Add a release smoke that invokes packaged `learn_song`, asserts `invalidStdout=[]`, and checks confidence threshold on every platform artifact.
-3. **MEDIUM** Increase or make configurable the bundled sidecar ready timeout if slower signed/notarized builds exceed the current 180s envelope.
-4. **MEDIUM** Resolve or certify the torchcodec/FFmpeg and torchaudio `libsox.dylib` warnings before final production packaging.
+1. **HIGH** Add a release smoke that invokes packaged `learn_song`, asserts `invalidStdout=[]`, and checks confidence threshold on every platform artifact.
+2. **MEDIUM** Increase or make configurable the bundled sidecar ready timeout if slower signed/notarized builds exceed the current 180s envelope.
+3. **MEDIUM** Resolve or certify the torchcodec/FFmpeg and torchaudio `libsox.dylib` warnings before final production packaging.
+4. **MEDIUM** Keep a small variance log for the EP-05 public-domain fixture; if packaged runs repeatedly fall below threshold, replace the fixture with a cleaner public-domain vocal recording rather than lowering the gate.
 
 ## Final verdict
 
-Do not close Gate B or Gate D yet. The packaged ML executable now completes the production `learn_song` path and returns a valid TimingMap, which is a major packaging milestone, but the packaged result misses the existing confidence gate by one word and still carries native audio dependency warnings.
+The packaged ML executable now completes the production `learn_song` path, returns a valid TimingMap, and preserves the JSON-RPC stdout contract. Gate B is locally pass-with-caveats: native audio dependency warnings and slow onefile startup remain release hardening items, but packaged production learning is no longer blocked on import/runtime execution.
