@@ -236,12 +236,13 @@
     }
 
     async function startLearning(): Promise<void> {
+        const manualFallback = learnError !== "" || !draft.audioPath
         learning = true
         learnError = ""
-        draft.progressLabel = "Learning song"
+        draft.progressLabel = manualFallback ? "Manual preview ready" : "Learning song"
         emitDraft()
         try {
-            const result = learnSong ? await learnSong(draft, updateProgressLabel) : { progressLabel: "Preview ready" }
+            const result = manualFallback ? { progressLabel: "Manual preview ready" } : learnSong ? await learnSong(draft, updateProgressLabel) : { progressLabel: "Preview ready" }
             draft.progressLabel = result?.progressLabel ?? "Preview ready"
             if (result && "timingMap" in result) {
                 draft.timingMap = (result as { timingMap?: unknown }).timingMap ?? null
@@ -658,7 +659,7 @@
             </div>
             {#if learnError}<p class="error">{learnError}</p>{/if}
             <button type="button" class="primary" disabled={learning} on:click={startLearning}>
-                {learning ? "Learning" : draft.audioFileName ? "Start learning" : "Create manual preview"}
+                {learning ? "Learning" : learnError || !draft.audioPath ? "Create manual preview" : "Start learning"}
             </button>
         </section>
     {:else if draft.step === "preview"}

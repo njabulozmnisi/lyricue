@@ -280,6 +280,30 @@ describe("SidecarController.shutdown()", () => {
     })
 })
 
+describe("SidecarController.terminate()", () => {
+    it("kills the subprocess and lets exit handling reject pending requests", async () => {
+        const r = makeController()
+        const ready = r.controller.ensureRunning()
+        await Promise.resolve()
+        await Promise.resolve()
+        r.getProc().pushStdout({ jsonrpc: "2.0", method: "ready" })
+        await ready
+
+        const pending = r.controller.request("learn_song", { jobId: "cancel-me" })
+        await Promise.resolve()
+        expect(r.controller.terminate()).toBe(true)
+        expect(r.getProc().killed).toBe("SIGTERM")
+
+        r.getProc().emitExit(null, "SIGTERM")
+        await expect(pending).rejects.toThrow(/Sidecar exited during request 'learn_song'/)
+    })
+
+    it("is a no-op when the controller is idle", () => {
+        const r = makeController()
+        expect(r.controller.terminate()).toBe(false)
+    })
+})
+
 describe("Status transitions", () => {
     it("idle → starting → running → idle on clean exit", async () => {
         const r = makeController()

@@ -11,7 +11,7 @@
  *
  * Security model (per Electron's contextIsolation best practices + NFR2.1):
  *   - The renderer NEVER touches ipcRenderer directly.
- *   - We expose exactly three functions:
+ *   - We expose a narrow host API:
  *       subscribeState(handler)  — install a state listener; returns unsubscribe
  *       sendCommand(command)     — fire-and-forget command upstream
  *       signalReady()            — tell main we've mounted (flushes any state buffer)
@@ -27,6 +27,7 @@ const OPERATOR_STATE_CHANNEL = "lyricue:operator:state"
 const OPERATOR_COMMAND_CHANNEL = "lyricue:operator:command"
 const OPERATOR_READY_EVENT = "lyricue:operator:ready"
 const OPERATOR_LEARN_SONG_CHANNEL = "lyricue:operator:learn-song"
+const OPERATOR_CANCEL_LEARN_SONG_CHANNEL = "lyricue:operator:cancel-learn-song"
 const OPERATOR_LEARN_SONG_PROGRESS_CHANNEL = "lyricue:operator:learn-song-progress"
 const OPERATOR_REHEARSAL_START_CHANNEL = "lyricue:operator:rehearsal-start"
 const OPERATOR_REHEARSAL_CHUNK_CHANNEL = "lyricue:operator:rehearsal-chunk"
@@ -78,6 +79,10 @@ contextBridge.exposeInMainWorld("lyricueOperator", {
         return ipcRenderer.invoke(OPERATOR_LEARN_SONG_CHANNEL, request)
     },
 
+    cancelLearnSong(request: unknown): Promise<unknown> {
+        return ipcRenderer.invoke(OPERATOR_CANCEL_LEARN_SONG_CHANNEL, request)
+    },
+
     subscribeLearnSongProgress(handler: (progress: unknown) => void): () => void {
         const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown) => {
             try {
@@ -121,6 +126,7 @@ declare global {
             subscribeState: (handler: StateHandler) => () => void
             sendCommand: (command: unknown) => void
             learnSong: (request: unknown) => Promise<unknown>
+            cancelLearnSong: (request: unknown) => Promise<unknown>
             subscribeLearnSongProgress: (handler: (progress: unknown) => void) => () => void
             startRehearsalCapture: (request: unknown) => Promise<unknown>
             writeRehearsalChunk: (request: unknown) => Promise<unknown>

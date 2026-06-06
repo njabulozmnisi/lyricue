@@ -240,6 +240,36 @@ describe("LearnSongWizard", () => {
         cmp.$destroy()
     })
 
+    it("falls back to manual-mode preview when learning rejects", async () => {
+        const learnSong = vi.fn(async () => {
+            throw new Error("Sidecar exited during request 'learn_song'")
+        })
+        const cmp = new LearnSongWizard({
+            target,
+            props: {
+                initialDraft: {
+                    step: "progress",
+                    title: "Fallback Song",
+                    lyricsText: "[Verse 1]\nLine one",
+                    sections: [{ id: "v1", type: "verse", label: "Verse 1", text: "Line one", lines: ["Line one"] }],
+                    audioFileName: "song.wav",
+                    audioFileSize: 1024,
+                    audioPath: "/tmp/song.wav"
+                },
+                learnSong
+            }
+        })
+
+        click(buttonByText(target, "Start learning"))
+        await waitForText(target, "Sidecar exited during request 'learn_song'")
+        await waitForText(target, "Manual-mode fallback ready")
+        expect(target.textContent).toContain("Create manual preview")
+        click(buttonByText(target, "Create manual preview"))
+        await waitForText(target, "1 sections ready with song.wav")
+        expect(learnSong).toHaveBeenCalledOnce()
+        cmp.$destroy()
+    })
+
     it("reviews timing maps with editable word boundaries and save callback", async () => {
         const saveTimingMap = vi.fn()
         const onDraftChange = vi.fn()

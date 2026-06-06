@@ -153,6 +153,7 @@ const OPERATOR_STATE_CHANNEL = "lyricue:operator:state"
 const OPERATOR_COMMAND_CHANNEL = "lyricue:operator:command"
 const OPERATOR_READY_EVENT = "lyricue:operator:ready"
 const OPERATOR_LEARN_SONG_CHANNEL = "lyricue:operator:learn-song"
+const OPERATOR_CANCEL_LEARN_SONG_CHANNEL = "lyricue:operator:cancel-learn-song"
 const OPERATOR_LEARN_SONG_PROGRESS_CHANNEL = "lyricue:operator:learn-song-progress"
 const OPERATOR_REHEARSAL_START_CHANNEL = "lyricue:operator:rehearsal-start"
 const OPERATOR_REHEARSAL_CHUNK_CHANNEL = "lyricue:operator:rehearsal-chunk"
@@ -563,6 +564,13 @@ async function startOperatorWindow(): Promise<void> {
             throw new Error("Rejected learn_song request from unknown sender.")
         }
         return handleOperatorLearnSong(request)
+    })
+    ipcMain.removeHandler(OPERATOR_CANCEL_LEARN_SONG_CHANNEL)
+    ipcMain.handle(OPERATOR_CANCEL_LEARN_SONG_CHANNEL, async (event, request: unknown) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected cancel-learn-song request from unknown sender.")
+        }
+        return handleOperatorCancelLearnSong(request)
     })
     ipcMain.removeHandler(OPERATOR_REHEARSAL_START_CHANNEL)
     ipcMain.handle(OPERATOR_REHEARSAL_START_CHANNEL, async (event, request: unknown) => {
@@ -1062,10 +1070,25 @@ function removeOperatorIpcHandlers(): void {
         ipcCommandHandler = null
     }
     ipcMain.removeHandler(OPERATOR_LEARN_SONG_CHANNEL)
+    ipcMain.removeHandler(OPERATOR_CANCEL_LEARN_SONG_CHANNEL)
     ipcMain.removeHandler(OPERATOR_REHEARSAL_START_CHANNEL)
     ipcMain.removeHandler(OPERATOR_REHEARSAL_CHUNK_CHANNEL)
     ipcMain.removeHandler(OPERATOR_REHEARSAL_STOP_CHANNEL)
     ipcMain.removeHandler(OPERATOR_REHEARSAL_DISCARD_CHANNEL)
+}
+
+async function handleOperatorCancelLearnSong(request: unknown): Promise<unknown> {
+    if (!request || typeof request !== "object") {
+        throw new Error("cancel learn_song request must be an object.")
+    }
+    const payload = request as Record<string, unknown>
+    if (typeof payload.jobId !== "string" || payload.jobId.trim() === "") {
+        throw new Error("cancel learn_song requires a jobId.")
+    }
+    const controller = sidecarController
+    if (!controller) return { jobId: payload.jobId, cancelled: false, strategy: "sidecar-not-running" }
+    const cancelled = controller.terminate("SIGTERM")
+    return { jobId: payload.jobId, cancelled, strategy: "terminate-sidecar" }
 }
 
 async function handleOperatorLearnSong(request: unknown): Promise<unknown> {
@@ -1405,6 +1428,16 @@ async function captureEp06Evidence(): Promise<void> {
                 mkdirSync(productionDir, { recursive: true })
                 await exerciseProductionLearnSong(opWindow, productionDir)
             }
+            if (process.env.LC_CAPTURE_PRODUCTION_LEARN_SONG_CANCEL === "1") {
+                const productionDir = resolve(
+                    "docs",
+                    "qa-reports",
+                    "evidence",
+                    "ep05-operator-production-learn-song-2026-06-06"
+                )
+                mkdirSync(productionDir, { recursive: true })
+                await exerciseProductionLearnSongCancellation(opWindow, productionDir)
+            }
         } else {
             log("[capture] operator tool capture skipped: operator window missing")
             if (SMOKE_TEST_MODE) recordSmokeFailure("operator tool capture skipped: operator window missing")
@@ -1600,6 +1633,117 @@ async function exerciseProductionLearnSong(opWindow: BrowserWindow, evidenceDir:
     writeFileSync(summaryPath, JSON.stringify(summary, null, 2))
     log(`[capture] production learn song exercise ${status}; wrote ${summaryPath}`)
     if (status !== "pass") recordSmokeFailure("production learn song exercise", error ?? JSON.stringify(summary))
+}
+
+async function exerciseProductionLearnSongCancellation(opWindow: BrowserWindow, evidenceDir: string): Promise<void> {
+    const fixturePath = resolve("python-sidecar", "tests", "fixtures", "ep05-public-domain", "amazing-grace-48s.wav")
+    const summaryPath = join(evidenceDir, "production-learn-song-cancel-summary.json")
+    const jobId = "operator-production-learn-song-cancel-qa"
+    const startedAt = Date.now()
+    let cancelResult: unknown = null
+    let error: string | null = null
+
+    await opWindow.webContents.executeJavaScript(`
+        (() => {
+            const host = window;
+            const api = host.lyricueOperator;
+            if (typeof host.__lyricueQaProgressUnsub === "function") host.__lyricueQaProgressUnsub();
+            host.__lyricueQaProgress = [];
+            host.__lyricueQaProgressUnsub = api.subscribeLearnSongProgress((progress) => {
+                host.__lyricueQaProgress.push(progress);
+            });
+        })()
+    `)
+
+    const learning = handleOperatorLearnSong({
+        jobId,
+        showId: "amazing-grace-operator-production-cancel",
+        audioPath: fixturePath,
+        lyrics: [
+            {
+                id: "verse-1",
+                type: "verse",
+                label: "Verse 1",
+                text: "Amazing grace how sweet the sound that saved a wretch like me I once was lost but now am found was blind but now I see",
+                lines: [
+                    "Amazing grace how sweet the sound",
+                    "That saved a wretch like me",
+                    "I once was lost but now am found",
+                    "Was blind but now I see"
+                ]
+            }
+        ],
+        options: {
+            alignmentMode: "production",
+            language: "en",
+            detectSections: true,
+            demucsModel: "htdemucs",
+            whisperxModel: "small"
+        }
+    }).then(
+        () => null,
+        (err) => err as Error
+    )
+
+    const cancelStage = await waitForLearnSongProgressStage(opWindow, ["demucs", "whisperx"], 45_000)
+    try {
+        cancelResult = await handleOperatorCancelLearnSong({ jobId })
+        const learningError = await learning
+        error = learningError?.message ?? null
+    } catch (err) {
+        error = (err as Error).message
+    }
+
+    const progress = await readAndClearLearnSongProgress(opWindow)
+    const elapsedMs = Date.now() - startedAt
+    const cancelRecord = cancelResult && typeof cancelResult === "object" ? (cancelResult as Record<string, unknown>) : null
+    const stages = Array.isArray(progress)
+        ? progress
+              .map((entry) => (entry && typeof entry === "object" ? (entry as Record<string, unknown>).stage : null))
+              .filter((stage): stage is string => typeof stage === "string")
+        : []
+    const status = cancelRecord?.cancelled === true && !!error && error.includes("Sidecar exited during request 'learn_song'") ? "pass" : "fail"
+    const summary = {
+        status,
+        elapsedMs,
+        audioPath: fixturePath,
+        cancelStage,
+        cancelResult,
+        progressStages: stages,
+        error
+    }
+    writeFileSync(summaryPath, JSON.stringify(summary, null, 2))
+    log(`[capture] production learn song cancellation ${status}; wrote ${summaryPath}`)
+    if (status !== "pass") recordSmokeFailure("production learn song cancellation", JSON.stringify(summary))
+}
+
+async function waitForLearnSongProgressStage(opWindow: BrowserWindow, stages: string[], timeoutMs: number): Promise<string | null> {
+    const startedAt = Date.now()
+    while (Date.now() - startedAt < timeoutMs) {
+        const matched = await opWindow.webContents.executeJavaScript(`
+            (() => {
+                const progress = Array.isArray(window.__lyricueQaProgress) ? window.__lyricueQaProgress : [];
+                const wanted = ${JSON.stringify(stages)};
+                const hit = progress.find((entry) => entry && typeof entry === "object" && wanted.includes(entry.stage));
+                return hit?.stage ?? null;
+            })()
+        `)
+        if (typeof matched === "string") return matched
+        await new Promise<void>((resolve) => setTimeout(resolve, 500))
+    }
+    return null
+}
+
+async function readAndClearLearnSongProgress(opWindow: BrowserWindow): Promise<unknown> {
+    return opWindow.webContents.executeJavaScript(`
+        (() => {
+            const host = window;
+            const progress = Array.isArray(host.__lyricueQaProgress) ? host.__lyricueQaProgress : [];
+            if (typeof host.__lyricueQaProgressUnsub === "function") host.__lyricueQaProgressUnsub();
+            host.__lyricueQaProgressUnsub = null;
+            return progress;
+        })()
+    `)
 }
 
 async function exerciseLearnSongWizard(opWindow: BrowserWindow): Promise<void> {

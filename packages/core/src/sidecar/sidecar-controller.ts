@@ -312,6 +312,10 @@ export class SidecarController {
         // The onExit handler will null out #process and reset status; nothing else to do here.
     }
 
+    terminate(signal: NodeJS.Signals = "SIGTERM"): boolean {
+        return this.#process?.kill(signal) ?? false
+    }
+
     // --- internals ---
 
     #onStdoutLine(line: string): void {

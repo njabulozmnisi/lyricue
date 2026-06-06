@@ -1,0 +1,17 @@
+{
+  "status": "pass",
+  "elapsedMs": 3023,
+  "audioPath": "/Users/njabulomnisi/Projects/Dojo/worshipsync/python-sidecar/tests/fixtures/ep05-public-domain/amazing-grace-48s.wav",
+  "cancelStage": "demucs",
+  "cancelResult": {
+    "jobId": "operator-production-learn-song-cancel-qa",
+    "cancelled": true,
+    "strategy": "terminate-sidecar"
+  },
+  "progressStages": [
+    "decode",
+    "bpm",
+    "demucs"
+  ],
+  "error": "Sidecar exited during request 'learn_song' (code=null, signal=SIGTERM)"
+}

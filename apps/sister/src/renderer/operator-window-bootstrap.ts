@@ -123,6 +123,7 @@ const bridgeCandidate = (
             subscribeState: (handler: (state: unknown) => void) => () => void
             sendCommand: (command: unknown) => void
             learnSong: (request: unknown) => Promise<unknown>
+            cancelLearnSong: (request: unknown) => Promise<unknown>
             subscribeLearnSongProgress: (handler: (progress: unknown) => void) => () => void
             startRehearsalCapture: (request: unknown) => Promise<unknown>
             writeRehearsalChunk: (request: unknown) => Promise<unknown>
@@ -177,6 +178,7 @@ let rehearsalChunkChain: Promise<unknown> = Promise.resolve()
 let rehearsalCaptureFilePath: string | null = null
 let rehearsalCaptureRunning = false
 let learnSongDraft: unknown = null
+let activeLearnSongJobId: string | null = null
 
 const banner = new TierChangeBanner({
     target: bannerSlot,
@@ -611,6 +613,7 @@ function openLearnSongWizard(): void {
 async function learnSongFromSidecar(draft: LearnSongDraftForHost, onProgress: (label: string) => void): Promise<{ progressLabel: string; timingMap?: unknown }> {
     if (!draft.audioPath) return { progressLabel: "Manual preview ready" }
     const jobId = `operator-${Date.now()}`
+    activeLearnSongJobId = jobId
     const unsubscribe = bridge.subscribeLearnSongProgress((progress) => {
         const label = learnSongProgressLabel(progress, jobId)
         if (label) onProgress(label)
@@ -633,6 +636,7 @@ async function learnSongFromSidecar(draft: LearnSongDraftForHost, onProgress: (l
         })
     } finally {
         unsubscribe()
+        if (activeLearnSongJobId === jobId) activeLearnSongJobId = null
     }
     if (!result || typeof result !== "object") {
         throw new Error("Song learning returned an invalid response.")
@@ -647,11 +651,21 @@ async function learnSongFromSidecar(draft: LearnSongDraftForHost, onProgress: (l
     }
 }
 
+function cancelActiveLearnSong(): void {
+    const jobId = activeLearnSongJobId
+    if (!jobId) return
+    activeLearnSongJobId = null
+    bridge.cancelLearnSong({ jobId }).catch((err) => {
+        console.error("[lyricue:operator-renderer] cancel learn-song failed:", err)
+    })
+}
+
 function slugShowId(input: string): string {
     return input.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "learned-song"
 }
 
 function closeLearnSongWizard(): void {
+    cancelActiveLearnSong()
     const overlay = document.querySelector(".learn-song-overlay")
     try {
         learnSongWizard?.$destroy()
