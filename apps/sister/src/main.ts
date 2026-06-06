@@ -39,7 +39,7 @@ import { app, BrowserWindow, ipcMain } from "electron"
 import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { basename, dirname, resolve, join } from "node:path"
-import { DEPLOYMENT_MODE, validateArrangement, validateTimingMap, type Arrangement, type TimingMap } from "@lyricue/core/types"
+import { DEPLOYMENT_MODE, validateTimingMap, type Arrangement, type TimingMap } from "@lyricue/core/types"
 import { resolveLyriCuePaths } from "@lyricue/core/settings"
 import { TimingMapStorage, type TimingMapStorageVariant } from "@lyricue/core/timing"
 import { DEMO_TIMING_MAP, DemoSyncEngine, generateFrameSequence } from "@lyricue/core/output/test-utils"
@@ -79,6 +79,7 @@ import { createSyntheticAudioDriver, type SyntheticAudioDriver } from "./audio/s
 import { withRequiredModelSpecs } from "./model-manifest.js"
 import { learnSongTimeoutMs, resolveSourceSidecarPythonOverride } from "./learn-song-sidecar-options.js"
 import { sidecarResolverNodeEnv } from "./sidecar-runtime.js"
+import { prepareOperatorArrangementSave } from "./operator-arrangements.js"
 
 // Fail fast if launched with the wrong mode. The fork-mode entry has the same guard;
 // this prevents a misconfigured build from silently doing the wrong thing.
@@ -802,16 +803,12 @@ async function saveOperatorProject(project: Project): Promise<void> {
 }
 
 async function saveDemoArrangement(input: unknown): Promise<void> {
-    const result = validateArrangement(input)
+    const result = prepareOperatorArrangementSave(input, (showId) => DEMO_TIMING_MAPS.get(showId) ?? null)
     if (!result.ok) {
-        log(`operator arrangement save rejected: ${result.errors[0]?.message ?? "invalid arrangement"}`)
+        log(`operator arrangement save rejected: ${result.message}`)
         return
     }
-    const arrangement = result.value
-    if (!DEMO_TIMING_MAPS.has(arrangement.showId)) {
-        log(`operator arrangement save rejected: unknown showId=${arrangement.showId}`)
-        return
-    }
+    const arrangement = result.arrangement
 
     const current = DEMO_ARRANGEMENTS.get(arrangement.showId) ?? []
     const next = current.some((candidate) => candidate.id === arrangement.id)
