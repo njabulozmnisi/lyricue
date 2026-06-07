@@ -6,6 +6,34 @@ export interface LearnSongModelManifestOptions {
     requireManifest?: boolean
 }
 
+export interface ModelManifestSettingsSource {
+    modelManifestPath?: string | null
+    modelMirrorUrl?: string | null
+    requireModelManifest?: boolean
+}
+
+export interface ResolveModelManifestConfigOptions {
+    envManifestPath?: string | undefined
+    envMirrorUrl?: string | undefined
+    envRequireManifest?: string | undefined
+    settings?: ModelManifestSettingsSource | null
+}
+
+export interface ModelManifestConfig {
+    manifestPath: string | null
+    modelMirrorUrl: string | null
+    requireManifest: boolean
+}
+
+export function resolveModelManifestConfig(opts: ResolveModelManifestConfigOptions): ModelManifestConfig {
+    const envRequire = parseEnvBoolean(opts.envRequireManifest)
+    return {
+        manifestPath: nonBlank(opts.envManifestPath) ?? nonBlank(opts.settings?.modelManifestPath) ?? null,
+        modelMirrorUrl: nonBlank(opts.envMirrorUrl) ?? nonBlank(opts.settings?.modelMirrorUrl) ?? null,
+        requireManifest: envRequire ?? opts.settings?.requireModelManifest ?? false
+    }
+}
+
 export function withRequiredModelSpecs(payload: Record<string, unknown>, opts: LearnSongModelManifestOptions): Record<string, unknown> {
     const options = payload.options
     if (!options || typeof options !== "object" || Array.isArray(options)) return payload
@@ -31,4 +59,17 @@ export function withRequiredModelSpecs(payload: Record<string, unknown>, opts: L
             ...requirements
         }
     }
+}
+
+function nonBlank(value: string | null | undefined): string | undefined {
+    const trimmed = value?.trim()
+    return trimmed ? trimmed : undefined
+}
+
+function parseEnvBoolean(value: string | undefined): boolean | undefined {
+    if (value === undefined) return undefined
+    const normalized = value.trim().toLowerCase()
+    if (normalized === "1" || normalized === "true") return true
+    if (normalized === "0" || normalized === "false") return false
+    return undefined
 }

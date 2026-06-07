@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { parseModelManifest } from "@lyricue/core/sidecar"
-import { withRequiredModelSpecs } from "./model-manifest.js"
+import { resolveModelManifestConfig, withRequiredModelSpecs } from "./model-manifest.js"
 
 const SHA_A = "a".repeat(64)
 const SHA_B = "b".repeat(64)
@@ -69,5 +69,60 @@ describe("withRequiredModelSpecs", () => {
         ) as { options: { modelMirrorUrl: string } }
 
         expect(result.options.modelMirrorUrl).toBe("https://install.example/models/")
+    })
+})
+
+describe("resolveModelManifestConfig", () => {
+    it("uses persisted sidecar settings when env values are absent", () => {
+        expect(
+            resolveModelManifestConfig({
+                settings: {
+                    modelManifestPath: " /opt/lyricue/models/manifest.json ",
+                    modelMirrorUrl: " https://mirror.example/models/ ",
+                    requireModelManifest: true
+                }
+            })
+        ).toEqual({
+            manifestPath: "/opt/lyricue/models/manifest.json",
+            modelMirrorUrl: "https://mirror.example/models/",
+            requireManifest: true
+        })
+    })
+
+    it("lets env values override persisted sidecar settings for release jobs", () => {
+        expect(
+            resolveModelManifestConfig({
+                envManifestPath: "/release/manifest.json",
+                envMirrorUrl: "https://release.example/models/",
+                envRequireManifest: "0",
+                settings: {
+                    modelManifestPath: "/settings/manifest.json",
+                    modelMirrorUrl: "https://settings.example/models/",
+                    requireModelManifest: true
+                }
+            })
+        ).toEqual({
+            manifestPath: "/release/manifest.json",
+            modelMirrorUrl: "https://release.example/models/",
+            requireManifest: false
+        })
+    })
+
+    it("treats blank values as unset", () => {
+        expect(
+            resolveModelManifestConfig({
+                envManifestPath: "  ",
+                envMirrorUrl: "",
+                envRequireManifest: " ",
+                settings: {
+                    modelManifestPath: "",
+                    modelMirrorUrl: "  "
+                }
+            })
+        ).toEqual({
+            manifestPath: null,
+            modelMirrorUrl: null,
+            requireManifest: false
+        })
     })
 })

@@ -86,6 +86,15 @@ const SidecarSettingsSchema = z.object({
      */
     pythonPath: z.string().nullable().default(null),
 
+    /**
+     * Optional release/installer manifest controls. Env vars still override these in
+     * sister-mode host code so release jobs can force a known manifest without mutating
+     * the operator settings file.
+     */
+    modelManifestPath: z.string().nullable().default(null),
+    modelMirrorUrl: z.string().url().nullable().default(null),
+    requireModelManifest: z.boolean().default(false),
+
     demucsModel: z.enum(["htdemucs", "htdemucs_ft", "mdx_extra"]).default("htdemucs"),
     whisperxModel: z.enum(["tiny", "base", "small", "medium"]).default("small")
 })

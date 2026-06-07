@@ -15,6 +15,17 @@
         const value = (e.currentTarget as HTMLInputElement).value
         patch({ pythonPath: value || null })
     }
+    function onManifestPathChange(e: Event): void {
+        const value = (e.currentTarget as HTMLInputElement).value
+        patch({ modelManifestPath: value || null })
+    }
+    function onMirrorUrlChange(e: Event): void {
+        const value = (e.currentTarget as HTMLInputElement).value
+        patch({ modelMirrorUrl: value || null })
+    }
+    function onRequireManifestChange(e: Event): void {
+        patch({ requireModelManifest: (e.currentTarget as HTMLInputElement).checked })
+    }
     function onDemucsChange(e: Event): void {
         patch({ demucsModel: (e.currentTarget as HTMLSelectElement).value as DemucsModel })
     }
@@ -42,6 +53,35 @@
             value={settings.sidecar.pythonPath ?? ""}
             on:input={onPythonPathChange}
         />
+    </label>
+
+    <label>
+        Model manifest path
+        <input
+            type="text"
+            placeholder="(uses installer/env configuration)"
+            value={settings.sidecar.modelManifestPath ?? ""}
+            on:input={onManifestPathChange}
+        />
+    </label>
+
+    <label>
+        Model mirror URL
+        <input
+            type="url"
+            placeholder="https://models.example.org/lyricue/"
+            value={settings.sidecar.modelMirrorUrl ?? ""}
+            on:input={onMirrorUrlChange}
+        />
+    </label>
+
+    <label class="check">
+        <input
+            type="checkbox"
+            checked={settings.sidecar.requireModelManifest}
+            on:change={onRequireManifestChange}
+        />
+        Require a manifest for production learning
     </label>
 
     <label>
@@ -96,6 +136,14 @@
         padding: 0.4rem;
         border: 1px solid #ccc;
         border-radius: 6px;
+    }
+    label.check {
+        flex-direction: row;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    label.check input {
+        width: auto;
     }
     button.link {
         background: none;

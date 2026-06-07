@@ -76,7 +76,7 @@ import {
 import { OwnWindowOutputAdapter } from "./output/OwnWindowOutputAdapter.js"
 import { createElectronBrowserWindowFactory } from "./output/electron-browser-window-factory.js"
 import { createSyntheticAudioDriver, type SyntheticAudioDriver } from "./audio/synthetic-audio-driver.js"
-import { withRequiredModelSpecs } from "./model-manifest.js"
+import { resolveModelManifestConfig, withRequiredModelSpecs } from "./model-manifest.js"
 import { resolveOperatorModelManifestStatus } from "./model-manifest-status.js"
 import { learnSongTimeoutMs, resolveSourceSidecarPythonOverride } from "./learn-song-sidecar-options.js"
 import { sidecarResolverNodeEnv } from "./sidecar-runtime.js"
@@ -95,9 +95,14 @@ if (DEPLOYMENT_MODE !== "sister") {
 
 const DEMO_MODE = process.env.LC_DEMO_MODE === "1"
 const RENDERER_PERF_MODE = process.env.LC_RENDERER_PERF_MODE === "1"
-const MODEL_MANIFEST_PATH = process.env.LC_MODEL_MANIFEST_PATH
-const MODEL_MIRROR_URL = process.env.LC_MODEL_MIRROR_URL
-const REQUIRE_MODEL_MANIFEST = process.env.LC_REQUIRE_MODEL_MANIFEST === "1"
+const MODEL_MANIFEST_CONFIG = resolveModelManifestConfig({
+    envManifestPath: process.env.LC_MODEL_MANIFEST_PATH,
+    envMirrorUrl: process.env.LC_MODEL_MIRROR_URL,
+    envRequireManifest: process.env.LC_REQUIRE_MODEL_MANIFEST
+})
+const MODEL_MANIFEST_PATH = MODEL_MANIFEST_CONFIG.manifestPath
+const MODEL_MIRROR_URL = MODEL_MANIFEST_CONFIG.modelMirrorUrl
+const REQUIRE_MODEL_MANIFEST = MODEL_MANIFEST_CONFIG.requireManifest
 const SOURCE_SIDECAR_PYTHON = process.env.LC_SIDECAR_PYTHON
 const SMOKE_TEST_MODE = process.env.LC_SMOKE_TEST === "1"
 /**
@@ -1023,7 +1028,7 @@ function broadcastOperatorState(): void {
         ],
         lastTransition,
         modelManifestStatus: resolveOperatorModelManifestStatus({
-            manifestPath: MODEL_MANIFEST_PATH,
+            manifestPath: MODEL_MANIFEST_PATH ?? undefined,
             requireManifest: REQUIRE_MODEL_MANIFEST,
             pathExists: existsSync
         }),
