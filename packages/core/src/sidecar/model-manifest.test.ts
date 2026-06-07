@@ -1,5 +1,6 @@
+import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
-import { parseModelManifest, resolveLiveSttModelRequirements, resolveSongLearningModelRequirements } from "./model-manifest.js"
+import { loadModelManifestFile, parseModelManifest, resolveLiveSttModelRequirements, resolveSongLearningModelRequirements } from "./model-manifest.js"
 import {
     FIXTURE_DEMUCS_SHA256,
     FIXTURE_MODEL_MANIFEST,
@@ -9,6 +10,7 @@ import {
 
 const SHA_A = "a".repeat(64)
 const SHA_B = "b".repeat(64)
+const FIXTURE_MANIFEST_FILE = fileURLToPath(new URL("./test-utils/model-manifest-fixture.json", import.meta.url))
 
 describe("model manifest", () => {
     it("parses a valid model manifest", () => {
@@ -167,5 +169,18 @@ describe("model manifest", () => {
                 }
             ]
         })
+    })
+
+    it("loads the installer fixture manifest through the production file parser", () => {
+        const manifest = loadModelManifestFile(FIXTURE_MANIFEST_FILE)
+
+        expect(manifest).toEqual(FIXTURE_MODEL_MANIFEST)
+        expect(
+            resolveSongLearningModelRequirements(manifest, {
+                demucsModel: "fixture-demucs",
+                whisperxModel: "fixture-whisperx"
+            }).requiredModels
+        ).toHaveLength(2)
+        expect(resolveLiveSttModelRequirements(manifest, { whispercppModel: "fixture-base.en" }).requiredModels).toHaveLength(1)
     })
 })
