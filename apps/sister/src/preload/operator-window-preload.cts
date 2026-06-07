@@ -33,6 +33,12 @@ const OPERATOR_REHEARSAL_START_CHANNEL = "lyricue:operator:rehearsal-start"
 const OPERATOR_REHEARSAL_CHUNK_CHANNEL = "lyricue:operator:rehearsal-chunk"
 const OPERATOR_REHEARSAL_STOP_CHANNEL = "lyricue:operator:rehearsal-stop"
 const OPERATOR_REHEARSAL_DISCARD_CHANNEL = "lyricue:operator:rehearsal-discard"
+const OPERATOR_SETTINGS_GET_CHANNEL = "lyricue:operator:settings:get"
+const OPERATOR_SETTINGS_SAVE_CHANNEL = "lyricue:operator:settings:save"
+const OPERATOR_IDENTITY_GET_CHANNEL = "lyricue:operator:identity:get"
+const OPERATOR_IDENTITY_SAVE_CHANNEL = "lyricue:operator:identity:save"
+const OPERATOR_LIBRARY_CONFIG_GET_CHANNEL = "lyricue:operator:library-config:get"
+const OPERATOR_LIBRARY_CONFIG_SAVE_CHANNEL = "lyricue:operator:library-config:save"
 
 type StateHandler = (payload: unknown) => void
 
@@ -111,6 +117,30 @@ contextBridge.exposeInMainWorld("lyricueOperator", {
         return ipcRenderer.invoke(OPERATOR_REHEARSAL_DISCARD_CHANNEL)
     },
 
+    getSettings(): Promise<unknown> {
+        return ipcRenderer.invoke(OPERATOR_SETTINGS_GET_CHANNEL)
+    },
+
+    saveSettings(settings: unknown): Promise<void> {
+        return ipcRenderer.invoke(OPERATOR_SETTINGS_SAVE_CHANNEL, settings)
+    },
+
+    getIdentity(): Promise<unknown> {
+        return ipcRenderer.invoke(OPERATOR_IDENTITY_GET_CHANNEL)
+    },
+
+    saveIdentity(identity: unknown): Promise<void> {
+        return ipcRenderer.invoke(OPERATOR_IDENTITY_SAVE_CHANNEL, identity)
+    },
+
+    getLibraryConfig(): Promise<unknown> {
+        return ipcRenderer.invoke(OPERATOR_LIBRARY_CONFIG_GET_CHANNEL)
+    },
+
+    saveLibraryConfig(config: unknown): Promise<void> {
+        return ipcRenderer.invoke(OPERATOR_LIBRARY_CONFIG_SAVE_CHANNEL, config)
+    },
+
     /**
      * Tell main the renderer has mounted. The main process uses this to flush any
      * buffered state envelopes (states emitted before the renderer was ready).
@@ -132,6 +162,12 @@ declare global {
             writeRehearsalChunk: (request: unknown) => Promise<unknown>
             stopRehearsalCapture: () => Promise<unknown>
             discardRehearsalCapture: () => Promise<unknown>
+            getSettings: () => Promise<unknown>
+            saveSettings: (settings: unknown) => Promise<void>
+            getIdentity: () => Promise<unknown>
+            saveIdentity: (identity: unknown) => Promise<void>
+            getLibraryConfig: () => Promise<unknown>
+            saveLibraryConfig: (config: unknown) => Promise<void>
             signalReady: () => void
         }
     }

@@ -1,5 +1,10 @@
 <script lang="ts">
-    import type { RehearsalRecordingInfo } from "@lyricue/core"
+    interface RehearsalRecordingInfo {
+        fileName: string
+        filePath: string
+        sizeBytes: number
+        modifiedAtMs: number
+    }
 
     export let recordings: RehearsalRecordingInfo[] = []
     export let onRefresh: () => Promise<void> | void

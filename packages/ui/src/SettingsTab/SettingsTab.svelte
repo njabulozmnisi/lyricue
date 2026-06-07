@@ -20,13 +20,9 @@
         DEFAULT_LYRICUE_SETTINGS,
         type LyriCueSettings,
         type InstallIdentity,
-        type LibraryConfig,
-        type RehearsalRecordingInfo,
-        type SettingsStore,
-        type IdentityStore,
-        type LibraryConfigStore,
-        debounce
-    } from "@lyricue/core"
+        type LibraryConfig
+    } from "@lyricue/core/types"
+    import { debounce } from "@lyricue/core/settings/debounce"
 
     import DisplaySection from "./DisplaySection.svelte"
     import SyncSection from "./SyncSection.svelte"
@@ -36,9 +32,22 @@
     import SidecarSection from "./SidecarSection.svelte"
     import StorageSection from "./StorageSection.svelte"
 
-    export let settingsStore: SettingsStore
-    export let identityStore: IdentityStore
-    export let libraryConfigStore: LibraryConfigStore
+    interface StoreLike<T> {
+        get(): T
+        subscribe(run: (value: T) => void): () => void
+        save(value: T): Promise<void>
+    }
+
+    interface RehearsalRecordingInfo {
+        fileName: string
+        filePath: string
+        sizeBytes: number
+        modifiedAtMs: number
+    }
+
+    export let settingsStore: StoreLike<LyriCueSettings>
+    export let identityStore: StoreLike<InstallIdentity>
+    export let libraryConfigStore: StoreLike<LibraryConfig>
     export let onCatalogRefresh: (() => void) | undefined = undefined
     export let rehearsalRecordings: RehearsalRecordingInfo[] = []
     export let onRehearsalStorageRefresh: (() => Promise<void> | void) | undefined = undefined

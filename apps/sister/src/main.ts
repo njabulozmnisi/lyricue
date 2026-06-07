@@ -39,8 +39,8 @@ import { app, BrowserWindow, ipcMain } from "electron"
 import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { basename, dirname, resolve, join } from "node:path"
-import { DEPLOYMENT_MODE, validateTimingMap, type Arrangement, type TimingMap } from "@lyricue/core/types"
-import { resolveLyriCuePaths } from "@lyricue/core/settings"
+import { DEPLOYMENT_MODE, validateTimingMap, type Arrangement, type InstallIdentity, type LibraryConfig, type LyriCueSettings, type TimingMap } from "@lyricue/core/types"
+import { IdentityStore, LibraryConfigStore, resolveLyriCuePaths, SettingsStore } from "@lyricue/core/settings"
 import { TimingMapStorage, type TimingMapStorageVariant } from "@lyricue/core/timing"
 import { DEMO_TIMING_MAP, DemoSyncEngine, generateFrameSequence } from "@lyricue/core/output/test-utils"
 import {
@@ -95,14 +95,11 @@ if (DEPLOYMENT_MODE !== "sister") {
 
 const DEMO_MODE = process.env.LC_DEMO_MODE === "1"
 const RENDERER_PERF_MODE = process.env.LC_RENDERER_PERF_MODE === "1"
-const MODEL_MANIFEST_CONFIG = resolveModelManifestConfig({
+const MODEL_MANIFEST_ENV = {
     envManifestPath: process.env.LC_MODEL_MANIFEST_PATH,
     envMirrorUrl: process.env.LC_MODEL_MIRROR_URL,
     envRequireManifest: process.env.LC_REQUIRE_MODEL_MANIFEST
-})
-const MODEL_MANIFEST_PATH = MODEL_MANIFEST_CONFIG.manifestPath
-const MODEL_MIRROR_URL = MODEL_MANIFEST_CONFIG.modelMirrorUrl
-const REQUIRE_MODEL_MANIFEST = MODEL_MANIFEST_CONFIG.requireManifest
+}
 const SOURCE_SIDECAR_PYTHON = process.env.LC_SIDECAR_PYTHON
 const SMOKE_TEST_MODE = process.env.LC_SMOKE_TEST === "1"
 /**
@@ -168,6 +165,12 @@ const OPERATOR_REHEARSAL_START_CHANNEL = "lyricue:operator:rehearsal-start"
 const OPERATOR_REHEARSAL_CHUNK_CHANNEL = "lyricue:operator:rehearsal-chunk"
 const OPERATOR_REHEARSAL_STOP_CHANNEL = "lyricue:operator:rehearsal-stop"
 const OPERATOR_REHEARSAL_DISCARD_CHANNEL = "lyricue:operator:rehearsal-discard"
+const OPERATOR_SETTINGS_GET_CHANNEL = "lyricue:operator:settings:get"
+const OPERATOR_SETTINGS_SAVE_CHANNEL = "lyricue:operator:settings:save"
+const OPERATOR_IDENTITY_GET_CHANNEL = "lyricue:operator:identity:get"
+const OPERATOR_IDENTITY_SAVE_CHANNEL = "lyricue:operator:identity:save"
+const OPERATOR_LIBRARY_CONFIG_GET_CHANNEL = "lyricue:operator:library-config:get"
+const OPERATOR_LIBRARY_CONFIG_SAVE_CHANNEL = "lyricue:operator:library-config:save"
 const OPERATOR_STATE_BROADCAST_INTERVAL_MS = 200
 
 const DEMO_REPRISE_TIMING_MAP = {
@@ -237,6 +240,10 @@ let ipcCommandHandler: ((event: Electron.IpcMainEvent, command: unknown) => void
 let ipcReadyHandler: ((event: Electron.IpcMainEvent) => void) | null = null
 let sidecarController: SidecarController | null = null
 let modelManifestCache: ModelManifest | null | undefined
+let modelManifestCachePath: string | null = null
+let settingsStore: SettingsStore | null = null
+let identityStore: IdentityStore | null = null
+let libraryConfigStore: LibraryConfigStore | null = null
 let rehearsalCaptureSession: RehearsalCaptureSession | null = null
 let smokeFailures: string[] = []
 
@@ -609,6 +616,48 @@ async function startOperatorWindow(): Promise<void> {
         }
         return handleRehearsalDiscard()
     })
+    ipcMain.removeHandler(OPERATOR_SETTINGS_GET_CHANNEL)
+    ipcMain.handle(OPERATOR_SETTINGS_GET_CHANNEL, async (event) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected settings get request from unknown sender.")
+        }
+        return loadOperatorSettings()
+    })
+    ipcMain.removeHandler(OPERATOR_SETTINGS_SAVE_CHANNEL)
+    ipcMain.handle(OPERATOR_SETTINGS_SAVE_CHANNEL, async (event, settings: unknown) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected settings save request from unknown sender.")
+        }
+        await saveOperatorSettings(settings as LyriCueSettings)
+    })
+    ipcMain.removeHandler(OPERATOR_IDENTITY_GET_CHANNEL)
+    ipcMain.handle(OPERATOR_IDENTITY_GET_CHANNEL, async (event) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected identity get request from unknown sender.")
+        }
+        return loadOperatorIdentity()
+    })
+    ipcMain.removeHandler(OPERATOR_IDENTITY_SAVE_CHANNEL)
+    ipcMain.handle(OPERATOR_IDENTITY_SAVE_CHANNEL, async (event, identity: unknown) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected identity save request from unknown sender.")
+        }
+        await saveOperatorIdentity(identity as InstallIdentity)
+    })
+    ipcMain.removeHandler(OPERATOR_LIBRARY_CONFIG_GET_CHANNEL)
+    ipcMain.handle(OPERATOR_LIBRARY_CONFIG_GET_CHANNEL, async (event) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected library config get request from unknown sender.")
+        }
+        return loadOperatorLibraryConfig()
+    })
+    ipcMain.removeHandler(OPERATOR_LIBRARY_CONFIG_SAVE_CHANNEL)
+    ipcMain.handle(OPERATOR_LIBRARY_CONFIG_SAVE_CHANNEL, async (event, config: unknown) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected library config save request from unknown sender.")
+        }
+        await saveOperatorLibraryConfig(config as LibraryConfig)
+    })
 
     try {
         await operatorWindow.loadFile(OPERATOR_HTML_PATH)
@@ -754,6 +803,63 @@ function getProjectStorage(): ProjectStorage {
     if (projectStorage) return projectStorage
     projectStorage = new ProjectStorage({ paths: getLyriCuePaths() })
     return projectStorage
+}
+
+function getSettingsStore(): SettingsStore {
+    if (settingsStore) return settingsStore
+    settingsStore = new SettingsStore(getLyriCuePaths())
+    return settingsStore
+}
+
+function getIdentityStore(): IdentityStore {
+    if (identityStore) return identityStore
+    identityStore = new IdentityStore(getLyriCuePaths())
+    return identityStore
+}
+
+function getLibraryConfigStore(): LibraryConfigStore {
+    if (libraryConfigStore) return libraryConfigStore
+    libraryConfigStore = new LibraryConfigStore(getLyriCuePaths())
+    return libraryConfigStore
+}
+
+async function loadOperatorSettings(): Promise<LyriCueSettings> {
+    const store = getSettingsStore()
+    if (!store.isLoaded) await store.load()
+    return store.get()
+}
+
+async function saveOperatorSettings(settings: LyriCueSettings): Promise<void> {
+    const store = getSettingsStore()
+    if (!store.isLoaded) await store.load()
+    await store.save(settings)
+    modelManifestCache = undefined
+    modelManifestCachePath = null
+    broadcastOperatorState()
+}
+
+async function loadOperatorIdentity(): Promise<InstallIdentity> {
+    const store = getIdentityStore()
+    if (!store.isLoaded) await store.load()
+    return store.get()
+}
+
+async function saveOperatorIdentity(identity: InstallIdentity): Promise<void> {
+    const store = getIdentityStore()
+    if (!store.isLoaded) await store.load()
+    await store.save(identity)
+}
+
+async function loadOperatorLibraryConfig(): Promise<LibraryConfig> {
+    const store = getLibraryConfigStore()
+    if (!store.isLoaded) await store.load()
+    return store.get()
+}
+
+async function saveOperatorLibraryConfig(config: LibraryConfig): Promise<void> {
+    const store = getLibraryConfigStore()
+    if (!store.isLoaded) await store.load()
+    await store.save(config)
 }
 
 function getLyriCuePaths(): ReturnType<typeof resolveLyriCuePaths> {
@@ -1028,8 +1134,8 @@ function broadcastOperatorState(): void {
         ],
         lastTransition,
         modelManifestStatus: resolveOperatorModelManifestStatus({
-            manifestPath: MODEL_MANIFEST_PATH ?? undefined,
-            requireManifest: REQUIRE_MODEL_MANIFEST,
+            manifestPath: resolveCurrentModelManifestConfigSync().manifestPath ?? undefined,
+            requireManifest: resolveCurrentModelManifestConfigSync().requireManifest,
             pathExists: existsSync
         }),
         shortcuts: {
@@ -1081,6 +1187,12 @@ function removeOperatorIpcHandlers(): void {
     ipcMain.removeHandler(OPERATOR_REHEARSAL_CHUNK_CHANNEL)
     ipcMain.removeHandler(OPERATOR_REHEARSAL_STOP_CHANNEL)
     ipcMain.removeHandler(OPERATOR_REHEARSAL_DISCARD_CHANNEL)
+    ipcMain.removeHandler(OPERATOR_SETTINGS_GET_CHANNEL)
+    ipcMain.removeHandler(OPERATOR_SETTINGS_SAVE_CHANNEL)
+    ipcMain.removeHandler(OPERATOR_IDENTITY_GET_CHANNEL)
+    ipcMain.removeHandler(OPERATOR_IDENTITY_SAVE_CHANNEL)
+    ipcMain.removeHandler(OPERATOR_LIBRARY_CONFIG_GET_CHANNEL)
+    ipcMain.removeHandler(OPERATOR_LIBRARY_CONFIG_SAVE_CHANNEL)
 }
 
 async function handleOperatorCancelLearnSong(request: unknown): Promise<unknown> {
@@ -1113,10 +1225,11 @@ async function handleOperatorLearnSong(request: unknown): Promise<unknown> {
     }
 
     const productionMode = isProductionLearnSongPayload(payload)
+    const manifestConfig = productionMode ? resolveModelManifestConfig({ ...MODEL_MANIFEST_ENV, settings: (await loadOperatorSettings()).sidecar }) : resolveCurrentModelManifestConfigSync()
     const learnSongPayload = withRequiredModelSpecs(payload, {
-        manifest: productionMode ? getConfiguredModelManifest() : null,
-        ...(MODEL_MIRROR_URL ? { modelMirrorUrl: MODEL_MIRROR_URL } : {}),
-        requireManifest: productionMode && REQUIRE_MODEL_MANIFEST
+        manifest: productionMode ? getConfiguredModelManifest(manifestConfig.manifestPath) : null,
+        ...(manifestConfig.modelMirrorUrl ? { modelMirrorUrl: manifestConfig.modelMirrorUrl } : {}),
+        requireManifest: productionMode && manifestConfig.requireManifest
     })
     const controller = getSidecarController()
     await controller.ensureRunning()
@@ -1134,14 +1247,21 @@ function isProductionLearnSongPayload(payload: Record<string, unknown>): boolean
     return !!options && typeof options === "object" && !Array.isArray(options) && (options as Record<string, unknown>).alignmentMode === "production"
 }
 
-function getConfiguredModelManifest(): ModelManifest | null {
-    if (modelManifestCache !== undefined) return modelManifestCache
-    if (!MODEL_MANIFEST_PATH || MODEL_MANIFEST_PATH.trim() === "") {
+function resolveCurrentModelManifestConfigSync(): ReturnType<typeof resolveModelManifestConfig> {
+    const settings = settingsStore?.isLoaded ? settingsStore.get().sidecar : null
+    return resolveModelManifestConfig({ ...MODEL_MANIFEST_ENV, settings })
+}
+
+function getConfiguredModelManifest(manifestPath: string | null): ModelManifest | null {
+    if (modelManifestCache !== undefined && modelManifestCachePath === manifestPath) return modelManifestCache
+    if (!manifestPath || manifestPath.trim() === "") {
         modelManifestCache = null
+        modelManifestCachePath = null
         return modelManifestCache
     }
-    modelManifestCache = loadModelManifestFile(MODEL_MANIFEST_PATH)
-    log(`loaded model manifest from ${MODEL_MANIFEST_PATH}`)
+    modelManifestCache = loadModelManifestFile(manifestPath)
+    modelManifestCachePath = manifestPath
+    log(`loaded model manifest from ${manifestPath}`)
     return modelManifestCache
 }
 
@@ -1422,6 +1542,7 @@ async function captureEp06Evidence(): Promise<void> {
                 await exerciseOperatorPersistence(opWindow)
             }
             if (SMOKE_TEST_MODE) {
+                await exerciseOperatorSettingsBridge(opWindow)
                 await exerciseStaleOperatorPayloadGuards(opWindow)
             }
             if (process.env.LC_CAPTURE_REHEARSAL_CAPTURE === "1" || SMOKE_TEST_MODE) {
@@ -1547,6 +1668,50 @@ async function exerciseOperatorPersistence(opWindow: BrowserWindow): Promise<voi
     } catch (err) {
         log(`[capture] operator persistence exercise failed: ${(err as Error).message}`)
         if (SMOKE_TEST_MODE) recordSmokeFailure("operator persistence exercise", err)
+    }
+}
+
+async function exerciseOperatorSettingsBridge(opWindow: BrowserWindow): Promise<void> {
+    try {
+        const result = await opWindow.webContents.executeJavaScript(`
+            (async () => {
+                const api = window.lyricueOperator;
+                if (!api) return { status: "missing-bridge" };
+                const original = await api.getSettings();
+                const identity = await api.getIdentity();
+                const libraryConfig = await api.getLibraryConfig();
+                if (!original?.sidecar || !identity?.user || !libraryConfig) return { status: "missing-store-shape" };
+                const next = {
+                    ...original,
+                    sidecar: {
+                        ...original.sidecar,
+                        modelManifestPath: "/tmp/lyricue-smoke-model-manifest.json",
+                        modelMirrorUrl: "https://models.example.org/lyricue-smoke/",
+                        requireModelManifest: true
+                    }
+                };
+                try {
+                    await api.saveSettings(next);
+                    const saved = await api.getSettings();
+                    const persisted =
+                        saved?.sidecar?.modelManifestPath === next.sidecar.modelManifestPath &&
+                        saved?.sidecar?.modelMirrorUrl === next.sidecar.modelMirrorUrl &&
+                        saved?.sidecar?.requireModelManifest === true;
+                    return persisted
+                        ? { status: "settings-bridge-persisted" }
+                        : { status: "settings-bridge-unverified", persisted, saved };
+                } finally {
+                    await api.saveSettings(original).catch(() => undefined);
+                }
+            })()
+        `)
+        log(`[capture] operator settings bridge result=${JSON.stringify(result)}`)
+        if (result?.status !== "settings-bridge-persisted") {
+            recordSmokeFailure("operator settings bridge", JSON.stringify(result))
+        }
+    } catch (err) {
+        log(`[capture] operator settings bridge failed: ${(err as Error).message}`)
+        recordSmokeFailure("operator settings bridge", err)
     }
 }
 

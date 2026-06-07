@@ -25,8 +25,9 @@ import TranslationEditor from "@lyricue/ui/TranslationEditor.svelte"
 import RehearsalModePanel from "@lyricue/ui/RehearsalModePanel.svelte"
 import RehearsalSummary from "@lyricue/ui/RehearsalSummary.svelte"
 import RehearsalReviewPanel from "@lyricue/ui/RehearsalReviewPanel.svelte"
+import SettingsTab from "@lyricue/ui/SettingsTab/SettingsTab.svelte"
 import { createShortcutHandler } from "@lyricue/core/sync"
-import type { Arrangement, TimingMap } from "@lyricue/core/types"
+import type { Arrangement, InstallIdentity, LibraryConfig, LyriCueSettings, TimingMap } from "@lyricue/core/types"
 import { learnSongProgressLabel } from "./learn-song-progress.js"
 import { shouldBypassOperatorShortcutTarget } from "./operator-shortcuts.js"
 import { normalizeRehearsalSegments, type RehearsalSegmentForUi } from "./rehearsal-segments.js"
@@ -139,6 +140,12 @@ const bridgeCandidate = (
             writeRehearsalChunk: (request: unknown) => Promise<unknown>
             stopRehearsalCapture: () => Promise<unknown>
             discardRehearsalCapture: () => Promise<unknown>
+            getSettings: () => Promise<unknown>
+            saveSettings: (settings: unknown) => Promise<void>
+            getIdentity: () => Promise<unknown>
+            saveIdentity: (identity: unknown) => Promise<void>
+            getLibraryConfig: () => Promise<unknown>
+            saveLibraryConfig: (config: unknown) => Promise<void>
             signalReady: () => void
         }
     }
@@ -176,6 +183,8 @@ let rehearsalPanel: RehearsalModePanel | null = null
 let rehearsalSummary: RehearsalSummary | null = null
 let rehearsalReviewPanel: RehearsalReviewPanel | null = null
 let rehearsalOverlay: HTMLElement | null = null
+let settingsTab: SettingsTab | null = null
+let settingsOverlay: HTMLElement | null = null
 let pendingRehearsalReview: { segment: RehearsalSegmentForUi; target: HTMLElement } | null = null
 let rehearsalTimer: number | null = null
 let rehearsalStartedAt = 0
@@ -231,10 +240,36 @@ function mountPanel(): SetlistPanel {
         bridge.sendCommand({ kind: "publishSong", songId: e.detail.songId })
     )
     panel.$on("toggle-rehearsal", () => openRehearsalPanel())
+    panel.$on("open-settings", () => void openSettingsPanel())
     panel.$on("select-timing-map-variant", (e: CustomEvent<{ variant: "studio" | "rehearsal" }>) =>
         bridge.sendCommand({ kind: "selectTimingMapVariant", variant: e.detail.variant })
     )
     return panel
+}
+
+async function openSettingsPanel(): Promise<void> {
+    if (settingsTab) return
+    const { overlay, body } = openToolOverlay("Settings")
+    settingsOverlay = overlay
+    body.textContent = "Loading settings..."
+    try {
+        const [settings, identity, libraryConfig] = await Promise.all([
+            bridge.getSettings() as Promise<LyriCueSettings>,
+            bridge.getIdentity() as Promise<InstallIdentity>,
+            bridge.getLibraryConfig() as Promise<LibraryConfig>
+        ])
+        body.textContent = ""
+        settingsTab = new SettingsTab({
+            target: body,
+            props: {
+                settingsStore: createBridgeStore(settings, bridge.saveSettings),
+                identityStore: createBridgeStore(identity, bridge.saveIdentity),
+                libraryConfigStore: createBridgeStore(libraryConfig, bridge.saveLibraryConfig)
+            }
+        })
+    } catch (err) {
+        body.textContent = (err as Error).message || "Settings failed to load."
+    }
 }
 
 function openArrangementBuilder(): void {
@@ -582,6 +617,37 @@ function closeToolOverlays(): void {
     rehearsalPanel = null
     rehearsalOverlay?.remove()
     rehearsalOverlay = null
+
+    try {
+        settingsTab?.$destroy()
+    } catch {
+        // already destroyed
+    }
+    settingsTab = null
+    settingsOverlay?.remove()
+    settingsOverlay = null
+}
+
+function createBridgeStore<T>(initial: T, saveToHost: (value: unknown) => Promise<void>): {
+    get: () => T
+    subscribe: (run: (value: T) => void) => () => void
+    save: (value: T) => Promise<void>
+} {
+    let value = initial
+    const subscribers = new Set<(value: T) => void>()
+    return {
+        get: () => value,
+        subscribe(run: (value: T) => void): () => void {
+            subscribers.add(run)
+            run(value)
+            return () => subscribers.delete(run)
+        },
+        async save(next: T): Promise<void> {
+            await saveToHost(next)
+            value = next
+            for (const run of subscribers) run(value)
+        }
+    }
 }
 
 function openLearnSongWizard(): void {

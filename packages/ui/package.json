@@ -14,6 +14,7 @@
             "types": "./src/index.ts",
             "import": "./src/index.ts"
         },
+        "./SettingsTab/SettingsTab.svelte": "./src/SettingsTab/SettingsTab.svelte",
         "./*.svelte": "./src/*.svelte"
     },
     "scripts": {

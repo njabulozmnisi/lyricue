@@ -99,6 +99,7 @@
         "publish-song": { songId: string }
         "toggle-rehearsal": void
         "select-timing-map-variant": { variant: TimingMapVariant }
+        "open-settings": void
     }>()
 
     function handleStartSync(): void {
@@ -127,6 +128,10 @@
 
     function handleToggleRehearsal(): void {
         dispatch("toggle-rehearsal")
+    }
+
+    function handleOpenSettings(): void {
+        dispatch("open-settings")
     }
 
     function handleTimingMapVariantChange(event: Event): void {
@@ -217,6 +222,15 @@
                 aria-label="Toggle rehearsal mode"
             >
                 Rehearsal
+            </button>
+            <button
+                type="button"
+                class="secondary-action-btn"
+                on:click={handleOpenSettings}
+                data-testid="open-settings"
+                aria-label="Open settings"
+            >
+                Settings
             </button>
             <ModeIndicator {tier} {lastTransition} on:force-tier={handleForceTier} />
         </div>

@@ -24,6 +24,10 @@
             "types": "./dist/settings/index.d.ts",
             "import": "./dist/settings/index.js"
         },
+        "./settings/debounce": {
+            "types": "./dist/settings/debounce.d.ts",
+            "import": "./dist/settings/debounce.js"
+        },
         "./fs": {
             "types": "./dist/fs/index.d.ts",
             "import": "./dist/fs/index.js"

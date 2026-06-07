@@ -6,6 +6,7 @@ describe("parsePackagedSisterSmokeLog", () => {
         const summary = parsePackagedSisterSmokeLog(`
             file:///Example/LyriCue.app/Contents/Resources/app.asar/public/build/karaoke-output.bundle.js
             [lyricue:sister] [capture] operator persistence exercise result=persisted
+            [lyricue:sister] [capture] operator settings bridge result={"status":"settings-bridge-persisted"}
             [lyricue:sister] [capture] stale operator payload guard result={"status":"stale-payloads-guarded"}
             [lyricue:sister] sidecar: [lyricue-sidecar:INFO] server loop started; 7 handlers registered
             [lyricue:sister] [capture] rehearsal capture exercise result={"status":"captured-approved","stopped":{"segmentation":{"stage":"segments_ready"}}}
@@ -13,6 +14,7 @@ describe("parsePackagedSisterSmokeLog", () => {
         `)
 
         expect(summary.status).toBe("pass")
+        expect(summary.operatorSettingsBridgePassed).toBe(true)
         expect(summary.staleOperatorPayloadsGuarded).toBe(true)
         expect(summary.sidecarStarted).toBe(true)
         expect(summary.segmentationReady).toBe(true)
@@ -23,6 +25,7 @@ describe("parsePackagedSisterSmokeLog", () => {
         const summary = parsePackagedSisterSmokeLog(`
             file:///Example/LyriCue.app/Contents/Resources/app.asar/public/build/karaoke-output.bundle.js
             [lyricue:sister] [capture] operator persistence exercise result=persisted
+            [lyricue:sister] [capture] operator settings bridge result={"status":"settings-bridge-persisted"}
             [lyricue:sister] [capture] stale operator payload guard result={"status":"stale-payloads-guarded"}
             [lyricue:sister] [capture] rehearsal capture exercise result={"status":"captured-error","stopped":{"segmentation":{"error":"No usable Python interpreter found. Tried: python3, python"}}}
             [lyricue:sister] [smoke] complete: pass
@@ -37,6 +40,7 @@ describe("parsePackagedSisterSmokeLog", () => {
         const summary = parsePackagedSisterSmokeLog(`
             file:///Example/LyriCue.app/Contents/Resources/app.asar/public/build/karaoke-output.bundle.js
             [lyricue:sister] [capture] operator persistence exercise result=persisted
+            [lyricue:sister] [capture] operator settings bridge result={"status":"settings-bridge-persisted"}
             [lyricue:sister] sidecar: [lyricue-sidecar:INFO] server loop started; 7 handlers registered
             [lyricue:sister] [capture] rehearsal capture exercise result={"status":"captured-approved","stopped":{"segmentation":{"stage":"segments_ready"}}}
             [lyricue:sister] [smoke] complete: pass
@@ -44,6 +48,20 @@ describe("parsePackagedSisterSmokeLog", () => {
 
         expect(summary.status).toBe("fail")
         expect(summary.staleOperatorPayloadsGuarded).toBe(false)
+    })
+
+    it("fails when the settings bridge smoke did not run", () => {
+        const summary = parsePackagedSisterSmokeLog(`
+            file:///Example/LyriCue.app/Contents/Resources/app.asar/public/build/karaoke-output.bundle.js
+            [lyricue:sister] [capture] operator persistence exercise result=persisted
+            [lyricue:sister] [capture] stale operator payload guard result={"status":"stale-payloads-guarded"}
+            [lyricue:sister] sidecar: [lyricue-sidecar:INFO] server loop started; 7 handlers registered
+            [lyricue:sister] [capture] rehearsal capture exercise result={"status":"captured-approved","stopped":{"segmentation":{"stage":"segments_ready"}}}
+            [lyricue:sister] [smoke] complete: pass
+        `)
+
+        expect(summary.status).toBe("fail")
+        expect(summary.operatorSettingsBridgePassed).toBe(false)
     })
 
     it("preserves smoke failure lines for release artifacts", () => {
