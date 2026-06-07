@@ -1416,6 +1416,9 @@ async function captureEp06Evidence(): Promise<void> {
             if (process.env.LC_CAPTURE_OPERATOR_PERSISTENCE === "1" || SMOKE_TEST_MODE) {
                 await exerciseOperatorPersistence(opWindow)
             }
+            if (SMOKE_TEST_MODE) {
+                await exerciseStaleOperatorPayloadGuards(opWindow)
+            }
             if (process.env.LC_CAPTURE_REHEARSAL_CAPTURE === "1" || SMOKE_TEST_MODE) {
                 await exerciseRehearsalCapture(opWindow)
             }
@@ -1539,6 +1542,88 @@ async function exerciseOperatorPersistence(opWindow: BrowserWindow): Promise<voi
     } catch (err) {
         log(`[capture] operator persistence exercise failed: ${(err as Error).message}`)
         if (SMOKE_TEST_MODE) recordSmokeFailure("operator persistence exercise", err)
+    }
+}
+
+async function exerciseStaleOperatorPayloadGuards(opWindow: BrowserWindow): Promise<void> {
+    try {
+        const result = await opWindow.webContents.executeJavaScript(`
+            (async () => {
+                const api = window.lyricueOperator;
+                if (!api) return { status: "missing-bridge" };
+                const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+                let latest = null;
+                const unsub = api.subscribeState((state) => {
+                    latest = state;
+                });
+                api.signalReady();
+                for (let i = 0; i < 20 && !latest?.activeTimingMap; i += 1) {
+                    await sleep(100);
+                }
+                if (!latest?.activeTimingMap) {
+                    unsub();
+                    return { status: "missing-active-map" };
+                }
+                const base = latest.activeTimingMap;
+                const validSectionId = base.sections?.[0]?.id;
+                if (!validSectionId) {
+                    unsub();
+                    return { status: "missing-section" };
+                }
+                const staleArrangement = {
+                    id: "smoke-stale-arrangement",
+                    name: "Smoke Stale Arrangement",
+                    showId: base.showId,
+                    isDefault: false,
+                    sequence: [{ sectionId: "stale-section" }, { sectionId: validSectionId }],
+                    createdAt: "2026-06-07T00:00:00.000Z",
+                    updatedAt: "2026-06-07T00:00:00.000Z"
+                };
+                api.sendCommand({ kind: "saveArrangement", arrangement: staleArrangement });
+                for (let i = 0; i < 20; i += 1) {
+                    await sleep(100);
+                    const saved = latest?.activeArrangements?.find?.((arrangement) => arrangement.id === "smoke-stale-arrangement");
+                    if (saved) {
+                        if (saved.sequence?.length !== 1 || saved.sequence?.[0]?.sectionId !== validSectionId) {
+                            unsub();
+                            return { status: "arrangement-stale-section-persisted", saved };
+                        }
+                        break;
+                    }
+                    if (i === 19) {
+                        unsub();
+                        return { status: "arrangement-not-observed" };
+                    }
+                }
+                const staleTranslation = {
+                    ...base,
+                    bpm: 1,
+                    sections: [{ id: "stale-section", type: "verse", label: "Stale", slideIndex: 0, startMs: 0, endMs: 1000, words: [], lines: [] }],
+                    parallel: [{ language: "zu-ZA", sections: [{ sectionId: "stale-section", text: "Akufanele kugcinwe" }, { sectionId: validSectionId, text: "Sawubona" }] }]
+                };
+                api.sendCommand({ kind: "saveTranslation", timingMap: staleTranslation });
+                for (let i = 0; i < 20; i += 1) {
+                    await sleep(100);
+                    const map = latest?.activeTimingMap;
+                    const track = map?.parallel?.find?.((candidate) => candidate.language === "zu-ZA");
+                    if (!track) continue;
+                    unsub();
+                    const staleSectionPersisted = map.sections?.some?.((section) => section.id === "stale-section") || track.sections?.some?.((section) => section.sectionId === "stale-section");
+                    if (map.bpm === 1 || staleSectionPersisted) return { status: "translation-stale-payload-persisted", map };
+                    const translated = track.sections?.find?.((section) => section.sectionId === validSectionId);
+                    return translated?.text === "Sawubona" ? { status: "stale-payloads-guarded" } : { status: "translation-not-normalized", track };
+                }
+                unsub();
+                return { status: "translation-not-observed" };
+            })()
+        `)
+        log(`[capture] stale operator payload guard result=${JSON.stringify(result)}`)
+        if (result?.status !== "stale-payloads-guarded") {
+            recordSmokeFailure("stale operator payload guard", JSON.stringify(result))
+        }
+    } catch (err) {
+        log(`[capture] stale operator payload guard failed: ${(err as Error).message}`)
+        recordSmokeFailure("stale operator payload guard", err)
     }
 }
 
