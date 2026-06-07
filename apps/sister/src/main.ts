@@ -279,7 +279,7 @@ async function startSisterMode(): Promise<void> {
         // commands. In DEMO mode the panel is decorative (commands log and no-op).
         void startOperatorWindow()
 
-        if (process.env.LC_CAPTURE_EVIDENCE === "1") {
+        if (process.env.LC_CAPTURE_EVIDENCE === "1" || SMOKE_TEST_MODE) {
             void captureEp06Evidence()
         }
     } else if (DEMO_MODE) {
@@ -298,7 +298,7 @@ async function startSisterMode(): Promise<void> {
         demoEngine.start()
         log("DEMO mode: walking-skeleton demo engine started")
 
-        if (process.env.LC_CAPTURE_EVIDENCE === "1") {
+        if (process.env.LC_CAPTURE_EVIDENCE === "1" || SMOKE_TEST_MODE) {
             void captureEp06Evidence()
         }
     } else {
