@@ -61,6 +61,11 @@ interface OperatorState {
         reason: string
         atWallMs: number
     } | null
+    modelManifestStatus: {
+        status: "configured" | "missing" | "optional"
+        label: string
+        detail?: string
+    }
     /** Per-shortcut bindings — sourced from SettingsStore. */
     shortcuts: {
         startSync: string
@@ -102,6 +107,11 @@ const DEFAULT_STATE: OperatorState = {
     selectedDeviceId: null,
     audioDevices: [],
     lastTransition: null,
+    modelManifestStatus: {
+        status: "optional",
+        label: "Model manifest not configured",
+        detail: "Production learning will use sidecar defaults unless this install requires a manifest."
+    },
     shortcuts: {
         startSync: "Space",
         nextSection: "ArrowRight",
@@ -592,6 +602,7 @@ function openLearnSongWizard(): void {
         props: {
             initialDraft: learnSongDraft && typeof learnSongDraft === "object" ? learnSongDraft : undefined,
             confirmCancel: () => window.confirm("Discard the current song-learning draft?"),
+            modelManifestStatus: currentState.modelManifestStatus,
             learnSong: async (draft: LearnSongDraftForHost, onProgress: (label: string) => void) => learnSongFromSidecar(draft, onProgress),
             saveTimingMap: async (timingMap: TimingMap) => bridge.sendCommand({ kind: "saveTimingMap", timingMap })
         }
@@ -747,6 +758,7 @@ const stateUnsub = bridge.subscribeState((raw) => {
         })
         translationEditor?.$set({ timingMap: next.activeTimingMap })
     }
+    learnSongWizard?.$set({ modelManifestStatus: next.modelManifestStatus })
     if (pendingRehearsalReview?.segment.showId && next.activeTimingMap?.showId === pendingRehearsalReview.segment.showId) {
         const pending = pendingRehearsalReview
         pendingRehearsalReview = null

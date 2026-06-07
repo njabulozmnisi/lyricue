@@ -77,6 +77,7 @@ import { OwnWindowOutputAdapter } from "./output/OwnWindowOutputAdapter.js"
 import { createElectronBrowserWindowFactory } from "./output/electron-browser-window-factory.js"
 import { createSyntheticAudioDriver, type SyntheticAudioDriver } from "./audio/synthetic-audio-driver.js"
 import { withRequiredModelSpecs } from "./model-manifest.js"
+import { resolveOperatorModelManifestStatus } from "./model-manifest-status.js"
 import { learnSongTimeoutMs, resolveSourceSidecarPythonOverride } from "./learn-song-sidecar-options.js"
 import { sidecarResolverNodeEnv } from "./sidecar-runtime.js"
 import { prepareOperatorArrangementSave } from "./operator-arrangements.js"
@@ -1021,6 +1022,11 @@ function broadcastOperatorState(): void {
             { deviceId: "synthetic-120bpm", label: "Synthetic 120 BPM (E2E demo)", kind: "audioinput", groupId: "demo" }
         ],
         lastTransition,
+        modelManifestStatus: resolveOperatorModelManifestStatus({
+            manifestPath: MODEL_MANIFEST_PATH,
+            requireManifest: REQUIRE_MODEL_MANIFEST,
+            pathExists: existsSync
+        }),
         shortcuts: {
             startSync: "Space",
             nextSection: "ArrowRight",

@@ -12,6 +12,13 @@
     export type LearnSongAlignmentMode = "deterministic" | "production"
     export type LearnSongDemucsModel = "htdemucs" | "htdemucs_ft" | "mdx_extra"
     export type LearnSongWhisperxModel = "tiny" | "base" | "small" | "medium"
+    export type LearnSongModelManifestStatusKind = "configured" | "missing" | "optional"
+
+    export interface LearnSongModelManifestStatus {
+        status: LearnSongModelManifestStatusKind
+        label: string
+        detail?: string
+    }
 
     export interface LearnSongDraft {
         step: LearnSongStep
@@ -50,6 +57,7 @@
         | undefined = undefined
     export let saveTimingMap: ((timingMap: TimingMap) => Promise<void> | void) | undefined = undefined
     export let confirmCancel: ((draft: LearnSongDraft) => boolean) | undefined = undefined
+    export let modelManifestStatus: LearnSongModelManifestStatus | undefined = undefined
 
     const dispatch = createEventDispatcher<{
         "draft-change": { draft: LearnSongDraft }
@@ -115,6 +123,11 @@
     $: totalDurationMs = timingMap ? Math.max(timingMap.learnedFrom.duration * 1000, ...timingMap.sections.map((section) => section.endMs), 1) : 1
     $: activePreviewWordKey = timingMap ? activeWordKey(timingMap, previewCurrentMs) : ""
     $: waveformBars = buildWaveformBars(timingMap, totalDurationMs)
+    $: productionManifestStatus = modelManifestStatus ?? {
+        status: "optional",
+        label: "Model manifest not required",
+        detail: "Production mode will use bundled or sidecar defaults unless this install requires a manifest."
+    }
     $: canGoNext =
         draft.step === "source"
             ? draft.lyricsText.trim().length > 0 && draft.sections.length > 0
@@ -644,6 +657,12 @@
                                     <option value="medium">medium</option>
                                 </select>
                             </label>
+                        </div>
+                        <div class:ok={productionManifestStatus.status === "configured"} class:error={productionManifestStatus.status === "missing"} class:hint={productionManifestStatus.status === "optional"} data-testid="model-manifest-status">
+                            <strong>{productionManifestStatus.label}</strong>
+                            {#if productionManifestStatus.detail}
+                                <span>{productionManifestStatus.detail}</span>
+                            {/if}
                         </div>
                         <p class="hint">Production mode uses the configured model manifest and may download model weights on first use.</p>
                     {/if}

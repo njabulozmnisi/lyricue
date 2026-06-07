@@ -240,6 +240,64 @@ describe("LearnSongWizard", () => {
         cmp.$destroy()
     })
 
+    it("shows configured model manifest status in production mode", async () => {
+        const cmp = new LearnSongWizard({
+            target,
+            props: {
+                initialDraft: {
+                    step: "audio",
+                    title: "Production Song",
+                    lyricsText: "[Verse 1]\nLine one",
+                    sections: [{ id: "v1", type: "verse", label: "Verse 1", text: "Line one", lines: ["Line one"] }],
+                    audioFileName: "song.wav",
+                    audioFileSize: 1024,
+                    audioPath: "/tmp/song.wav",
+                    alignmentMode: "production"
+                },
+                modelManifestStatus: {
+                    status: "configured",
+                    label: "Model manifest configured",
+                    detail: "3 required models available from the install manifest."
+                }
+            }
+        })
+
+        const status = target.querySelector('[data-testid="model-manifest-status"]')
+        expect(status?.textContent).toContain("Model manifest configured")
+        expect(status?.textContent).toContain("3 required models")
+        expect(status?.classList.contains("ok")).toBe(true)
+        cmp.$destroy()
+    })
+
+    it("shows missing required model manifest status in production mode", async () => {
+        const cmp = new LearnSongWizard({
+            target,
+            props: {
+                initialDraft: {
+                    step: "audio",
+                    title: "Production Song",
+                    lyricsText: "[Verse 1]\nLine one",
+                    sections: [{ id: "v1", type: "verse", label: "Verse 1", text: "Line one", lines: ["Line one"] }],
+                    audioFileName: "song.wav",
+                    audioFileSize: 1024,
+                    audioPath: "/tmp/song.wav",
+                    alignmentMode: "production"
+                },
+                modelManifestStatus: {
+                    status: "missing",
+                    label: "Model manifest missing",
+                    detail: "This install requires LC_MODEL_MANIFEST_PATH before production learning."
+                }
+            }
+        })
+
+        const status = target.querySelector('[data-testid="model-manifest-status"]')
+        expect(status?.textContent).toContain("Model manifest missing")
+        expect(status?.textContent).toContain("LC_MODEL_MANIFEST_PATH")
+        expect(status?.classList.contains("error")).toBe(true)
+        cmp.$destroy()
+    })
+
     it("falls back to manual-mode preview when learning rejects", async () => {
         const learnSong = vi.fn(async () => {
             throw new Error("Sidecar exited during request 'learn_song'")
