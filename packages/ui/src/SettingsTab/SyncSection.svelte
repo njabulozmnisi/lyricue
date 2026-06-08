@@ -24,8 +24,8 @@
 
     <label>
         Audio input device
-        <input type="text" disabled value={settings.sync.audioInputDeviceId ?? "(none — configure in EP-07)"} />
-        <span class="hint">Real device picker lands in EP-07 STORY-07.1.</span>
+        <input type="text" disabled value={settings.sync.audioInputDeviceId ?? "System default / choose in operator panel"} />
+        <span class="hint">Use the operator audio picker to choose a live input; this field shows the persisted device id.</span>
     </label>
 
     <label>

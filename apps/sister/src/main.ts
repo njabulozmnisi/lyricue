@@ -248,7 +248,8 @@ let rehearsalCaptureSession: RehearsalCaptureSession | null = null
 let smokeFailures: string[] = []
 
 async function startSisterMode(): Promise<void> {
-    await loadOperatorSettings()
+    const settings = await loadOperatorSettings()
+    operatorSelectedDeviceId = E2E_MODE ? "synthetic-120bpm" : settings.sync.audioInputDeviceId
 
     adapter = new OwnWindowOutputAdapter({
         factory: createElectronBrowserWindowFactory(),
@@ -704,10 +705,11 @@ function handleOperatorCommand(command: unknown): void {
             }
             break
         case "changeDevice":
-            // Device-selection plumbing lands in EP-07 STORY-07.2 wiring. For now,
-            // just record the change in the state so the picker shows it persistently.
             operatorSelectedDeviceId = typeof c.deviceId === "string" ? c.deviceId : null
             broadcastOperatorState()
+            void saveOperatorSelectedDeviceId(operatorSelectedDeviceId).catch((err) => {
+                log(`operator device selection save failed: ${(err as Error).message}`)
+            })
             break
         case "forceTier": {
             const tier = c.tier
@@ -838,6 +840,18 @@ async function saveOperatorSettings(settings: LyriCueSettings): Promise<void> {
     modelManifestCache = undefined
     modelManifestCachePath = null
     broadcastOperatorState()
+}
+
+async function saveOperatorSelectedDeviceId(deviceId: string | null): Promise<void> {
+    const settings = await loadOperatorSettings()
+    if (settings.sync.audioInputDeviceId === deviceId) return
+    await saveOperatorSettings({
+        ...settings,
+        sync: {
+            ...settings.sync,
+            audioInputDeviceId: deviceId
+        }
+    })
 }
 
 async function loadOperatorIdentity(): Promise<InstallIdentity> {
@@ -1712,9 +1726,16 @@ async function exerciseOperatorSettingsBridge(opWindow: BrowserWindow): Promise<
                         saved?.sidecar?.requireModelManifest === true &&
                         saved?.shortcuts?.startSync === "KeyS";
                     const rebroadcast = latestState?.shortcuts?.startSync === "KeyS";
-                    return persisted && rebroadcast
+                    api.sendCommand({ kind: "changeDevice", deviceId: "synthetic-120bpm" });
+                    let deviceSaved = await api.getSettings();
+                    for (let i = 0; i < 20 && deviceSaved?.sync?.audioInputDeviceId !== "synthetic-120bpm"; i += 1) {
+                        await new Promise((resolve) => setTimeout(resolve, 100));
+                        deviceSaved = await api.getSettings();
+                    }
+                    const devicePersisted = deviceSaved?.sync?.audioInputDeviceId === "synthetic-120bpm";
+                    return persisted && rebroadcast && devicePersisted
                         ? { status: "settings-bridge-persisted" }
-                        : { status: "settings-bridge-unverified", persisted, rebroadcast, saved, latestState };
+                        : { status: "settings-bridge-unverified", persisted, rebroadcast, devicePersisted, saved, latestState, deviceSaved };
                 } finally {
                     unsubscribe();
                     await api.saveSettings(original).catch(() => undefined);

@@ -91,4 +91,36 @@ describe("SettingsTab", () => {
 
         cmp.$destroy()
     })
+
+    it("hydrates the persisted sync audio device id", async () => {
+        const target = document.createElement("div")
+        const settingsStore = createStore<LyriCueSettings>({
+            ...DEFAULT_LYRICUE_SETTINGS,
+            sync: {
+                ...DEFAULT_LYRICUE_SETTINGS.sync,
+                audioInputDeviceId: "mic-1"
+            }
+        })
+        const identityStore = createStore<InstallIdentity>(DEFAULT_INSTALL_IDENTITY)
+        const libraryConfigStore = createStore<LibraryConfig>(DEFAULT_LIBRARY_CONFIG)
+
+        const cmp = new SettingsTab({
+            target,
+            props: {
+                settingsStore,
+                identityStore,
+                libraryConfigStore
+            }
+        })
+
+        ;[...target.querySelectorAll("button")].find((button) => button.textContent === "Sync")?.click()
+        await flush()
+
+        const audioDevice = target.querySelector("input[disabled]") as HTMLInputElement
+        expect(audioDevice.value).toBe("mic-1")
+        expect(target.textContent).toContain("Use the operator audio picker")
+        expect(target.textContent).not.toContain("EP-07")
+
+        cmp.$destroy()
+    })
 })
