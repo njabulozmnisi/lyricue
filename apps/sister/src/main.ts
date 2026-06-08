@@ -39,7 +39,7 @@ import { app, BrowserWindow, ipcMain } from "electron"
 import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { basename, dirname, resolve, join } from "node:path"
-import { DEPLOYMENT_MODE, validateTimingMap, type Arrangement, type InstallIdentity, type LibraryConfig, type LyriCueSettings, type TimingMap } from "@lyricue/core/types"
+import { DEFAULT_LYRICUE_SETTINGS, DEPLOYMENT_MODE, validateTimingMap, type Arrangement, type InstallIdentity, type LibraryConfig, type LyriCueSettings, type TimingMap } from "@lyricue/core/types"
 import { IdentityStore, LibraryConfigStore, resolveLyriCuePaths, SettingsStore } from "@lyricue/core/settings"
 import { TimingMapStorage, type TimingMapStorageVariant } from "@lyricue/core/timing"
 import { DEMO_TIMING_MAP, DemoSyncEngine, generateFrameSequence } from "@lyricue/core/output/test-utils"
@@ -248,6 +248,8 @@ let rehearsalCaptureSession: RehearsalCaptureSession | null = null
 let smokeFailures: string[] = []
 
 async function startSisterMode(): Promise<void> {
+    await loadOperatorSettings()
+
     adapter = new OwnWindowOutputAdapter({
         factory: createElectronBrowserWindowFactory(),
         rendererHtmlPath: RENDERER_HTML_PATH,
@@ -1138,13 +1140,7 @@ function broadcastOperatorState(): void {
             requireManifest: resolveCurrentModelManifestConfigSync().requireManifest,
             pathExists: existsSync
         }),
-        shortcuts: {
-            startSync: "Space",
-            nextSection: "ArrowRight",
-            prevSection: "ArrowLeft",
-            toggleManual: "Escape",
-            reEngageSync: "Enter"
-        }
+        shortcuts: currentShortcutBindings()
     }
 
     if (operatorWindow !== null && !operatorWindow.isDestroyed() && operatorReady) {
@@ -1250,6 +1246,10 @@ function isProductionLearnSongPayload(payload: Record<string, unknown>): boolean
 function resolveCurrentModelManifestConfigSync(): ReturnType<typeof resolveModelManifestConfig> {
     const settings = settingsStore?.isLoaded ? settingsStore.get().sidecar : null
     return resolveModelManifestConfig({ ...MODEL_MANIFEST_ENV, settings })
+}
+
+function currentShortcutBindings(): LyriCueSettings["shortcuts"] {
+    return settingsStore?.isLoaded ? settingsStore.get().shortcuts : DEFAULT_LYRICUE_SETTINGS.shortcuts
 }
 
 function getConfiguredModelManifest(manifestPath: string | null): ModelManifest | null {
@@ -1681,6 +1681,11 @@ async function exerciseOperatorSettingsBridge(opWindow: BrowserWindow): Promise<
                 const identity = await api.getIdentity();
                 const libraryConfig = await api.getLibraryConfig();
                 if (!original?.sidecar || !identity?.user || !libraryConfig) return { status: "missing-store-shape" };
+                let latestState = null;
+                const unsubscribe = api.subscribeState((state) => {
+                    latestState = state;
+                });
+                api.signalReady();
                 const next = {
                     ...original,
                     sidecar: {
@@ -1688,19 +1693,29 @@ async function exerciseOperatorSettingsBridge(opWindow: BrowserWindow): Promise<
                         modelManifestPath: "/tmp/lyricue-smoke-model-manifest.json",
                         modelMirrorUrl: "https://models.example.org/lyricue-smoke/",
                         requireModelManifest: true
+                    },
+                    shortcuts: {
+                        ...original.shortcuts,
+                        startSync: "KeyS"
                     }
                 };
                 try {
                     await api.saveSettings(next);
                     const saved = await api.getSettings();
+                    for (let i = 0; i < 20 && latestState?.shortcuts?.startSync !== "KeyS"; i += 1) {
+                        await new Promise((resolve) => setTimeout(resolve, 100));
+                    }
                     const persisted =
                         saved?.sidecar?.modelManifestPath === next.sidecar.modelManifestPath &&
                         saved?.sidecar?.modelMirrorUrl === next.sidecar.modelMirrorUrl &&
-                        saved?.sidecar?.requireModelManifest === true;
-                    return persisted
+                        saved?.sidecar?.requireModelManifest === true &&
+                        saved?.shortcuts?.startSync === "KeyS";
+                    const rebroadcast = latestState?.shortcuts?.startSync === "KeyS";
+                    return persisted && rebroadcast
                         ? { status: "settings-bridge-persisted" }
-                        : { status: "settings-bridge-unverified", persisted, saved };
+                        : { status: "settings-bridge-unverified", persisted, rebroadcast, saved, latestState };
                 } finally {
+                    unsubscribe();
                     await api.saveSettings(original).catch(() => undefined);
                 }
             })()
