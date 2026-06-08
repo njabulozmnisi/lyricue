@@ -4,6 +4,7 @@ export interface PackagedSisterSmokeSummary {
     smokeFailures: string[]
     packagedAppLoaded: boolean
     operatorPersistencePassed: boolean
+    operatorSettingsOverlayCaptured: boolean
     operatorSettingsBridgePassed: boolean
     staleOperatorPayloadsGuarded: boolean
     sidecarStarted: boolean
@@ -17,13 +18,14 @@ export function parsePackagedSisterSmokeLog(log: string): PackagedSisterSmokeSum
     const smokePassed = log.includes("[smoke] complete: pass")
     const packagedAppLoaded = log.includes("Contents/Resources/app.asar")
     const operatorPersistencePassed = log.includes("operator persistence exercise result=persisted")
+    const operatorSettingsOverlayCaptured = log.includes("08-settings-overlay-operator.png")
     const operatorSettingsBridgePassed = log.includes('"status":"settings-bridge-persisted"')
     const staleOperatorPayloadsGuarded = log.includes('"status":"stale-payloads-guarded"')
     const sidecarStarted = log.includes("sidecar: [lyricue-sidecar:INFO] server loop started")
     const segmentationReady = log.includes('"stage":"segments_ready"')
     const capturedApproved = log.includes('"status":"captured-approved"')
     const sourcePythonFallback = log.includes("No usable Python interpreter found")
-    const status = smokePassed && smokeFailures.length === 0 && packagedAppLoaded && operatorPersistencePassed && operatorSettingsBridgePassed && staleOperatorPayloadsGuarded && sidecarStarted && segmentationReady && capturedApproved && !sourcePythonFallback ? "pass" : "fail"
+    const status = smokePassed && smokeFailures.length === 0 && packagedAppLoaded && operatorPersistencePassed && operatorSettingsOverlayCaptured && operatorSettingsBridgePassed && staleOperatorPayloadsGuarded && sidecarStarted && segmentationReady && capturedApproved && !sourcePythonFallback ? "pass" : "fail"
 
     return {
         status,
@@ -31,6 +33,7 @@ export function parsePackagedSisterSmokeLog(log: string): PackagedSisterSmokeSum
         smokeFailures,
         packagedAppLoaded,
         operatorPersistencePassed,
+        operatorSettingsOverlayCaptured,
         operatorSettingsBridgePassed,
         staleOperatorPayloadsGuarded,
         sidecarStarted,

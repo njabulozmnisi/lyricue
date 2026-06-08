@@ -181,15 +181,21 @@
 <style>
     .lyricue-settings {
         display: grid;
-        grid-template-columns: 180px 1fr;
+        grid-template-columns: minmax(140px, 180px) minmax(0, 1fr);
         gap: 1.5rem;
         font-family: system-ui, sans-serif;
         color: #111;
+        max-width: 100%;
+        min-width: 0;
+    }
+    .lyricue-settings :global(*) {
+        box-sizing: border-box;
     }
     nav.sections {
         display: flex;
         flex-direction: column;
         gap: 0.25rem;
+        min-width: 0;
     }
     nav.sections button {
         text-align: left;
@@ -210,5 +216,25 @@
     }
     .content {
         min-height: 320px;
+        min-width: 0;
+    }
+    .content :global(input:not([type="checkbox"]):not([type="radio"]):not([type="color"])),
+    .content :global(select),
+    .content :global(textarea) {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+    .content :global(header) {
+        flex-wrap: wrap;
+    }
+    @media (max-width: 720px) {
+        .lyricue-settings {
+            grid-template-columns: 1fr;
+        }
+        nav.sections {
+            flex-direction: row;
+            flex-wrap: wrap;
+        }
     }
 </style>

@@ -532,6 +532,8 @@ function openToolOverlay(title: string): { overlay: HTMLElement; body: HTMLEleme
     shell.className = "operator-tool-shell"
     shell.style.margin = "0 auto"
     shell.style.maxWidth = "980px"
+    shell.style.width = "100%"
+    shell.style.boxSizing = "border-box"
     shell.style.borderRadius = "8px"
     shell.style.background = "#f8fafc"
     shell.style.color = "#0f172a"

@@ -1535,6 +1535,7 @@ async function captureEp06Evidence(): Promise<void> {
             await captureOperatorTool(opWindow, operatorDir, "05-arrangement-builder-operator", "[data-testid=\"edit-arrangement\"]")
             await captureOperatorTool(opWindow, operatorDir, "06-translation-editor-operator", "[data-testid=\"translate-song\"]")
             await captureOperatorTool(opWindow, operatorDir, "07-rehearsal-mode-operator", "[data-testid=\"toggle-rehearsal\"]")
+            await captureOperatorTool(opWindow, operatorDir, "08-settings-overlay-operator", "[data-testid=\"open-settings\"]")
             if (SMOKE_TEST_MODE) {
                 await exerciseLearnSongWizard(opWindow)
             }
