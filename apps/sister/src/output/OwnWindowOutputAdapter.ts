@@ -372,8 +372,14 @@ export class OwnWindowOutputAdapter extends EventEmitter implements OutputAdapte
      * Called when the OS-level window-closed event fires (user closed the window, OS
      * destroyed it, etc.). Resets internal state and emits the `adapterClosed` event so
      * upstream code can re-spawn or warn the operator.
+     *
+     * Idempotent: some Electron versions re-fire 'closed' during app-shutdown teardown.
+     * The first call performs the reset and emits; subsequent calls return early so the
+     * operator's onClosed observer doesn't double-fire (which previously caused
+     * upstream re-spawn logic to attempt a second re-spawn).
      */
     #onWindowClosed(): void {
+        if (this.#window === null && !this.#health.running) return // already torn down
         this.#window = null
         this.#unsubReady = null
         this.#unsubClosed = null
