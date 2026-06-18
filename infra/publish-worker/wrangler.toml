@@ -1,29 +1,38 @@
 # Cloudflare Worker config for the LyriCue library publish endpoint.
 # Per architecture.md §8.2 — fronts R2 for credentialed writes and catalog regeneration.
-# Full implementation lands in EP-14 STORY-14.1.
+# Provisioned 2026-06-18 for the `dojo` org against account 2f78f4f981518831bf51d5aa355b2049.
 
-name = "lyricue-publish"
+name = "lyricue-publish-dojo"
 main = "src/index.ts"
 compatibility_date = "2026-01-01"
+account_id = "2f78f4f981518831bf51d5aa355b2049"
 
-# R2 binding is populated by the org's setup script (STORY-14.2).
-# [[r2_buckets]]
-# binding = "LIBRARY"
-# bucket_name = "lyricue-library"
+# Hourly write ceiling per credential. Documented default is 60; raise for high-traffic
+# central campuses, lower for shared/test credentials.
+[vars]
+RATE_LIMIT_WRITES_PER_HOUR = "60"
+PUBLIC_BASE_URL = "https://lyricue-publish-dojo.njabulozmnisi.workers.dev"
+GITHUB_MIRROR_REPO = "njabulozmnisi/lyricue-library-dojo"
+GITHUB_MIRROR_BRANCH = "main"
 
-# Credentials map (token → { campusId, role: 'central' | 'campus' }) is loaded from
-# the Worker's KV namespace at request time. Setup script provisions the namespace.
-# [[kv_namespaces]]
-# binding = "CREDENTIALS"
-# id = "<populated-by-setup-script>"
+# R2 bucket holding .lcbundle files, catalog.json, project plans, and audit logs.
+[[r2_buckets]]
+binding = "LIBRARY"
+bucket_name = "lyricue-dojo"
 
-# Optional per-credential hourly publish counters.
-# [[kv_namespaces]]
-# binding = "RATE_LIMITS"
-# id = "<populated-by-setup-script>"
+# KV: token → credential metadata (orgId, campusId, role, keyId).
+# Operator-issued credentials are written here via `wrangler kv key put`.
+[[kv_namespaces]]
+binding = "CREDENTIALS"
+id = "7b4d1cf2670d423cb55a44513d711846"
 
-# Optional GitHub mirror. Token is stored with `wrangler secret put GITHUB_MIRROR_TOKEN`.
-# [vars]
-# GITHUB_MIRROR_REPO = "org/lyricue-library"
-# GITHUB_MIRROR_BRANCH = "main"
-# RATE_LIMIT_WRITES_PER_HOUR = "60"
+# KV: per-credential per-hour write counter for rate limiting.
+[[kv_namespaces]]
+binding = "RATE_LIMITS"
+id = "66977bd0dca542d0b7df9530ab74ffe0"
+
+# After the first `wrangler deploy` captures the workers.dev URL, uncomment + set:
+# PUBLIC_BASE_URL = "https://lyricue-publish-dojo.<your-subdomain>.workers.dev"
+#
+# GITHUB_MIRROR_REPO + GITHUB_MIRROR_BRANCH come from [vars]; the token comes from
+# `wrangler secret put GITHUB_MIRROR_TOKEN` (see Phase 8 setup notes).
