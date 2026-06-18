@@ -151,7 +151,12 @@ class JsonRpcServer:
         try:
             payload = json.loads(raw_line)
         except json.JSONDecodeError as exc:
-            return _error_response(None, ERROR_PARSE, f"Parse error: {exc.msg}")
+            return _error_response(None, ERROR_PARSE, _sanitise_one_line(f"Parse error: {exc.msg}"))
+        except RecursionError:
+            # Python's json module raises RecursionError on deeply-nested input rather
+            # than JSONDecodeError. Without this branch the error escapes handle_request
+            # and crashes the serve() loop — every subsequent request is silently dropped.
+            return _error_response(None, ERROR_PARSE, "Parse error: input nesting exceeds limit")
 
         if not isinstance(payload, dict):
             return _error_response(None, ERROR_INVALID_REQUEST, "Request must be a JSON object")
@@ -177,7 +182,14 @@ class JsonRpcServer:
             if is_notification:
                 # Spec: notifications never get a response, even for unknown methods.
                 return None
-            return _error_response(request_id, ERROR_METHOD_NOT_FOUND, f"Method '{method}' not found")
+            # Sanitise the method name before echoing it back — embedded newlines or
+            # control chars would otherwise corrupt the NDJSON response stream that
+            # the TS-side controller line-splits.
+            return _error_response(
+                request_id,
+                ERROR_METHOD_NOT_FOUND,
+                f"Method '{_sanitise_one_line(method)}' not found",
+            )
 
         try:
             if method in self._context_handlers:
@@ -189,7 +201,7 @@ class JsonRpcServer:
             log.warning("Handler '%s' raised JsonRpcError(%d): %s", method, err.code, err.message)
             if is_notification:
                 return None
-            return _error_response(request_id, err.code, err.message, err.data)
+            return _error_response(request_id, err.code, _sanitise_one_line(err.message), err.data)
         except Exception as err:  # noqa: BLE001 — we deliberately catch everything to honour the protocol
             log.exception("Handler '%s' raised unhandled exception", method)
             if is_notification:
@@ -221,7 +233,21 @@ class JsonRpcServer:
     # --- internals ---
 
     def _write(self, msg: Mapping[str, Any]) -> None:
-        self._output.write(json.dumps(msg) + "\n")
+        """Serialise msg as NDJSON and write to the output stream.
+
+        Isolates non-JSON-serialisable handler returns: a handler that returns a set,
+        a bytes object, or any other non-JSON type would otherwise raise TypeError out
+        of json.dumps, crash the serve() loop, and silently break the sidecar for the
+        rest of the session. We coerce unsupported types to their str() form via
+        json.dumps(default=str) so the response always reaches the wire — operators can
+        still see the coerced data even if it's not the original Python object.
+        """
+        try:
+            payload = json.dumps(msg)
+        except (TypeError, ValueError) as err:
+            log.error("Response is not JSON-serialisable; coercing via str(): %s", err)
+            payload = json.dumps(msg, default=str)
+        self._output.write(payload + "\n")
         self._output.flush()
 
 
@@ -243,12 +269,21 @@ def _safe_exception_message(err: BaseException) -> str:
     Strips file paths from the message (operators don't need the developer machine's
     layout in their logs) and caps length at 500 chars.
     """
-    msg = str(err) or err.__class__.__name__
-    # Defensive: strip newlines so the message stays single-line.
-    msg = msg.replace("\n", " ").replace("\r", " ")
-    if len(msg) > 500:
-        msg = msg[:497] + "..."
-    return msg
+    return _sanitise_one_line(str(err) or err.__class__.__name__)
+
+
+def _sanitise_one_line(value: str) -> str:
+    """Strip control characters and cap length so the value is safe for NDJSON output.
+
+    The TS-side sidecar controller line-splits stdout on raw newlines. A method name
+    or error message that itself contains a newline would corrupt that split and could
+    look like an extra response or notification. Cap at 500 chars so a hostile or
+    accidentally-large value can't bloat the wire.
+    """
+    out = value.replace("\n", " ").replace("\r", " ").replace("\x00", "")
+    if len(out) > 500:
+        out = out[:497] + "..."
+    return out
 
 
 # Convenience: callers can use this to capture a full traceback for stderr without
