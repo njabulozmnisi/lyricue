@@ -6,7 +6,7 @@ This roadmap supersedes the stale 2026-05-16 handoff snapshot. It reflects curre
 
 LyriCue has a working sister-mode vertical slice: dual Electron windows, real SyncEngine, synthetic audio driver, operator control panel, karaoke output, local sidecar song-learning contracts, setlist/arrangement/translation/rehearsal/library surfaces, and a local quality gate. The current local test floor is:
 
-- TypeScript/Vitest: 783 tests passing.
+- TypeScript/Vitest: 785 tests passing.
 - Publish Worker Vitest: 11 tests passing.
 - Python sidecar: 88 tests passing, 1 skipped.
 - Python sidecar with optional ML dependencies on Python 3.11: 88 tests passing, 1 skipped.
@@ -14,6 +14,7 @@ LyriCue has a working sister-mode vertical slice: dual Electron windows, real Sy
 - Sister karaoke and operator renderer bundles build.
 - `npm run verify:local` passes the aggregate local gate: TypeScript build/tests, UI diagnostics, Worker tests, both Python sidecar suites, and sister renderer builds.
 - Gate A Electron smoke passes with `LC_SMOKE_TEST=1` against the real sister-mode dual-window app.
+- Smoke screenshot capture supports pass-specific `LC_CAPTURE_EVIDENCE_DIR` output so fresh QA artifacts do not overwrite historical evidence baselines.
 - Local Gate A close QA has no open critical/high walking-skeleton defects.
 
 The project is not yet production-shippable for a multi-campus rollout because several release gates require real external assets, credentials, hardware, or packaged-binary validation.

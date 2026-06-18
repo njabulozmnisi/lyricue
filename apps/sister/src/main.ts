@@ -1478,19 +1478,7 @@ function formatDiagnostics(s: DiagnosticsSnapshot): string {
 }
 
 async function captureEp06Evidence(): Promise<void> {
-    // When invoked from E2E mode, write the karaoke captures to ep09-e2e/ and the
-    // operator-window captures to ep10-operator-window/. DEMO mode writes karaoke to
-    // ep06-karaoke-renderer/ and skips operator (no operator window in DEMO).
-    const karaokeSubDir = E2E_MODE
-        ? "ep09-e2e-2026-05-15"
-        : "ep06-karaoke-renderer-2026-05-15"
-    const karaokeDir = resolve("docs", "qa-reports", "evidence", karaokeSubDir)
-    const operatorDir = resolve(
-        "docs",
-        "qa-reports",
-        "evidence",
-        "ep10-operator-window-2026-05-15"
-    )
+    const { karaokeDir, operatorDir } = resolveCaptureEvidenceDirs()
     mkdirSync(karaokeDir, { recursive: true })
     if (E2E_MODE) mkdirSync(operatorDir, { recursive: true })
 
@@ -1596,6 +1584,25 @@ async function captureEp06Evidence(): Promise<void> {
     }
     log("[capture] evidence run complete; quitting")
     setTimeout(() => app.quit(), 500)
+}
+
+function resolveCaptureEvidenceDirs(): { karaokeDir: string; operatorDir: string } {
+    const baseDir = process.env.LC_CAPTURE_EVIDENCE_DIR?.trim()
+    if (baseDir) {
+        const root = resolve(baseDir)
+        return {
+            karaokeDir: join(root, "karaoke"),
+            operatorDir: join(root, "operator")
+        }
+    }
+
+    const karaokeSubDir = E2E_MODE
+        ? "ep09-e2e-2026-05-15"
+        : "ep06-karaoke-renderer-2026-05-15"
+    return {
+        karaokeDir: resolve("docs", "qa-reports", "evidence", karaokeSubDir),
+        operatorDir: resolve("docs", "qa-reports", "evidence", "ep10-operator-window-2026-05-15")
+    }
 }
 
 async function captureOperatorTool(

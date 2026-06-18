@@ -4,7 +4,7 @@ This checklist defines the evidence required before LyriCue can be called produc
 
 ## Current Local Baseline
 
-- TypeScript/Vitest: 765 tests passing.
+- TypeScript/Vitest: 785 tests passing.
 - Python sidecar: 88 passing, 1 skipped in the regular venv.
 - Python sidecar with ML dependencies: 88 passing, 1 skipped, 1 known third-party `librosa` deprecation warning.
 - `svelte-check`: 0 errors, 0 warnings.
@@ -155,7 +155,8 @@ Pass criteria:
 
 - Installer/app launches without OS trust warnings after signing/notarization.
 - `Contents/Resources` or platform equivalent contains the sidecar binary for the target architecture.
-- Packaged smoke JSON reports `status="pass"`, `sidecarStarted=true`, `segmentationReady=true`, `capturedApproved=true`, and `sourcePythonFallback=false`.
+- Packaged smoke JSON reports `status="pass"`, `operatorSettingsOverlayCaptured=true`, `sidecarStarted=true`, `segmentationReady=true`, `capturedApproved=true`, and `sourcePythonFallback=false`.
+- Packaged smoke screenshots are retained under `<output-dir>/screenshots/karaoke` and `<output-dir>/screenshots/operator`.
 - Packaged `learn_song` smoke from Gate B passes against the same sidecar artifact.
 
 ## Gate D — Fork-Mode Verification

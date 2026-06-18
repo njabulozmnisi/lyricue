@@ -63,9 +63,11 @@ async function main(): Promise<void> {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-")
     const logPath = resolve(args.outputDir, `packaged-sister-smoke-${stamp}.log`)
     const summaryPath = resolve(args.outputDir, `packaged-sister-smoke-${stamp}.json`)
+    const screenshotDir = resolve(args.outputDir, "screenshots")
 
     process.stdout.write(`[packaged-sister-smoke] app=${args.appExecutable}\n`)
     process.stdout.write(`[packaged-sister-smoke] log=${logPath}\n`)
+    process.stdout.write(`[packaged-sister-smoke] screenshots=${screenshotDir}\n`)
 
     let log = ""
     let timedOut = false
@@ -77,7 +79,8 @@ async function main(): Promise<void> {
             LC_E2E_MODE: "1",
             LC_VERBOSE: "1",
             LC_SMOKE_TEST: "1",
-            LC_CAPTURE_EVIDENCE: "1"
+            LC_CAPTURE_EVIDENCE: "1",
+            LC_CAPTURE_EVIDENCE_DIR: screenshotDir
         },
         stdio: ["ignore", "pipe", "pipe"]
     })
@@ -116,6 +119,7 @@ async function main(): Promise<void> {
         status,
         appExecutable: args.appExecutable,
         logPath,
+        screenshotDir,
         exitCode: exitInfo.code,
         signal: exitInfo.signal,
         timedOut,
