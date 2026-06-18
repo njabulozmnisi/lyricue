@@ -85,6 +85,7 @@ import { learnSongTimeoutMs, resolveSourceSidecarPythonOverride } from "./learn-
 import { sidecarResolverNodeEnv } from "./sidecar-runtime.js"
 import { prepareOperatorArrangementSave } from "./operator-arrangements.js"
 import { prepareOperatorTranslationSave } from "./operator-translations.js"
+import { nextSaveErrorState, type OperatorSaveError } from "./operator-save-error.js"
 import { prepareOperatorSongBundle } from "./operator-library-publish.js"
 
 // Fail fast if launched with the wrong mode. The fork-mode entry has the same guard;
@@ -238,6 +239,34 @@ let lastTransition: {
     reason: string
     atWallMs: number
 } | null = null
+/**
+ * Most recent persistence failure surfaced to the operator UI. Background save
+ * paths (device-change, shortcut rebind, library config) previously logged save
+ * errors to stderr and continued — under EROFS/ENOSPC the operator's in-memory
+ * state advanced but disk did not, so a restart silently reverted the change.
+ * The renderer reads this field and shows a transient banner; we clear it on
+ * the next successful save in the same code path.
+ */
+let lastSaveError: OperatorSaveError | null = null
+
+function recordSaveError(scope: string, err: unknown): void {
+    lastSaveError = nextSaveErrorState(lastSaveError, {
+        kind: "failure",
+        scope,
+        error: err,
+        atWallMs: Date.now()
+    })
+    log(`operator save failed (${scope}): ${lastSaveError?.message ?? "(unknown)"}`)
+    broadcastOperatorState()
+}
+
+function clearSaveError(scope: string): void {
+    const next = nextSaveErrorState(lastSaveError, { kind: "success", scope })
+    if (next !== lastSaveError) {
+        lastSaveError = next
+        broadcastOperatorState()
+    }
+}
 /**
  * Buffered state envelope emitted before the operator renderer was ready. Like the
  * OwnWindowOutputAdapter's pre-ready buffer (D11): we hold the latest snapshot so the
@@ -769,9 +798,11 @@ function handleOperatorCommand(command: unknown): void {
         case "changeDevice":
             operatorSelectedDeviceId = typeof c.deviceId === "string" ? c.deviceId : null
             broadcastOperatorState()
-            void saveOperatorSelectedDeviceId(operatorSelectedDeviceId).catch((err) => {
-                log(`operator device selection save failed: ${(err as Error).message}`)
-            })
+            void saveOperatorSelectedDeviceId(operatorSelectedDeviceId)
+                .then(() => clearSaveError("audio-device"))
+                .catch((err) => {
+                    recordSaveError("audio-device", err)
+                })
             break
         case "forceTier": {
             const tier = c.tier
@@ -791,11 +822,6 @@ function handleOperatorCommand(command: unknown): void {
             break
         case "prevSection":
             handlePrevSection()
-            break
-        case "editArrangement":
-        case "toggleRehearsal":
-            log(`operator command: ${c.kind} acknowledged; host service wiring pending`)
-            broadcastOperatorState()
             break
         case "saveArrangement":
             void saveDemoArrangement(c.arrangement)
@@ -1409,6 +1435,10 @@ function broadcastOperatorState(): void {
             { deviceId: "synthetic-120bpm", label: "Synthetic 120 BPM (E2E demo)", kind: "audioinput", groupId: "demo" }
         ],
         lastTransition,
+        lastSaveError,
+        beatConfidence: seState?.beatConfidence ?? 0,
+        tempoRatio: seState?.tempoRatio ?? 1.0,
+        vadState: seState?.vadState ?? "silent",
         modelManifestStatus: resolveOperatorModelManifestStatus({
             manifestPath: resolveCurrentModelManifestConfigSync().manifestPath ?? undefined,
             requireManifest: resolveCurrentModelManifestConfigSync().requireManifest,
