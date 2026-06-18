@@ -52,6 +52,8 @@ interface ProjectPlan {
     songs: Array<{ songId: string; bundleVersion: string; arrangementId?: string }>
 }
 
+const SAFE_KEY_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
+
 export default {
     async fetch(request: Request, env: Env): Promise<Response> {
         const url = new URL(request.url)
@@ -107,10 +109,7 @@ async function publish(request: Request, env: Env): Promise<Response> {
     if (body.byteLength > 25 * 1024 * 1024) throw new HttpError(413, "Bundle exceeds the 25 MB publish limit.")
 
     const bytes = new Uint8Array(body)
-    const manifest = readBundleManifest(bytes)
-    if (!manifest?.songId || !manifest.title || !manifest.bundleVersion) {
-        throw new HttpError(400, "Bundle manifest must include songId, title, and bundleVersion.")
-    }
+    const manifest = validateBundleManifest(readBundleManifest(bytes))
 
     const target = readPublishTarget(request)
     if (target === "central" && credential.role !== "central") {
@@ -146,7 +145,7 @@ async function regenerateCatalog(env: Env): Promise<{ catalogVersion: string }> 
         const bundle = await env.LIBRARY.get(object.key)
         if (!bundle) continue
         const bytes = new Uint8Array(await bundle.arrayBuffer())
-        const manifest = readBundleManifest(bytes)
+        const manifest = validateBundleManifest(readBundleManifest(bytes))
         songs.push({
             songId: manifest.songId,
             title: manifest.title,
@@ -302,12 +301,30 @@ function validateProjectPlan(input: unknown): ProjectPlan {
     if (!plan.id || !plan.name || !Array.isArray(plan.songs)) {
         throw new HttpError(400, "Project plan must include id, name, and songs.")
     }
+    assertSafeKeySegment(plan.id, "Project plan id")
     for (const [index, song] of plan.songs.entries()) {
         if (!song.songId || !song.bundleVersion) {
             throw new HttpError(400, `Project plan song ${index} must include songId and bundleVersion.`)
         }
+        assertSafeKeySegment(song.songId, `Project plan song ${index} songId`)
+        assertSafeKeySegment(song.bundleVersion, `Project plan song ${index} bundleVersion`)
     }
     return plan
+}
+
+function validateBundleManifest(manifest: BundleManifest): BundleManifest {
+    if (!manifest?.songId || !manifest.title || !manifest.bundleVersion) {
+        throw new HttpError(400, "Bundle manifest must include songId, title, and bundleVersion.")
+    }
+    assertSafeKeySegment(manifest.songId, "Bundle manifest songId")
+    assertSafeKeySegment(manifest.bundleVersion, "Bundle manifest bundleVersion")
+    return manifest
+}
+
+function assertSafeKeySegment(value: string, label: string): void {
+    if (!SAFE_KEY_SEGMENT.test(value)) {
+        throw new HttpError(400, `${label} must be a safe library key segment.`)
+    }
 }
 
 function readZipTextEntry(bytes: Uint8Array, targetName: string): string {

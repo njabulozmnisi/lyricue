@@ -8,7 +8,7 @@ epic matrix and release gates.
 
 Current `main` has moved beyond the original snapshot:
 
-- Full local gate passes with 83 TypeScript/Vitest files and 793 tests, Worker 14/14,
+- Full local gate passes with 83 TypeScript/Vitest files and 793 tests, Worker 16/16,
   UI diagnostics 0 errors / 0 warnings, both Python sidecar suites 88 passed / 1 skipped,
   and sister renderer/main/preload builds passing.
 - EP-10 operator defects D13-D18 are closed locally.
@@ -33,9 +33,11 @@ Current `main` has moved beyond the original snapshot:
   `docs/qa-reports/qa-report-gate-d-packaged-sister-smoke-refresh-2026-06-18.md`.
 - Gate C Worker publish writes now validate `X-LC-Org` and `X-LC-Campus` against the resolved
   credential record before writing bundles or project plans. Worker credential metadata also
-  fails closed on malformed JSON or invalid role shape. Local Worker tests are 14/14. QA
+  fails closed on malformed JSON or invalid role shape, and publish bundle/project identifiers
+  are validated before becoming R2 key segments. Local Worker tests are 16/16. QA
   artifacts: `docs/qa-reports/qa-report-gate-c-publish-tenant-boundary-2026-06-18.md` and
-  `docs/qa-reports/qa-report-gate-c-publish-credential-metadata-2026-06-18.md`.
+  `docs/qa-reports/qa-report-gate-c-publish-credential-metadata-2026-06-18.md` and
+  `docs/qa-reports/qa-report-gate-c-publish-key-segments-2026-06-18.md`.
 - EP-16 Setlist Source is mounted in the sister operator. The host can list local/central
   project sources, select local projects, and load central project plans through
   `fetchCatalog()` + `loadProjectPlanBundles()` when a library URL is configured.

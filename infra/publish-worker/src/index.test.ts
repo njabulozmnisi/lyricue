@@ -154,6 +154,23 @@ describe("publish worker", () => {
         expect(catalog.songs[0]).toMatchObject({ songId: "legacy-song", bundleVersion: "1.0.0" })
     })
 
+    it("rejects bundle manifests with unsafe object-key segments", async () => {
+        const env = makeEnv()
+        const response = await worker.fetch(
+            new Request("https://worker.test/publish", {
+                method: "PUT",
+                headers: publishHeaders({ "X-LC-Target": "central" }),
+                body: legacyJsonBundle("../meta", "1.0.0")
+            }),
+            env
+        )
+
+        expect(response.status).toBe(400)
+        await expect(response.json()).resolves.toMatchObject({ message: "Bundle manifest songId must be a safe library key segment." })
+        expect(env.objects.size).toBe(0)
+    })
+
+
     it("rate-limits publish writes by credential", async () => {
         const env = makeEnv()
         env.RATE_LIMIT_WRITES_PER_HOUR = "1"
@@ -293,6 +310,26 @@ describe("publish worker", () => {
         const log = new TextDecoder().decode(env.objects.get("meta/publish-log.jsonl")!)
         expect(log).toContain("\"projectId\":\"regional-conference\"")
         expect(log).toContain("\"target\":\"campus\"")
+    })
+
+    it("rejects project plans with unsafe object-key segments", async () => {
+        const env = makeEnv()
+        const response = await worker.fetch(
+            new Request("https://worker.test/publish/project", {
+                method: "PUT",
+                headers: publishHeaders({ "X-LC-Target": "campus" }),
+                body: JSON.stringify({
+                    id: "../regional-conference",
+                    name: "Regional Conference",
+                    songs: [{ songId: "song-1", bundleVersion: "1.0.0" }]
+                })
+            }),
+            env
+        )
+
+        expect(response.status).toBe(400)
+        await expect(response.json()).resolves.toMatchObject({ message: "Project plan id must be a safe library key segment." })
+        expect(env.objects.size).toBe(0)
     })
 
     it("rejects unsupported publish targets", async () => {
