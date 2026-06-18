@@ -134,6 +134,46 @@ export const CONFIDENCE_DEGRADATION_MS = 10_000 as const
 /** Manual-override debounce window — STT position corrections are ignored within this window. */
 export const DEFAULT_MANUAL_DEBOUNCE_MS = 3000 as const
 
+/**
+ * Hard-clamp envelope for tempoRatio. The audio module is responsible for the primary
+ * clamp before sending tempoUpdate, but SE applies a belt-and-braces clamp because a
+ * bypassed audio path (synthetic driver bug, a future direct test seam, a misbehaving
+ * sidecar response) must not propagate an out-of-envelope ratio into the cursor — that
+ * would either freeze the karaoke output (NaN cascades) or scroll lyrics at a non-musical
+ * rate during live worship.
+ *
+ * Module-local constants so they don't collide with the canonical exports in audio/index.
+ */
+const SE_TEMPO_RATIO_MIN = 0.7
+const SE_TEMPO_RATIO_MAX = 1.4
+
+/** Sanitises a tempoRatio for entry into state. NaN/Infinity collapse to 1.0 (native). */
+function sanitizeTempoRatio(value: number): number {
+    if (!Number.isFinite(value)) return 1.0
+    if (value < SE_TEMPO_RATIO_MIN) return SE_TEMPO_RATIO_MIN
+    if (value > SE_TEMPO_RATIO_MAX) return SE_TEMPO_RATIO_MAX
+    return value
+}
+
+/** Sanitises a beatConfidence for entry into state. NaN collapses to 0; clamps to [0,1]. */
+function sanitizeBeatConfidence(value: number): number {
+    if (!Number.isFinite(value)) return 0
+    if (value < 0) return 0
+    if (value > 1) return 1
+    return value
+}
+
+/**
+ * Sanitises a cursor target (ref-ms). NaN/Infinity are rejected by returning null —
+ * callers branch on null to skip the transition rather than writing NaN into cursorRefTime.
+ * Negative values are clamped to 0 (cursor cannot precede song start).
+ */
+function sanitizeCursorTarget(value: number): number | null {
+    if (!Number.isFinite(value)) return null
+    if (value < 0) return 0
+    return value
+}
+
 // ─── Events ──────────────────────────────────────────────────────────────────
 
 /**
@@ -197,7 +237,11 @@ export function onTempoUpdate(
     state: SyncEngineState,
     event: { tempoRatio: number; beatConfidence: number }
 ): SyncEngineState {
-    return { ...state, tempoRatio: event.tempoRatio, beatConfidence: event.beatConfidence }
+    return {
+        ...state,
+        tempoRatio: sanitizeTempoRatio(event.tempoRatio),
+        beatConfidence: sanitizeBeatConfidence(event.beatConfidence)
+    }
 }
 
 export function onVadUpdate(
@@ -239,9 +283,11 @@ export function onNextSection(
     state: SyncEngineState,
     event: { targetRefMs: number; wallTime: number }
 ): SyncEngineState {
+    const target = sanitizeCursorTarget(event.targetRefMs)
+    if (target === null) return state // invalid target — refuse to corrupt cursor
     return {
         ...state,
-        cursorRefTime: event.targetRefMs,
+        cursorRefTime: target,
         lastManualInterventionAt: event.wallTime,
         // Manual jumps reset any in-flight position-correction animation.
         positionCorrectionTargetMs: null,
@@ -254,9 +300,11 @@ export function onPrevSection(
     state: SyncEngineState,
     event: { targetRefMs: number; wallTime: number }
 ): SyncEngineState {
+    const target = sanitizeCursorTarget(event.targetRefMs)
+    if (target === null) return state
     return {
         ...state,
-        cursorRefTime: event.targetRefMs,
+        cursorRefTime: target,
         lastManualInterventionAt: event.wallTime,
         positionCorrectionTargetMs: null,
         positionCorrectionStartedAt: null,
@@ -310,11 +358,13 @@ export function onPositionCorrection(
         const sinceManual = event.wallTime - state.lastManualInterventionAt
         if (sinceManual < debounceMs) return state // suppressed
     }
+    const target = sanitizeCursorTarget(event.targetRefMs)
+    if (target === null) return state // NaN/Infinity target — refuse
     // Snap-and-re-animate: if an animation is already in flight, the new target replaces
     // it (architecture: "Animation can be interrupted by another correction").
     return {
         ...state,
-        positionCorrectionTargetMs: event.targetRefMs,
+        positionCorrectionTargetMs: target,
         positionCorrectionStartedAt: event.wallTime,
         positionCorrectionAnchorMs: state.cursorRefTime
     }
