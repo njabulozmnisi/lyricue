@@ -96,7 +96,18 @@ function tokenize(input: string): string[] {
 }
 
 function normalizeWord(input: string): string {
-    return input.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "")
+    // NFD (canonical decomposition) separates accented characters into base letter +
+    // combining diacritic (e.g. "é" → "e" + U+0301). Stripping U+0300–U+036F leaves
+    // the base letter intact. This is the standard "fold-to-ASCII" recipe and is
+    // essential for LyriCue's South African worship market: Zulu, Afrikaans, French,
+    // and Spanish lyrics all carry diacritics, and STT often emits the unaccented
+    // form for accented input. Without folding, "élève" → "lve" and never matches.
+    return input
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .toLowerCase()
+        .replace(/['’]/g, "")
+        .replace(/[^a-z0-9]+/g, "")
 }
 
 function forwardJump(target: number, current: number | undefined, totalWords: number): number {
