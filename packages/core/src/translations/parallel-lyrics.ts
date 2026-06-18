@@ -47,3 +47,77 @@ function withoutParallel(map: TimingMap): TimingMap {
     const { parallel: _parallel, ...rest } = map
     return rest
 }
+
+/**
+ * Returns the timing map projected onto a specific primary language.
+ *
+ * Use case (EP-19 closure): an operator at a Spanish-primary campus wants the karaoke
+ * sweep to render in Spanish even though the song was learned in English. The original
+ * timing map's sections hold word-level timings (in the learned language). The parallel
+ * track for `language` holds section-level translated text. The projection swaps the
+ * words array out for a single synthetic word per section whose text is the translated
+ * line and whose timing spans the entire section.
+ *
+ * The original (learned) map's words are demoted to a parallel track tagged with
+ * `map.language` so the operator can still toggle back to the original.
+ *
+ * Returns the input map unchanged when:
+ *   - `language` equals `map.language` (already primary)
+ *   - No parallel track exists for `language` (cannot project — operator falls back to original)
+ *
+ * Never mutates the input. Word-level sweep accuracy is reduced to section-level for the
+ * projected language because translated text is stored per-section, not per-word. This
+ * is the documented trade-off (architecture §4.X EP-19): we don't attempt word-by-word
+ * translation alignment because the work to align word boundaries across languages is
+ * prohibitive and operator value lives at section granularity.
+ */
+export function projectTimingMapToPrimaryLanguage(map: TimingMap, language: string): TimingMap {
+    if (map.language === language) return map
+    const targetTrack = (map.parallel ?? []).find((track) => track.language === language)
+    if (!targetTrack) return map
+
+    // Promote the existing learned-language words to a parallel track so operators can
+    // toggle back. If a parallel track already exists for map.language (rare, but
+    // defensible), it wins — don't shadow operator edits.
+    const learnedLanguage = map.language ?? "und"
+    const existingLearnedTrack = (map.parallel ?? []).some((track) => track.language === learnedLanguage)
+    const learnedAsParallel: ParallelLyricsTrack | null = existingLearnedTrack
+        ? null
+        : {
+              language: learnedLanguage,
+              sections: map.sections.map((section) => ({
+                  sectionId: section.id,
+                  text: sectionPlainText(section)
+              }))
+          }
+
+    const otherParallel = (map.parallel ?? []).filter((track) => track.language !== language)
+    const nextParallel: ParallelLyricsTrack[] = learnedAsParallel
+        ? [...otherParallel, learnedAsParallel]
+        : otherParallel
+
+    return {
+        ...map,
+        language,
+        sections: map.sections.map((section) => {
+            const translatedText = targetTrack.sections.find((s) => s.sectionId === section.id)?.text ?? ""
+            // Replace per-word array with a single section-spanning synthetic word.
+            // We preserve the section's startMs/endMs envelope; the sweep ticks across
+            // the section as one unit.
+            return {
+                ...section,
+                words: [
+                    {
+                        text: translatedText,
+                        startMs: section.startMs,
+                        endMs: section.endMs,
+                        confidence: 1.0,
+                        lineIndex: 0
+                    }
+                ],
+                lines: []
+            }
+        }),
+        parallel: nextParallel.length > 0 ? nextParallel : undefined
+    } as TimingMap
+}

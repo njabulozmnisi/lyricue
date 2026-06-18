@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest"
 import { SCHEMA_LYRICUE_TIMING_V1 } from "../types/schema-versions.js"
 import type { ParallelLyricsTrack, TimingMap, TimingSection } from "../types/timing-map.js"
-import { createParallelLyricsDraft, normalizeParallelLyricsTrack, removeParallelLyricsTrack, sectionPlainText, upsertParallelLyricsTrack } from "./parallel-lyrics.js"
+import {
+    createParallelLyricsDraft,
+    normalizeParallelLyricsTrack,
+    projectTimingMapToPrimaryLanguage,
+    removeParallelLyricsTrack,
+    sectionPlainText,
+    upsertParallelLyricsTrack
+} from "./parallel-lyrics.js"
 
 function section(id: string, label = "Verse 1"): TimingSection {
     return {
@@ -84,5 +91,77 @@ describe("parallel lyrics helpers", () => {
             { sectionId: "v1", text: "Verse translation" },
             { sectionId: "c1", text: "" }
         ])
+    })
+})
+
+describe("projectTimingMapToPrimaryLanguage (EP-19 translated-primary)", () => {
+    it("returns the input unchanged when the requested language is already primary", () => {
+        const original = map([{ language: "zu-ZA", sections: [{ sectionId: "v1", text: "Umusa omangalisayo" }] }])
+        const projected = projectTimingMapToPrimaryLanguage(original, "en")
+        expect(projected).toBe(original)
+    })
+
+    it("returns the input unchanged when no parallel track exists for the language", () => {
+        const original = map()
+        const projected = projectTimingMapToPrimaryLanguage(original, "es-ES")
+        expect(projected).toBe(original)
+    })
+
+    it("promotes a parallel track to primary and swaps section words to the translated text", () => {
+        const original = map([{ language: "zu-ZA", sections: [{ sectionId: "v1", text: "Umusa omangalisayo" }] }])
+        const projected = projectTimingMapToPrimaryLanguage(original, "zu-ZA")
+        expect(projected.language).toBe("zu-ZA")
+        expect(projected.sections).toHaveLength(1)
+        const section0 = projected.sections[0]!
+        expect(section0.words).toHaveLength(1)
+        expect(section0.words[0]!.text).toBe("Umusa omangalisayo")
+        // Section envelope preserved.
+        expect(section0.startMs).toBe(0)
+        expect(section0.endMs).toBe(1000)
+        // Lines reset because per-word boundaries no longer map cleanly.
+        expect(section0.lines).toEqual([])
+    })
+
+    it("demotes the original learned-language words to a parallel track so operators can toggle back", () => {
+        const original = map([{ language: "zu-ZA", sections: [{ sectionId: "v1", text: "Umusa omangalisayo" }] }])
+        const projected = projectTimingMapToPrimaryLanguage(original, "zu-ZA")
+        const englishTrack = projected.parallel?.find((track) => track.language === "en")
+        expect(englishTrack, "original english must be retained as a parallel track").toBeDefined()
+        expect(englishTrack?.sections[0]?.text).toBe("Amazing grace")
+    })
+
+    it("does not duplicate the learned-language parallel track when one already exists", () => {
+        const withEnglishOverride: ParallelLyricsTrack = {
+            language: "en",
+            sections: [{ sectionId: "v1", text: "Operator-edited English text" }]
+        }
+        const zuluTrack: ParallelLyricsTrack = {
+            language: "zu-ZA",
+            sections: [{ sectionId: "v1", text: "Umusa omangalisayo" }]
+        }
+        const original = map([withEnglishOverride, zuluTrack])
+        const projected = projectTimingMapToPrimaryLanguage(original, "zu-ZA")
+        const englishTracks = projected.parallel?.filter((track) => track.language === "en") ?? []
+        expect(englishTracks).toHaveLength(1)
+        // Operator's edited English text is preserved — not overwritten by the auto-demotion.
+        expect(englishTracks[0]?.sections[0]?.text).toBe("Operator-edited English text")
+    })
+
+    it("does not mutate the input map", () => {
+        const original = map([{ language: "zu-ZA", sections: [{ sectionId: "v1", text: "Umusa omangalisayo" }] }])
+        const beforeLanguage = original.language
+        const beforeSectionWordCount = original.sections[0]!.words.length
+        projectTimingMapToPrimaryLanguage(original, "zu-ZA")
+        expect(original.language).toBe(beforeLanguage)
+        expect(original.sections[0]!.words.length).toBe(beforeSectionWordCount)
+    })
+
+    it("handles multi-section maps with partial translation coverage (empty text for missing sections)", () => {
+        const twoSection = twoSectionMap([
+            { language: "es-ES", sections: [{ sectionId: "v1", text: "Verso uno" }] } // chorus missing
+        ])
+        const projected = projectTimingMapToPrimaryLanguage(twoSection, "es-ES")
+        expect(projected.sections[0]!.words[0]!.text).toBe("Verso uno")
+        expect(projected.sections[1]!.words[0]!.text).toBe("") // empty fallback for missing section
     })
 })
