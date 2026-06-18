@@ -25,6 +25,7 @@ import TranslationEditor from "@lyricue/ui/TranslationEditor.svelte"
 import RehearsalModePanel from "@lyricue/ui/RehearsalModePanel.svelte"
 import RehearsalSummary from "@lyricue/ui/RehearsalSummary.svelte"
 import RehearsalReviewPanel from "@lyricue/ui/RehearsalReviewPanel.svelte"
+import LibraryPublishDialog from "@lyricue/ui/LibraryPublishDialog.svelte"
 import SettingsTab from "@lyricue/ui/SettingsTab/SettingsTab.svelte"
 import { createShortcutHandler } from "@lyricue/core/sync"
 import type { Arrangement, InstallIdentity, LibraryConfig, LyriCueSettings, TimingMap } from "@lyricue/core/types"
@@ -93,6 +94,15 @@ interface RehearsalApprovalForUi {
     skippedWordKeys: string[]
 }
 
+interface PublishDialogPayload {
+    mode: "song" | "project"
+    title: string
+    tags: string[]
+    attribution: string
+    target: "central" | "campus"
+    anonymous: boolean
+}
+
 const DEFAULT_STATE: OperatorState = {
     projectTitle: "Walking-Skeleton Demo",
     tier: "auto",
@@ -146,6 +156,7 @@ const bridgeCandidate = (
             saveIdentity: (identity: unknown) => Promise<void>
             getLibraryConfig: () => Promise<unknown>
             saveLibraryConfig: (config: unknown) => Promise<void>
+            publishToLibrary: (payload: unknown) => Promise<unknown>
             signalReady: () => void
         }
     }
@@ -185,6 +196,8 @@ let rehearsalReviewPanel: RehearsalReviewPanel | null = null
 let rehearsalOverlay: HTMLElement | null = null
 let settingsTab: SettingsTab | null = null
 let settingsOverlay: HTMLElement | null = null
+let publishDialog: LibraryPublishDialog | null = null
+let publishOverlay: HTMLElement | null = null
 let pendingRehearsalReview: { segment: RehearsalSegmentForUi; target: HTMLElement } | null = null
 let rehearsalTimer: number | null = null
 let rehearsalStartedAt = 0
@@ -236,9 +249,7 @@ function mountPanel(): SetlistPanel {
     )
     panel.$on("edit-arrangement", () => openArrangementBuilder())
     panel.$on("translate-song", () => openTranslationEditor())
-    panel.$on("publish-song", (e: CustomEvent<{ songId: string }>) =>
-        bridge.sendCommand({ kind: "publishSong", songId: e.detail.songId })
-    )
+    panel.$on("publish-song", (e: CustomEvent<{ songId: string }>) => void openPublishDialog(e.detail.songId))
     panel.$on("toggle-rehearsal", () => openRehearsalPanel())
     panel.$on("open-settings", () => void openSettingsPanel())
     panel.$on("select-timing-map-variant", (e: CustomEvent<{ variant: "studio" | "rehearsal" }>) =>
@@ -269,6 +280,33 @@ async function openSettingsPanel(): Promise<void> {
         })
     } catch (err) {
         body.textContent = (err as Error).message || "Settings failed to load."
+    }
+}
+
+async function openPublishDialog(songId: string): Promise<void> {
+    if (publishDialog) return
+    const song = currentState.setlist.find((item) => item.id === songId) ?? currentState.setlist.find((item) => item.id === currentState.activeSongId) ?? null
+    const { overlay, body } = openToolOverlay("Publish")
+    publishOverlay = overlay
+    body.textContent = "Loading publish settings..."
+    try {
+        const [identity, libraryConfig] = await Promise.all([
+            bridge.getIdentity() as Promise<InstallIdentity>,
+            bridge.getLibraryConfig() as Promise<LibraryConfig>
+        ])
+        const hasCredential = !!libraryConfig.publishCredential?.secretRef
+        body.textContent = ""
+        publishDialog = new LibraryPublishDialog({
+            target: body,
+            props: {
+                identity,
+                hasCredential,
+                initialTitle: song?.title ?? currentState.projectTitle,
+                onPublish: (payload: PublishDialogPayload) => bridge.publishToLibrary({ ...payload, songId }) as Promise<{ bundleUrl?: string; projectUrl?: string }>
+            }
+        })
+    } catch (err) {
+        body.textContent = (err as Error).message || "Publish settings failed to load."
     }
 }
 
@@ -628,6 +666,15 @@ function closeToolOverlays(): void {
     settingsTab = null
     settingsOverlay?.remove()
     settingsOverlay = null
+
+    try {
+        publishDialog?.$destroy()
+    } catch {
+        // already destroyed
+    }
+    publishDialog = null
+    publishOverlay?.remove()
+    publishOverlay = null
 }
 
 function createBridgeStore<T>(initial: T, saveToHost: (value: unknown) => Promise<void>): {

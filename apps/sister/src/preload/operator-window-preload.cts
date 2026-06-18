@@ -39,6 +39,7 @@ const OPERATOR_IDENTITY_GET_CHANNEL = "lyricue:operator:identity:get"
 const OPERATOR_IDENTITY_SAVE_CHANNEL = "lyricue:operator:identity:save"
 const OPERATOR_LIBRARY_CONFIG_GET_CHANNEL = "lyricue:operator:library-config:get"
 const OPERATOR_LIBRARY_CONFIG_SAVE_CHANNEL = "lyricue:operator:library-config:save"
+const OPERATOR_LIBRARY_PUBLISH_CHANNEL = "lyricue:operator:library:publish"
 
 type StateHandler = (payload: unknown) => void
 
@@ -141,6 +142,10 @@ contextBridge.exposeInMainWorld("lyricueOperator", {
         return ipcRenderer.invoke(OPERATOR_LIBRARY_CONFIG_SAVE_CHANNEL, config)
     },
 
+    publishToLibrary(payload: unknown): Promise<unknown> {
+        return ipcRenderer.invoke(OPERATOR_LIBRARY_PUBLISH_CHANNEL, payload)
+    },
+
     /**
      * Tell main the renderer has mounted. The main process uses this to flush any
      * buffered state envelopes (states emitted before the renderer was ready).
@@ -168,6 +173,7 @@ declare global {
             saveIdentity: (identity: unknown) => Promise<void>
             getLibraryConfig: () => Promise<unknown>
             saveLibraryConfig: (config: unknown) => Promise<void>
+            publishToLibrary: (payload: unknown) => Promise<unknown>
             signalReady: () => void
         }
     }

@@ -35,12 +35,12 @@
  * operator but stay useful for headless verification and CI.
  */
 
-import { app, BrowserWindow, ipcMain } from "electron"
+import { app, BrowserWindow, ipcMain, safeStorage } from "electron"
 import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { basename, dirname, resolve, join } from "node:path"
 import { DEFAULT_LYRICUE_SETTINGS, DEPLOYMENT_MODE, validateTimingMap, type Arrangement, type InstallIdentity, type LibraryConfig, type LyriCueSettings, type TimingMap } from "@lyricue/core/types"
-import { IdentityStore, LibraryConfigStore, resolveLyriCuePaths, SettingsStore } from "@lyricue/core/settings"
+import { createElectronSafeStorageSecretStorage, IdentityStore, LibraryConfigStore, resolveLyriCuePaths, revealPublishCredential, SettingsStore } from "@lyricue/core/settings"
 import { TimingMapStorage, type TimingMapStorageVariant } from "@lyricue/core/timing"
 import { DEMO_TIMING_MAP, DemoSyncEngine, generateFrameSequence } from "@lyricue/core/output/test-utils"
 import {
@@ -64,6 +64,8 @@ import {
     type TimingMapVariant
 } from "@lyricue/core/setlist"
 import { buildRehearsalTimingMapVariant, createRehearsalCaptureSession, createWavChunkWriter, type RehearsalCaptureSession } from "@lyricue/core/rehearsal"
+import { publishProjectPlan } from "@lyricue/core/library"
+import type { ProjectPlan } from "@lyricue/core/setlist"
 import {
     SidecarController,
     loadModelManifestFile,
@@ -171,6 +173,7 @@ const OPERATOR_IDENTITY_GET_CHANNEL = "lyricue:operator:identity:get"
 const OPERATOR_IDENTITY_SAVE_CHANNEL = "lyricue:operator:identity:save"
 const OPERATOR_LIBRARY_CONFIG_GET_CHANNEL = "lyricue:operator:library-config:get"
 const OPERATOR_LIBRARY_CONFIG_SAVE_CHANNEL = "lyricue:operator:library-config:save"
+const OPERATOR_LIBRARY_PUBLISH_CHANNEL = "lyricue:operator:library:publish"
 const OPERATOR_STATE_BROADCAST_INTERVAL_MS = 200
 
 const DEMO_REPRISE_TIMING_MAP = {
@@ -246,6 +249,16 @@ let identityStore: IdentityStore | null = null
 let libraryConfigStore: LibraryConfigStore | null = null
 let rehearsalCaptureSession: RehearsalCaptureSession | null = null
 let smokeFailures: string[] = []
+
+interface OperatorPublishPayload {
+    mode: "song" | "project"
+    title: string
+    tags: string[]
+    attribution: string
+    target: "central" | "campus"
+    anonymous: boolean
+    songId?: string
+}
 
 async function startSisterMode(): Promise<void> {
     const settings = await loadOperatorSettings()
@@ -661,6 +674,13 @@ async function startOperatorWindow(): Promise<void> {
         }
         await saveOperatorLibraryConfig(config as LibraryConfig)
     })
+    ipcMain.removeHandler(OPERATOR_LIBRARY_PUBLISH_CHANNEL)
+    ipcMain.handle(OPERATOR_LIBRARY_PUBLISH_CHANNEL, async (event, payload: unknown) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected library publish request from unknown sender.")
+        }
+        return handleOperatorLibraryPublish(payload)
+    })
 
     try {
         await operatorWindow.loadFile(OPERATOR_HTML_PATH)
@@ -731,7 +751,6 @@ function handleOperatorCommand(command: unknown): void {
             handlePrevSection()
             break
         case "editArrangement":
-        case "publishSong":
         case "toggleRehearsal":
             log(`operator command: ${c.kind} acknowledged; host service wiring pending`)
             broadcastOperatorState()
@@ -876,6 +895,84 @@ async function saveOperatorLibraryConfig(config: LibraryConfig): Promise<void> {
     const store = getLibraryConfigStore()
     if (!store.isLoaded) await store.load()
     await store.save(config)
+}
+
+async function handleOperatorLibraryPublish(payload: unknown): Promise<{ bundleUrl?: string; projectUrl?: string }> {
+    const request = readOperatorPublishPayload(payload)
+    const [identity, config] = await Promise.all([loadOperatorIdentity(), loadOperatorLibraryConfig()])
+    if (!config.enabled || !config.primaryUrl) {
+        throw new Error("Library publishing is not configured for this install.")
+    }
+    if (!config.publishCredential) {
+        throw new Error(`No publish credential configured for ${request.target} publishing.`)
+    }
+
+    const credential = await revealPublishCredential(config, createElectronSafeStorageSecretStorage(safeStorage))
+    if (!credential) {
+        throw new Error(`No publish credential configured for ${request.target} publishing.`)
+    }
+
+    if (request.mode === "song") {
+        throw new Error("Song bundle publishing is blocked until the sister host connects the bundle exporter.")
+    }
+
+    const plan = createActiveProjectPlan(request)
+    const result = await publishProjectPlan(plan, {
+        workerUrl: config.primaryUrl,
+        credential,
+        orgId: identity.org.id,
+        campusId: identity.campus.id,
+        target: request.target
+    })
+    return { projectUrl: result.projectUrl }
+}
+
+function readOperatorPublishPayload(payload: unknown): OperatorPublishPayload {
+    if (!payload || typeof payload !== "object") {
+        throw new Error("publish request must be an object.")
+    }
+    const raw = payload as Record<string, unknown>
+    if (raw.mode !== "song" && raw.mode !== "project") throw new Error("publish mode must be song or project.")
+    if (raw.target !== "central" && raw.target !== "campus") throw new Error("publish target must be central or campus.")
+    if (typeof raw.title !== "string" || raw.title.trim() === "") throw new Error("publish title is required.")
+    if (!Array.isArray(raw.tags) || raw.tags.some((tag) => typeof tag !== "string")) throw new Error("publish tags must be strings.")
+    if (typeof raw.attribution !== "string") throw new Error("publish attribution must be a string.")
+    if (typeof raw.anonymous !== "boolean") throw new Error("publish anonymous flag must be a boolean.")
+    return {
+        mode: raw.mode,
+        title: raw.title.trim(),
+        tags: raw.tags.map((tag) => tag.trim()).filter(Boolean),
+        attribution: raw.attribution.trim(),
+        target: raw.target,
+        anonymous: raw.anonymous,
+        ...(typeof raw.songId === "string" && raw.songId.trim() ? { songId: raw.songId.trim() } : {})
+    }
+}
+
+function createActiveProjectPlan(request: OperatorPublishPayload): ProjectPlan {
+    const project = setlistController?.snapshot().project
+    if (!project) {
+        throw new Error("No active project is loaded for project publishing.")
+    }
+    const songs = project.shows.map((show) => {
+        if (!show.songId || !show.bundleVersion) {
+            throw new Error(`Project item "${show.title}" has no library bundle metadata; publish it as a song bundle first.`)
+        }
+        return {
+            songId: show.songId,
+            bundleVersion: show.bundleVersion,
+            ...(show.arrangementId ? { arrangementId: show.arrangementId } : {})
+        }
+    })
+    if (songs.length === 0) {
+        throw new Error("Cannot publish an empty project plan.")
+    }
+    return {
+        id: (project.source?.planId ?? project.id).trim(),
+        name: request.title,
+        ...(project.date ? { date: project.date } : {}),
+        songs
+    }
 }
 
 function getLyriCuePaths(): ReturnType<typeof resolveLyriCuePaths> {
@@ -1203,6 +1300,7 @@ function removeOperatorIpcHandlers(): void {
     ipcMain.removeHandler(OPERATOR_IDENTITY_SAVE_CHANNEL)
     ipcMain.removeHandler(OPERATOR_LIBRARY_CONFIG_GET_CHANNEL)
     ipcMain.removeHandler(OPERATOR_LIBRARY_CONFIG_SAVE_CHANNEL)
+    ipcMain.removeHandler(OPERATOR_LIBRARY_PUBLISH_CHANNEL)
 }
 
 async function handleOperatorCancelLearnSong(request: unknown): Promise<unknown> {
@@ -1538,6 +1636,7 @@ async function captureEp06Evidence(): Promise<void> {
             await captureOperatorTool(opWindow, operatorDir, "06-translation-editor-operator", "[data-testid=\"translate-song\"]")
             await captureOperatorTool(opWindow, operatorDir, "07-rehearsal-mode-operator", "[data-testid=\"toggle-rehearsal\"]")
             await captureOperatorTool(opWindow, operatorDir, "08-settings-overlay-operator", "[data-testid=\"open-settings\"]")
+            await captureOperatorTool(opWindow, operatorDir, "09-publish-dialog-operator", "[data-testid=\"publish-song\"]")
             if (SMOKE_TEST_MODE) {
                 await exerciseLearnSongWizard(opWindow)
             }
