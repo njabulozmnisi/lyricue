@@ -362,7 +362,7 @@ async function openPublishDialog(songId: string): Promise<void> {
                 identity,
                 hasCredential,
                 initialTitle: song?.title ?? currentState.projectTitle,
-                onPublish: (payload: PublishDialogPayload) => bridge.publishToLibrary({ ...payload, songId }) as Promise<{ bundleUrl?: string; projectUrl?: string }>
+                onPublish: (payload: PublishDialogPayload) => bridge.publishToLibrary({ ...payload, showId: songId }) as Promise<{ bundleUrl?: string; projectUrl?: string }>
             }
         })
     } catch (err) {

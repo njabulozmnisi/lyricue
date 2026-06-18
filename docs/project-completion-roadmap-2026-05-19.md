@@ -1,12 +1,12 @@
 # LyriCue Completion Roadmap — 2026-05-19
 
-This roadmap supersedes the stale 2026-05-16 handoff snapshot. It reflects current `main` after M2-close work plus Gate A/B/D local hardening through 2026-06-06.
+This roadmap supersedes the stale 2026-05-16 handoff snapshot. It reflects current `main` after M2-close work plus Gate A/B/D local hardening through 2026-06-18.
 
 ## Current State
 
 LyriCue has a working sister-mode vertical slice: dual Electron windows, real SyncEngine, synthetic audio driver, operator control panel, karaoke output, local sidecar song-learning contracts, setlist/arrangement/translation/rehearsal/library surfaces, and a local quality gate. The current local test floor is:
 
-- TypeScript/Vitest: 785 tests passing.
+- TypeScript/Vitest: 789 tests passing.
 - Publish Worker Vitest: 11 tests passing.
 - Python sidecar: 88 tests passing, 1 skipped.
 - Python sidecar with optional ML dependencies on Python 3.11: 88 tests passing, 1 skipped.
@@ -15,6 +15,7 @@ LyriCue has a working sister-mode vertical slice: dual Electron windows, real Sy
 - `npm run verify:local` passes the aggregate local gate: TypeScript build/tests, UI diagnostics, Worker tests, both Python sidecar suites, and sister renderer builds.
 - Gate A Electron smoke passes with `LC_SMOKE_TEST=1` against the real sister-mode dual-window app.
 - Smoke screenshot capture supports pass-specific `LC_CAPTURE_EVIDENCE_DIR` output so fresh QA artifacts do not overwrite historical evidence baselines.
+- Operator smoke now captures live Settings, Publish, and Setlist Source overlays as release evidence.
 - Local Gate A close QA has no open critical/high walking-skeleton defects.
 
 The project is not yet production-shippable for a multi-campus rollout because several release gates require real external assets, credentials, hardware, or packaged-binary validation.
@@ -37,8 +38,8 @@ The project is not yet production-shippable for a multi-campus rollout because s
 | EP-12 Setlist/continuous playback | Locally strong | 88% | Sync badges, jump-to-song, next-up, auto-advance, disk-backed active project state, REST project adapter normalization, and opt-in refresh timeout support exist | Real FreeShow REST project ingestion remains an external integration layer; local QA surfaced the need for bounded refreshes when FreeShow is unreachable |
 | EP-13 Library manager | Locally strong | 83% | ZIP `.lcbundle`, integrity, import/export, signing contracts, and opt-in bounded bundle downloads tested | Original JSON-only bundle shape had to be replaced by ZIP; stalled remote bundle downloads needed explicit abort semantics |
 | EP-14 Library hosting | Locally strong, externally unverified | 75% | Worker, setup script, signing/trust, GitHub mirror logic, project publish audit logging, target validation, and local Worker tests exist | Real Cloudflare R2/KV/Worker + GitHub mirror credentials are required for production proof |
-| EP-15 Identity/publishing | Locally testable | 80% | Identity, publish credentials, safe-storage backend, publish dialog/browser, project publish mode, and per-target credential gating exist | Secure storage wiring had a high-severity gap and was fixed locally; real packaged safe-storage and Worker credentials still need external proof |
-| EP-16 Project plans | Locally strong, external publish proof pending | 78% | Source picker, plan schema/storage, central/campus plan metadata, campus publish hook, central plan bundle loading, and download-timeout propagation exist | Real Worker catalog update and two-install subscribe flow still require external deployment; project-plan imports inherit the same stalled-download risk as direct bundle imports |
+| EP-15 Identity/publishing | Locally strong, external publish proof pending | 88% | Identity, publish credentials, safe-storage backend, publish dialog/browser, song `.lcbundle` export from the sister host, project publish mode, project metadata hydration, and per-target credential gating exist | Secure storage wiring had a high-severity gap and was fixed locally; renderer show IDs initially risked drifting into catalog song IDs until the host split local `showId` from library `songId`; real packaged safe-storage and Worker credentials still need external proof |
+| EP-16 Project plans | Locally strong, external publish proof pending | 84% | Source picker, operator host mounting, plan schema/storage, central/campus plan metadata, campus publish hook, central plan bundle loading, download-timeout propagation, and smoke evidence exist | Real Worker catalog update and two-install subscribe flow still require external deployment; project-plan imports inherit the same stalled-download risk as direct bundle imports |
 | EP-17 Rehearsal mode | Locally strong | 85% | Capture, segmentation, summary, variants, review/promotion work, Electron smoke approval path | Physical microphone QA and real multi-song rehearsal capture remain hardware gates |
 | EP-18 Arrangement builder | Mostly complete | 91% | Drag/drop, parser, named arrangements, operator persistence, refreshed modal hydration, renderer current-section save guards, main-process IPC normalization, and Electron smoke stale-payload guard exist | Modal mounting and persistence were the real defects, not the pure arrangement logic; same-ID arrangement updates and stale IPC payloads exposed data-integrity risk |
 | EP-19 Multilingual lyrics | Mostly complete | 93% | Translation editor, rendering, language swap, sizing, operator mounting, stale-draft protection, main-process translation IPC narrowing, timing-map schema section-reference validation, and Electron smoke stale-payload guard exist | Translated-primary karaoke needs a learned timing map per primary language; mounted editor QA surfaced stale timing-map draft, full-map IPC overwrite, and schema reference-drift hazards before they could become operator data loss |
@@ -106,6 +107,7 @@ Remaining work:
 2. Verify GitHub mirror fallback with a real token.
 3. Verify safe-storage persistence for real publish credentials in the packaged host.
 4. Run disaster-recovery drill: publish ZIP bundle, fetch from R2, disable primary URL, fetch from mirror.
+5. Run a deployed song publish from the sister operator and verify `catalog.json`, `meta/publish-log.jsonl`, and project-plan bundle metadata across two installs.
 
 ### Gate D — Packaged Release
 
@@ -157,8 +159,9 @@ Work proceeds in this order:
 
 ## Immediate Queue
 
-1. Keep Gate C/D/E items marked external-proof pending until the required credentials, signing assets, vendor SDKs, and hardware are available.
-2. Use `docs/release-signoff-checklist.md` as the production certification checklist once external inputs are available.
+1. Continue closing local host-integration gaps that reduce external-gate uncertainty before credentials/hardware arrive.
+2. Keep Gate C/D/E items marked external-proof pending until the required credentials, signing assets, vendor SDKs, and hardware are available.
+3. Use `docs/release-signoff-checklist.md` as the production certification checklist once external inputs are available.
 
 ## External Inputs Needed Before Final Production Sign-Off
 

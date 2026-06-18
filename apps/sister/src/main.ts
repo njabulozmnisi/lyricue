@@ -66,7 +66,7 @@ import {
     type TimingMapVariant
 } from "@lyricue/core/setlist"
 import { buildRehearsalTimingMapVariant, createRehearsalCaptureSession, createWavChunkWriter, type RehearsalCaptureSession } from "@lyricue/core/rehearsal"
-import { fetchCatalog, listProjects, loadProjectPlanBundles, publishProjectPlan } from "@lyricue/core/library"
+import { fetchCatalog, listProjects, loadProjectPlanBundles, publishBundle, publishProjectPlan } from "@lyricue/core/library"
 import {
     SidecarController,
     loadModelManifestFile,
@@ -85,6 +85,7 @@ import { learnSongTimeoutMs, resolveSourceSidecarPythonOverride } from "./learn-
 import { sidecarResolverNodeEnv } from "./sidecar-runtime.js"
 import { prepareOperatorArrangementSave } from "./operator-arrangements.js"
 import { prepareOperatorTranslationSave } from "./operator-translations.js"
+import { prepareOperatorSongBundle } from "./operator-library-publish.js"
 
 // Fail fast if launched with the wrong mode. The fork-mode entry has the same guard;
 // this prevents a misconfigured build from silently doing the wrong thing.
@@ -261,7 +262,7 @@ interface OperatorPublishPayload {
     attribution: string
     target: "central" | "campus"
     anonymous: boolean
-    songId?: string
+    showId?: string
 }
 
 async function startSisterMode(): Promise<void> {
@@ -937,9 +938,7 @@ async function handleOperatorLibraryPublish(payload: unknown): Promise<{ bundleU
         throw new Error(`No publish credential configured for ${request.target} publishing.`)
     }
 
-    if (request.mode === "song") {
-        throw new Error("Song bundle publishing is blocked until the sister host connects the bundle exporter.")
-    }
+    if (request.mode === "song") return publishActiveOperatorSong(request, identity, config.primaryUrl, credential)
 
     const plan = createActiveProjectPlan(request)
     const result = await publishProjectPlan(plan, {
@@ -950,6 +949,46 @@ async function handleOperatorLibraryPublish(payload: unknown): Promise<{ bundleU
         target: request.target
     })
     return { projectUrl: result.projectUrl }
+}
+
+async function publishActiveOperatorSong(
+    request: OperatorPublishPayload,
+    identity: InstallIdentity,
+    workerUrl: string,
+    credential: string
+): Promise<{ bundleUrl?: string; projectUrl?: string }> {
+    const setlistState = setlistController?.snapshot()
+    const project = setlistState?.project
+    if (!project) {
+        throw new Error("No active project is loaded for song publishing.")
+    }
+    const activeShowId = request.showId ?? setlistState.activeShowId
+    if (!activeShowId) {
+        throw new Error("Select a learned song before publishing.")
+    }
+    const timingMap = activeShowId ? DEMO_TIMING_MAPS.get(activeShowId) ?? (await getTimingMapStorage().load(activeShowId)) : null
+    const arrangements = activeShowId ? DEMO_ARRANGEMENTS.get(activeShowId) ?? (await getTimingMapStorage().loadArrangements(activeShowId)) : []
+    const bundle = prepareOperatorSongBundle({
+        project,
+        activeShowId,
+        timingMap,
+        arrangements,
+        request: {
+            title: request.title
+        }
+    })
+    const result = await publishBundle(bundle.bytes, {
+        workerUrl,
+        credential,
+        orgId: identity.org.id,
+        campusId: identity.campus.id,
+        target: request.target
+    })
+    await saveOperatorProject(bundle.project)
+    await setlistController?.loadProject(bundle.project)
+    await setlistController?.jumpToSong(activeShowId)
+    broadcastOperatorState()
+    return { bundleUrl: result.bundleUrl }
 }
 
 function readOperatorPublishPayload(payload: unknown): OperatorPublishPayload {
@@ -970,7 +1009,7 @@ function readOperatorPublishPayload(payload: unknown): OperatorPublishPayload {
         attribution: raw.attribution.trim(),
         target: raw.target,
         anonymous: raw.anonymous,
-        ...(typeof raw.songId === "string" && raw.songId.trim() ? { songId: raw.songId.trim() } : {})
+        ...(typeof raw.showId === "string" && raw.showId.trim() ? { showId: raw.showId.trim() } : {})
     }
 }
 

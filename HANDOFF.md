@@ -1,5 +1,41 @@
 # HANDOFF.md — LyriCue project handoff snapshot
 
+## Latest continuation notes — 2026-06-18
+
+This file began as the 2026-05-16 handoff. The current roadmap is
+`docs/project-completion-roadmap-2026-05-19.md`; read it after this section for the up-to-date
+epic matrix and release gates.
+
+Current `main` has moved beyond the original snapshot:
+
+- Full local gate passes with 82 TypeScript/Vitest files and 789 tests, Worker 11/11,
+  UI diagnostics 0 errors / 0 warnings, both Python sidecar suites 88 passed / 1 skipped,
+  and sister renderer/main/preload builds passing.
+- EP-10 operator defects D13-D18 are closed locally.
+- EP-15 operator Publish opens the live dialog, fails closed without credentials, and the
+  sister host now exports the active learned song into a valid ZIP `.lcbundle` before calling
+  the Worker publish API. The raw publish credential remains main-process only through
+  Electron `safeStorage`.
+- EP-16 Setlist Source is mounted in the sister operator. The host can list local/central
+  project sources, select local projects, and load central project plans through
+  `fetchCatalog()` + `loadProjectPlanBundles()` when a library URL is configured.
+- Electron smoke captures Settings, Publish, and Setlist Source overlays in pass-specific
+  `LC_CAPTURE_EVIDENCE_DIR` directories so evidence runs do not overwrite historical baselines.
+- The only known dirty working-tree entries at the time of this update were pre-existing:
+  `package-lock.json` and `.claude/`. Do not stage or revert them unless the operator asks.
+
+Recent commits after the original handoff include:
+
+- `680eb94 fix:(#EP-15): mount operator publish bridge`
+- `bcdddbd feat:(#EP-16): mount operator project source picker`
+- Current in-flight slice after those commits: EP-15 song publish exporter, documented in
+  `docs/qa-reports/qa-report-ep15-song-publish-exporter-2026-06-18.md`.
+
+Remaining production blockers are still external proof gates, not local walking-skeleton defects:
+real Cloudflare R2/KV/Worker + GitHub mirror token, packaged safe-storage credential proof,
+code-signing certificates, FreeShow native vendor SDKs for fork-mode verification, and physical
+microphone/display hardware QA.
+
 **Date:** 2026-05-16
 **Handoff from:** Claude (Anthropic) working under operator Njabulo Mnisi
 **Handoff to:** OpenAI Codex (or any AI agent picking up the project)
