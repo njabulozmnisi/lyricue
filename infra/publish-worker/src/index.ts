@@ -203,13 +203,36 @@ function parseCredentialRecord(raw: string): unknown {
 function validateCredentialRecord(input: unknown): Credential {
     if (!input || typeof input !== "object") throw new HttpError(403, "Publish credential metadata is invalid.")
     const credential = input as Credential
-    if (!credential.orgId || !credential.campusId || (credential.role !== "central" && credential.role !== "campus")) {
+    if (!isSafeIdentifier(credential.orgId) || !isSafeIdentifier(credential.campusId)) {
         throw new HttpError(403, "Publish credential metadata is invalid.")
     }
-    if (credential.keyId !== undefined && typeof credential.keyId !== "string") {
+    if (credential.role !== "central" && credential.role !== "campus") {
         throw new HttpError(403, "Publish credential metadata is invalid.")
+    }
+    // keyId is optional but, when present, must be a non-empty printable string with
+    // no control characters (it appears verbatim in the audit log).
+    if (credential.keyId !== undefined) {
+        if (typeof credential.keyId !== "string" || !isSafeIdentifier(credential.keyId)) {
+            throw new HttpError(403, "Publish credential metadata is invalid.")
+        }
     }
     return credential
+}
+
+/**
+ * Identifier fields that flow into audit logs (and, for IDs, R2 keys) must be ASCII-safe
+ * printable strings with no control characters, no leading/trailing whitespace, and a
+ * sensible length cap. This is the same shape SAFE_KEY_SEGMENT enforces for IDs that
+ * become R2 key segments, applied to credential metadata fields too.
+ */
+function isSafeIdentifier(value: unknown): value is string {
+    if (typeof value !== "string") return false
+    if (value.length === 0 || value.length > 128) return false
+    // No control characters, no whitespace at edges, no embedded newlines/NUL.
+    // eslint-disable-next-line no-control-regex
+    if (/[ -]/.test(value)) return false
+    if (value !== value.trim()) return false
+    return true
 }
 
 function validateTenantHeaders(request: Request, credential: Credential): void {
@@ -223,12 +246,25 @@ function validateTenantHeaders(request: Request, credential: Credential): void {
 
 async function enforceRateLimit(token: string, env: Env): Promise<void> {
     if (!env.RATE_LIMITS) return
-    const limit = Number.parseInt(env.RATE_LIMIT_WRITES_PER_HOUR ?? "60", 10)
+    // Defensive parse: a misconfigured env var ("unlimited", "1000_per_hour") or a
+    // corrupt KV counter ("NaN", "abc") would silently bypass rate-limiting with the
+    // naive Number.parseInt path because `NaN >= limit` is always false. Worse, the
+    // subsequent `String(NaN + 1)` writes "NaN" back into the bucket, permanently
+    // corrupting it for the rest of the hour. Treat non-finite values as the safe
+    // default for the limit, and as 0 for the counter.
+    const limit = safePositiveInt(env.RATE_LIMIT_WRITES_PER_HOUR, 60)
     const bucket = Math.floor(Date.now() / 3_600_000)
     const key = `publish:${token}:${bucket}`
-    const count = Number.parseInt((await env.RATE_LIMITS.get(key)) ?? "0", 10)
+    const count = safePositiveInt(await env.RATE_LIMITS.get(key), 0)
     if (count >= limit) throw new HttpError(429, "Publish credential exceeded the hourly write limit.")
     await env.RATE_LIMITS.put(key, String(count + 1), { expirationTtl: 7200 })
+}
+
+function safePositiveInt(value: string | null | undefined, fallback: number): number {
+    if (value === null || value === undefined) return fallback
+    const parsed = Number.parseInt(value, 10)
+    if (!Number.isFinite(parsed) || parsed < 0) return fallback
+    return parsed
 }
 
 function readPublishTarget(request: Request): "central" | "campus" {
