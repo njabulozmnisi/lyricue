@@ -165,7 +165,9 @@ export class OwnWindowOutputAdapter extends EventEmitter implements OutputAdapte
      * against the freshly-loaded map. Only the latest map is retained — earlier maps are
      * superseded by definition (the SE loads one map at a time per show change).
      */
-    #pendingLoadMap: { channel: typeof LC_LOAD_MAP; data: unknown } | null = null
+    #pendingLoadMap:
+        | { map: TimingMap; arrangement: Arrangement | null; parallelLyrics?: ParallelLyricsTrack[] }
+        | null = null
     #rendererReady = false
 
     constructor(opts: OwnWindowOutputAdapterOptions) {
@@ -274,28 +276,47 @@ export class OwnWindowOutputAdapter extends EventEmitter implements OutputAdapte
         arrangement: Arrangement | null,
         parallelLyrics?: ParallelLyricsTrack[]
     ): void {
-        if (!this.#window || this.#window.isDestroyed() || !this.#outputId) return
-        const payload = parallelLyrics
-            ? { outputId: this.#outputId, showId: map.showId, timingMap: map, arrangement, parallelLyrics }
-            : { outputId: this.#outputId, showId: map.showId, timingMap: map, arrangement }
-        const envelope = { channel: LC_LOAD_MAP, data: payload }
+        // Always buffer the latest map — even before start() — so callers that wire
+        // load-then-start (the natural order during composition / E2E setup) don't
+        // silently lose the map. The buffer is flushed at the next #onRendererReady().
+        // If the window is gone (post-stop, destroyed externally) we record lastError
+        // so the operator can see the misuse via the diagnostics panel.
+        if (this.#window && this.#window.isDestroyed()) {
+            this.#health.lastError = {
+                at: performance.now(),
+                message: "loadTimingMap called after the output window was destroyed"
+            }
+            return
+        }
 
-        // D11 — defer the send until the renderer is ready. The adapter previously sent
-        // unconditionally; if the renderer hadn't yet mounted its envelopeHandler, the
-        // load-map was silently dropped and the renderer stayed on its waiting-for-song
-        // placeholder forever.
-        if (!this.#rendererReady) {
-            this.#pendingLoadMap = envelope
+        // D11 — defer the send until the renderer is ready. We buffer the constituents
+        // (not the baked envelope) so the flush can rebuild with the live outputId,
+        // which is unknown before start().
+        if (!this.#window || !this.#rendererReady) {
+            this.#pendingLoadMap = parallelLyrics
+                ? { map, arrangement, parallelLyrics }
+                : { map, arrangement }
             return
         }
         try {
-            this.#window.send(OWN_WINDOW_CHANNEL, envelope)
+            this.#window.send(OWN_WINDOW_CHANNEL, this.#buildLoadMapEnvelope(map, arrangement, parallelLyrics))
         } catch (err) {
             this.#health.lastError = {
                 at: performance.now(),
                 message: (err as Error).message || String(err)
             }
         }
+    }
+
+    #buildLoadMapEnvelope(
+        map: TimingMap,
+        arrangement: Arrangement | null,
+        parallelLyrics?: ParallelLyricsTrack[]
+    ): { channel: typeof LC_LOAD_MAP; data: unknown } {
+        const payload = parallelLyrics
+            ? { outputId: this.#outputId, showId: map.showId, timingMap: map, arrangement, parallelLyrics }
+            : { outputId: this.#outputId, showId: map.showId, timingMap: map, arrangement }
+        return { channel: LC_LOAD_MAP, data: payload }
     }
 
     /**
@@ -313,7 +334,10 @@ export class OwnWindowOutputAdapter extends EventEmitter implements OutputAdapte
             const pending = this.#pendingLoadMap
             this.#pendingLoadMap = null
             try {
-                this.#window.send(OWN_WINDOW_CHANNEL, pending)
+                this.#window.send(
+                    OWN_WINDOW_CHANNEL,
+                    this.#buildLoadMapEnvelope(pending.map, pending.arrangement, pending.parallelLyrics)
+                )
             } catch (err) {
                 this.#health.lastError = {
                     at: performance.now(),
