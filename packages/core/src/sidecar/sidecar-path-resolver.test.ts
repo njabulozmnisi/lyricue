@@ -103,4 +103,52 @@ describe("resolveSidecarLaunch — production mode", () => {
             expect((err as Error).message).toMatch(/darwin-arm64/)
         }
     })
+
+    it("falls back to the onedir layout when the onefile binary is not present", () => {
+        // PyInstaller's onedir layout: <base>/lyricue-sidecar/lyricue-sidecar
+        const onedirPath = "/opt/lyricue/resources/sidecar/linux-x64/lyricue-sidecar/lyricue-sidecar"
+        const result = resolveSidecarLaunch({
+            appPath: "/opt/lyricue",
+            nodeEnv: "production",
+            platform: "linux",
+            arch: "x64",
+            exists: (path) => path === onedirPath
+        })
+        expect(result.mode).toBe("bundled")
+        if (result.mode === "bundled") {
+            expect(result.binaryPath).toBe(onedirPath)
+        }
+    })
+
+    it("prefers the onefile path when both layouts exist (release-default)", () => {
+        // If a developer somehow has both layouts populated, onefile wins because the
+        // current default build mode is --onefile and that's what release packaging targets.
+        const result = resolveSidecarLaunch({
+            appPath: "/opt/lyricue",
+            nodeEnv: "production",
+            platform: "linux",
+            arch: "x64",
+            exists: () => true
+        })
+        expect(result.mode).toBe("bundled")
+        if (result.mode === "bundled") {
+            // onefile path = <base>/lyricue-sidecar (no nested subdir)
+            expect(result.binaryPath).toBe("/opt/lyricue/resources/sidecar/linux-x64/lyricue-sidecar")
+        }
+    })
+
+    it("Windows .exe naming applies to both layouts", () => {
+        const exeOnedir = "/opt/lyricue/resources/sidecar/win32-x64/lyricue-sidecar/lyricue-sidecar.exe"
+        const result = resolveSidecarLaunch({
+            appPath: "/opt/lyricue",
+            nodeEnv: "production",
+            platform: "win32",
+            arch: "x64",
+            exists: (path) => path === exeOnedir
+        })
+        expect(result.mode).toBe("bundled")
+        if (result.mode === "bundled") {
+            expect(result.binaryPath).toBe(exeOnedir)
+        }
+    })
 })

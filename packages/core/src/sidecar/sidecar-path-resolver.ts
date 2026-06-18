@@ -79,18 +79,29 @@ export function resolveSidecarLaunch(opts: ResolveSidecarLaunchOptions): Sidecar
     const platformDir = `${platformKey(platform)}-${arch}`
     const binaryName = platform === "win32" ? "lyricue-sidecar.exe" : "lyricue-sidecar"
     const resourcesPath = opts.resourcesPath ?? join(opts.appPath, "resources")
-    const binaryPath = join(resourcesPath, "sidecar", platformDir, binaryName)
 
-    if (!exists(binaryPath)) {
-        throw new SidecarLifecycleError(
-            SidecarLifecycleCode.SIDECAR_FAILED_TO_START,
-            `Bundled sidecar binary missing at ${binaryPath}. ` +
-                `This usually means the installer is corrupt — please reinstall LyriCue. ` +
-                `(Platform=${platform}, arch=${arch})`
-        )
+    // PyInstaller produces two layouts:
+    //   - onefile: <resources>/sidecar/<platform>-<arch>/lyricue-sidecar
+    //   - onedir:  <resources>/sidecar/<platform>-<arch>/lyricue-sidecar/lyricue-sidecar
+    // Try onefile first (current default + matches existing release scripts), then
+    // fall through to onedir so a future build switch doesn't require code changes.
+    const baseDir = join(resourcesPath, "sidecar", platformDir)
+    const onefilePath = join(baseDir, binaryName)
+    const onedirPath = join(baseDir, binaryName.replace(/\.exe$/, ""), binaryName)
+
+    if (exists(onefilePath)) {
+        return { mode: "bundled", binaryPath: onefilePath }
+    }
+    if (exists(onedirPath)) {
+        return { mode: "bundled", binaryPath: onedirPath }
     }
 
-    return { mode: "bundled", binaryPath }
+    throw new SidecarLifecycleError(
+        SidecarLifecycleCode.SIDECAR_FAILED_TO_START,
+        `Bundled sidecar binary missing — checked onefile (${onefilePath}) and onedir (${onedirPath}) layouts. ` +
+            `This usually means the installer is corrupt — please reinstall LyriCue. ` +
+            `(Platform=${platform}, arch=${arch})`
+    )
 }
 
 /**

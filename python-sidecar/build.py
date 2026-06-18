@@ -14,6 +14,9 @@ SIDECAR_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = SIDECAR_ROOT.parent
 
 
+BuildMode = str  # "onefile" (default) or "onedir" (faster cold start)
+
+
 @dataclass(frozen=True)
 class BuildPlan:
     platform_key: str
@@ -21,6 +24,7 @@ class BuildPlan:
     output_dir: Path
     executable: Path
     command: list[str]
+    mode: BuildMode
 
 
 def build_plan(
@@ -29,21 +33,31 @@ def build_plan(
     platform_name: str | None = None,
     machine: str | None = None,
     python_executable: str = sys.executable,
+    mode: BuildMode = "onefile",
 ) -> BuildPlan:
+    if mode not in ("onefile", "onedir"):
+        raise ValueError(f"Unsupported build mode: {mode!r}; expected 'onefile' or 'onedir'")
     platform_key = _platform_key(platform_name or sys.platform)
     arch = _arch_key(machine or platform.machine())
     output_dir = output_root / f"{platform_key}-{arch}"
     executable_name = "lyricue-sidecar.exe" if platform_key == "win32" else "lyricue-sidecar"
-    executable = output_dir / executable_name
+    # In onedir mode PyInstaller writes the executable into a subdirectory named after
+    # the binary (lyricue-sidecar/). The host's sidecar-path-resolver checks both layouts.
+    executable = (
+        output_dir / executable_name
+        if mode == "onefile"
+        else output_dir / executable_name.removesuffix(".exe") / executable_name
+    )
     work_dir = SIDECAR_ROOT / "build" / "pyinstaller" / f"{platform_key}-{arch}"
     spec_dir = work_dir / "spec"
+    mode_flag = "--onefile" if mode == "onefile" else "--onedir"
     command = [
         python_executable,
         "-m",
         "PyInstaller",
         "--clean",
         "--noconfirm",
-        "--onefile",
+        mode_flag,
         "--collect-submodules",
         "whisperx",
         "--collect-submodules",
@@ -65,17 +79,33 @@ def build_plan(
         str(SIDECAR_ROOT / "pyinstaller_entry.py"),
     ]
     return BuildPlan(
-        platform_key=platform_key, arch=arch, output_dir=output_dir, executable=executable, command=command
+        platform_key=platform_key,
+        arch=arch,
+        output_dir=output_dir,
+        executable=executable,
+        command=command,
+        mode=mode,
     )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-root", type=Path, default=REPO_ROOT / "build" / "sidecar")
+    parser.add_argument(
+        "--mode",
+        choices=["onefile", "onedir"],
+        default="onefile",
+        help=(
+            "PyInstaller packaging mode. 'onefile' (default) produces a single executable that"
+            " self-extracts to a temp dir at every launch (slower cold start, simpler distribution)."
+            " 'onedir' produces a directory containing the executable plus its dependencies"
+            " (faster cold start, more files to ship)."
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print the PyInstaller command without executing it.")
     args = parser.parse_args(argv)
 
-    plan = build_plan(output_root=args.output_root)
+    plan = build_plan(output_root=args.output_root, mode=args.mode)
     print(f"[sidecar-build] target={plan.platform_key}-{plan.arch}")
     print(f"[sidecar-build] executable={plan.executable}")
     print("[sidecar-build] command=" + " ".join(plan.command))
