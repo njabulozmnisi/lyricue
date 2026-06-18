@@ -7,6 +7,7 @@ export interface PackagedSisterSmokeSummary {
     operatorSettingsOverlayCaptured: boolean
     operatorPublishDialogCaptured: boolean
     operatorProjectSourceCaptured: boolean
+    operatorCredentialDialogCaptured: boolean
     operatorSettingsBridgePassed: boolean
     operatorCredentialBridgePassed: boolean
     staleOperatorPayloadsGuarded: boolean
@@ -24,6 +25,7 @@ export function parsePackagedSisterSmokeLog(log: string): PackagedSisterSmokeSum
     const operatorSettingsOverlayCaptured = log.includes("08-settings-overlay-operator.png")
     const operatorPublishDialogCaptured = log.includes("09-publish-dialog-operator.png")
     const operatorProjectSourceCaptured = log.includes("10-project-source-picker-operator.png")
+    const operatorCredentialDialogCaptured = log.includes("11-publish-credential-dialog-operator.png")
     const operatorSettingsBridgePassed = log.includes('"status":"settings-bridge-persisted"')
     const operatorCredentialBridgePassed = log.includes('"status":"credential-bridge-secure"')
     const staleOperatorPayloadsGuarded = log.includes('"status":"stale-payloads-guarded"')
@@ -31,7 +33,7 @@ export function parsePackagedSisterSmokeLog(log: string): PackagedSisterSmokeSum
     const segmentationReady = log.includes('"stage":"segments_ready"')
     const capturedApproved = log.includes('"status":"captured-approved"')
     const sourcePythonFallback = log.includes("No usable Python interpreter found")
-    const status = smokePassed && smokeFailures.length === 0 && packagedAppLoaded && operatorPersistencePassed && operatorSettingsOverlayCaptured && operatorPublishDialogCaptured && operatorProjectSourceCaptured && operatorSettingsBridgePassed && operatorCredentialBridgePassed && staleOperatorPayloadsGuarded && sidecarStarted && segmentationReady && capturedApproved && !sourcePythonFallback ? "pass" : "fail"
+    const status = smokePassed && smokeFailures.length === 0 && packagedAppLoaded && operatorPersistencePassed && operatorSettingsOverlayCaptured && operatorPublishDialogCaptured && operatorProjectSourceCaptured && operatorCredentialDialogCaptured && operatorSettingsBridgePassed && operatorCredentialBridgePassed && staleOperatorPayloadsGuarded && sidecarStarted && segmentationReady && capturedApproved && !sourcePythonFallback ? "pass" : "fail"
 
     return {
         status,
@@ -42,6 +44,7 @@ export function parsePackagedSisterSmokeLog(log: string): PackagedSisterSmokeSum
         operatorSettingsOverlayCaptured,
         operatorPublishDialogCaptured,
         operatorProjectSourceCaptured,
+        operatorCredentialDialogCaptured,
         operatorSettingsBridgePassed,
         operatorCredentialBridgePassed,
         staleOperatorPayloadsGuarded,

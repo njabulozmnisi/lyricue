@@ -8,7 +8,7 @@ epic matrix and release gates.
 
 Current `main` has moved beyond the original snapshot:
 
-- Full local gate passes with 83 TypeScript/Vitest files and 792 tests, Worker 11/11,
+- Full local gate passes with 83 TypeScript/Vitest files and 793 tests, Worker 11/11,
   UI diagnostics 0 errors / 0 warnings, both Python sidecar suites 88 passed / 1 skipped,
   and sister renderer/main/preload builds passing.
 - EP-10 operator defects D13-D18 are closed locally.
@@ -21,8 +21,11 @@ Current `main` has moved beyond the original snapshot:
   is absent from returned/saved config JSON, then clears it.
 - Current EP-15 credential-management work replaces the temporary prompt/confirm renderer flow
   with a mounted `PublishCredentialDialog` Svelte surface. Focused component tests and sister
-  Electron smoke have passed, and the full local gate is clean at 83 TypeScript/Vitest files /
-  792 tests. QA artifact: `docs/qa-reports/qa-report-ep15-publish-credential-dialog-2026-06-18.md`.
+  Electron smoke have passed. The smoke now captures the nested Settings > Library credential
+  dialog as `11-publish-credential-dialog-operator.png` and the packaged-smoke parser requires it.
+  The full local gate is clean at 83 TypeScript/Vitest files / 793 tests. QA artifacts:
+  `docs/qa-reports/qa-report-ep15-publish-credential-dialog-2026-06-18.md` and
+  `docs/qa-reports/qa-report-ep15-credential-dialog-smoke-2026-06-18.md`.
 - EP-16 Setlist Source is mounted in the sister operator. The host can list local/central
   project sources, select local projects, and load central project plans through
   `fetchCatalog()` + `loadProjectPlanBundles()` when a library URL is configured.

@@ -1806,6 +1806,7 @@ async function captureEp06Evidence(): Promise<void> {
             await captureOperatorTool(opWindow, operatorDir, "08-settings-overlay-operator", "[data-testid=\"open-settings\"]")
             await captureOperatorTool(opWindow, operatorDir, "09-publish-dialog-operator", "[data-testid=\"publish-song\"]")
             await captureOperatorTool(opWindow, operatorDir, "10-project-source-picker-operator", "[data-testid=\"open-project-source\"]")
+            await captureOperatorCredentialDialog(opWindow, operatorDir)
             if (SMOKE_TEST_MODE) {
                 await exerciseLearnSongWizard(opWindow)
             }
@@ -1895,6 +1896,55 @@ async function captureOperatorTool(
             return
         }
         await new Promise<void>((r) => setTimeout(r, 500))
+        const image = await opWindow.webContents.capturePage()
+        const path = join(operatorDir, `${label}.png`)
+        writeFileSync(path, image.toPNG())
+        log(`[capture] wrote ${path}`)
+        await opWindow.webContents.executeJavaScript(`
+            (() => {
+                const close = document.querySelector(".operator-tool-shell header button");
+                if (close instanceof HTMLButtonElement) close.click();
+            })()
+        `)
+        await new Promise<void>((r) => setTimeout(r, 250))
+    } catch (err) {
+        log(`[capture] ${label} failed: ${(err as Error).message}`)
+        if (SMOKE_TEST_MODE) recordSmokeFailure(label, err)
+    }
+}
+
+async function captureOperatorCredentialDialog(opWindow: BrowserWindow, operatorDir: string): Promise<void> {
+    const label = "11-publish-credential-dialog-operator"
+    try {
+        const opened = await opWindow.webContents.executeJavaScript(`
+            (async () => {
+                const settings = document.querySelector('[data-testid="open-settings"]');
+                if (!(settings instanceof HTMLButtonElement)) return "missing-settings-button";
+                settings.click();
+                await new Promise((resolve) => setTimeout(resolve, 250));
+                const libraryTab = Array.from(document.querySelectorAll('.lyricue-settings nav.sections button')).find((button) => button.textContent?.trim() === 'Library');
+                if (!(libraryTab instanceof HTMLButtonElement)) return "missing-library-tab";
+                libraryTab.click();
+                await new Promise((resolve) => setTimeout(resolve, 250));
+                let manage = document.querySelector('[data-testid="publish-credential-manage"]');
+                if (!(manage instanceof HTMLButtonElement)) {
+                    const libraryToggle = Array.from(document.querySelectorAll('label')).find((label) => label.textContent?.includes('Use a shared LyriCue library'))?.querySelector('input[type="checkbox"]');
+                    if (!(libraryToggle instanceof HTMLInputElement)) return "missing-library-toggle";
+                    if (!libraryToggle.checked) libraryToggle.click();
+                    await new Promise((resolve) => setTimeout(resolve, 250));
+                    manage = document.querySelector('[data-testid="publish-credential-manage"]');
+                }
+                if (!(manage instanceof HTMLButtonElement)) return "missing-credential-button";
+                manage.click();
+                await new Promise((resolve) => setTimeout(resolve, 250));
+                return document.querySelector('[aria-label="Publish Credential"]') ? "opened" : "missing-dialog";
+            })()
+        `)
+        if (opened !== "opened") {
+            log(`[capture] ${label} failed to open: ${opened}`)
+            if (SMOKE_TEST_MODE) recordSmokeFailure(`${label} failed to open`, opened)
+            return
+        }
         const image = await opWindow.webContents.capturePage()
         const path = join(operatorDir, `${label}.png`)
         writeFileSync(path, image.toPNG())

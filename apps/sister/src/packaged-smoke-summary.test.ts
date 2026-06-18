@@ -8,6 +8,7 @@ describe("parsePackagedSisterSmokeLog", () => {
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/08-settings-overlay-operator.png
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/09-publish-dialog-operator.png
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/10-project-source-picker-operator.png
+            [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/11-publish-credential-dialog-operator.png
             [lyricue:sister] [capture] operator persistence exercise result=persisted
             [lyricue:sister] [capture] operator settings bridge result={"status":"settings-bridge-persisted"}
             [lyricue:sister] [capture] operator credential bridge result={"status":"credential-bridge-secure"}
@@ -21,6 +22,7 @@ describe("parsePackagedSisterSmokeLog", () => {
         expect(summary.operatorSettingsOverlayCaptured).toBe(true)
         expect(summary.operatorPublishDialogCaptured).toBe(true)
         expect(summary.operatorProjectSourceCaptured).toBe(true)
+        expect(summary.operatorCredentialDialogCaptured).toBe(true)
         expect(summary.operatorSettingsBridgePassed).toBe(true)
         expect(summary.operatorCredentialBridgePassed).toBe(true)
         expect(summary.staleOperatorPayloadsGuarded).toBe(true)
@@ -35,6 +37,7 @@ describe("parsePackagedSisterSmokeLog", () => {
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/08-settings-overlay-operator.png
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/09-publish-dialog-operator.png
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/10-project-source-picker-operator.png
+            [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/11-publish-credential-dialog-operator.png
             [lyricue:sister] [capture] operator persistence exercise result=persisted
             [lyricue:sister] [capture] operator settings bridge result={"status":"settings-bridge-persisted"}
             [lyricue:sister] [capture] operator credential bridge result={"status":"credential-bridge-secure"}
@@ -54,6 +57,7 @@ describe("parsePackagedSisterSmokeLog", () => {
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/08-settings-overlay-operator.png
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/09-publish-dialog-operator.png
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/10-project-source-picker-operator.png
+            [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/11-publish-credential-dialog-operator.png
             [lyricue:sister] [capture] operator persistence exercise result=persisted
             [lyricue:sister] [capture] operator settings bridge result={"status":"settings-bridge-persisted"}
             [lyricue:sister] [capture] operator credential bridge result={"status":"credential-bridge-secure"}
@@ -72,6 +76,7 @@ describe("parsePackagedSisterSmokeLog", () => {
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/08-settings-overlay-operator.png
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/09-publish-dialog-operator.png
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/10-project-source-picker-operator.png
+            [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/11-publish-credential-dialog-operator.png
             [lyricue:sister] [capture] operator persistence exercise result=persisted
             [lyricue:sister] [capture] operator credential bridge result={"status":"credential-bridge-secure"}
             [lyricue:sister] [capture] stale operator payload guard result={"status":"stale-payloads-guarded"}
@@ -90,6 +95,7 @@ describe("parsePackagedSisterSmokeLog", () => {
             [lyricue:sister] [capture] operator persistence exercise result=persisted
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/09-publish-dialog-operator.png
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/10-project-source-picker-operator.png
+            [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/11-publish-credential-dialog-operator.png
             [lyricue:sister] [capture] operator settings bridge result={"status":"settings-bridge-persisted"}
             [lyricue:sister] [capture] operator credential bridge result={"status":"credential-bridge-secure"}
             [lyricue:sister] [capture] stale operator payload guard result={"status":"stale-payloads-guarded"}
@@ -107,6 +113,7 @@ describe("parsePackagedSisterSmokeLog", () => {
             file:///Example/LyriCue.app/Contents/Resources/app.asar/public/build/karaoke-output.bundle.js
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/08-settings-overlay-operator.png
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/10-project-source-picker-operator.png
+            [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/11-publish-credential-dialog-operator.png
             [lyricue:sister] [capture] operator persistence exercise result=persisted
             [lyricue:sister] [capture] operator settings bridge result={"status":"settings-bridge-persisted"}
             [lyricue:sister] [capture] operator credential bridge result={"status":"credential-bridge-secure"}
@@ -125,6 +132,7 @@ describe("parsePackagedSisterSmokeLog", () => {
             file:///Example/LyriCue.app/Contents/Resources/app.asar/public/build/karaoke-output.bundle.js
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/08-settings-overlay-operator.png
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/09-publish-dialog-operator.png
+            [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/11-publish-credential-dialog-operator.png
             [lyricue:sister] [capture] operator persistence exercise result=persisted
             [lyricue:sister] [capture] operator settings bridge result={"status":"settings-bridge-persisted"}
             [lyricue:sister] [capture] operator credential bridge result={"status":"credential-bridge-secure"}
@@ -138,12 +146,32 @@ describe("parsePackagedSisterSmokeLog", () => {
         expect(summary.operatorProjectSourceCaptured).toBe(false)
     })
 
+    it("fails when the Publish Credential dialog screenshot was not captured", () => {
+        const summary = parsePackagedSisterSmokeLog(`
+            file:///Example/LyriCue.app/Contents/Resources/app.asar/public/build/karaoke-output.bundle.js
+            [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/08-settings-overlay-operator.png
+            [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/09-publish-dialog-operator.png
+            [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/10-project-source-picker-operator.png
+            [lyricue:sister] [capture] operator persistence exercise result=persisted
+            [lyricue:sister] [capture] operator settings bridge result={"status":"settings-bridge-persisted"}
+            [lyricue:sister] [capture] operator credential bridge result={"status":"credential-bridge-secure"}
+            [lyricue:sister] [capture] stale operator payload guard result={"status":"stale-payloads-guarded"}
+            [lyricue:sister] sidecar: [lyricue-sidecar:INFO] server loop started; 7 handlers registered
+            [lyricue:sister] [capture] rehearsal capture exercise result={"status":"captured-approved","stopped":{"segmentation":{"stage":"segments_ready"}}}
+            [lyricue:sister] [smoke] complete: pass
+        `)
+
+        expect(summary.status).toBe("fail")
+        expect(summary.operatorCredentialDialogCaptured).toBe(false)
+    })
+
     it("fails when the credential bridge smoke did not run", () => {
         const summary = parsePackagedSisterSmokeLog(`
             file:///Example/LyriCue.app/Contents/Resources/app.asar/public/build/karaoke-output.bundle.js
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/08-settings-overlay-operator.png
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/09-publish-dialog-operator.png
             [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/10-project-source-picker-operator.png
+            [lyricue:sister] [capture] wrote /tmp/ep10-operator-window-2026-05-15/11-publish-credential-dialog-operator.png
             [lyricue:sister] [capture] operator persistence exercise result=persisted
             [lyricue:sister] [capture] operator settings bridge result={"status":"settings-bridge-persisted"}
             [lyricue:sister] [capture] stale operator payload guard result={"status":"stale-payloads-guarded"}

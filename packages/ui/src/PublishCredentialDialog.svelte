@@ -42,7 +42,6 @@
 </script>
 
 <section class="credential-dialog" aria-label="Publish Credential">
-    <h2>Publish Credential</h2>
     {#if currentKeyId}
         <p class="current">Configured credential: {currentKeyId}</p>
     {/if}
@@ -71,7 +70,6 @@
         flex-direction: column;
         gap: 0.75rem;
     }
-    h2,
     .current,
     .status {
         margin: 0;

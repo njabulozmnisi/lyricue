@@ -57,10 +57,10 @@
             <strong>Publish credential</strong>
             {#if libraryConfig.publishCredential}
                 <span class="value">Configured ({libraryConfig.publishCredential.keyId ?? "unnamed"})</span>
-                <button on:click={() => dispatch("credentialManage")}>Manage</button>
+                <button data-testid="publish-credential-manage" on:click={() => dispatch("credentialManage")}>Manage</button>
             {:else}
                 <span class="value">Not configured</span>
-                <button on:click={() => dispatch("credentialManage")}>Add</button>
+                <button data-testid="publish-credential-manage" on:click={() => dispatch("credentialManage")}>Add</button>
             {/if}
         </div>
 
