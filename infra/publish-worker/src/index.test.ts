@@ -85,6 +85,15 @@ function legacyJsonBundle(songId = "song-1", version = "1.0.0"): string {
     })
 }
 
+function publishHeaders(extra: Record<string, string> = {}): Record<string, string> {
+    return {
+        "X-LC-Org": "hillside",
+        "X-LC-Campus": "central",
+        "X-LC-Credential": "central-token",
+        ...extra
+    }
+}
+
 afterEach(() => {
     vi.unstubAllGlobals()
 })
@@ -109,7 +118,7 @@ describe("publish worker", () => {
         const response = await worker.fetch(
             new Request("https://worker.test/publish", {
                 method: "PUT",
-                headers: { "X-LC-Credential": "central-token", "X-LC-Target": "central" },
+                headers: publishHeaders({ "X-LC-Target": "central" }),
                 body: bundle()
             }),
             env
@@ -134,7 +143,7 @@ describe("publish worker", () => {
         const response = await worker.fetch(
             new Request("https://worker.test/publish", {
                 method: "PUT",
-                headers: { "X-LC-Credential": "central-token", "X-LC-Target": "central" },
+                headers: publishHeaders({ "X-LC-Target": "central" }),
                 body: legacyJsonBundle("legacy-song")
             }),
             env
@@ -152,7 +161,7 @@ describe("publish worker", () => {
         const first = await worker.fetch(
             new Request("https://worker.test/publish", {
                 method: "PUT",
-                headers: { "X-LC-Credential": "central-token" },
+                headers: publishHeaders(),
                 body: bundle("song-1")
             }),
             env
@@ -160,7 +169,7 @@ describe("publish worker", () => {
         const second = await worker.fetch(
             new Request("https://worker.test/publish", {
                 method: "PUT",
-                headers: { "X-LC-Credential": "central-token" },
+                headers: publishHeaders(),
                 body: bundle("song-2")
             }),
             env
@@ -190,7 +199,7 @@ describe("publish worker", () => {
         const response = await worker.fetch(
             new Request("https://worker.test/publish", {
                 method: "PUT",
-                headers: { "X-LC-Credential": "central-token", "X-LC-Target": "central" },
+                headers: publishHeaders({ "X-LC-Target": "central" }),
                 body: bundle()
             }),
             env
@@ -215,7 +224,7 @@ describe("publish worker", () => {
         const response = await worker.fetch(
             new Request("https://worker.test/publish", {
                 method: "PUT",
-                headers: { "X-LC-Credential": "central-token", "X-LC-Target": "central" },
+                headers: publishHeaders({ "X-LC-Target": "central" }),
                 body: bundle()
             }),
             env
@@ -230,7 +239,7 @@ describe("publish worker", () => {
         const response = await worker.fetch(
             new Request("https://worker.test/publish", {
                 method: "PUT",
-                headers: { "X-LC-Credential": "bad-token" },
+                headers: publishHeaders({ "X-LC-Credential": "bad-token" }),
                 body: bundle()
             }),
             env
@@ -244,7 +253,7 @@ describe("publish worker", () => {
         const response = await worker.fetch(
             new Request("https://worker.test/publish/project", {
                 method: "PUT",
-                headers: { "X-LC-Credential": "central-token", "X-LC-Target": "campus" },
+                headers: publishHeaders({ "X-LC-Target": "campus" }),
                 body: JSON.stringify({
                     id: "regional-conference",
                     name: "Regional Conference",
@@ -269,7 +278,7 @@ describe("publish worker", () => {
         const response = await worker.fetch(
             new Request("https://worker.test/publish/project", {
                 method: "PUT",
-                headers: { "X-LC-Credential": "central-token", "X-LC-Target": "region" },
+                headers: publishHeaders({ "X-LC-Target": "region" }),
                 body: JSON.stringify({ id: "regional-conference", name: "Regional Conference", songs: [] })
             }),
             env
@@ -277,5 +286,20 @@ describe("publish worker", () => {
 
         expect(response.status).toBe(400)
         await expect(response.json()).resolves.toMatchObject({ message: "X-LC-Target must be 'central' or 'campus'." })
+    })
+
+    it("rejects publish requests whose identity headers do not match the credential", async () => {
+        const env = makeEnv()
+        const response = await worker.fetch(
+            new Request("https://worker.test/publish", {
+                method: "PUT",
+                headers: publishHeaders({ "X-LC-Campus": "pretoria-north", "X-LC-Target": "campus" }),
+                body: bundle()
+            }),
+            env
+        )
+
+        expect(response.status).toBe(403)
+        await expect(response.json()).resolves.toMatchObject({ message: "Publish credential does not match X-LC-Campus." })
     })
 })

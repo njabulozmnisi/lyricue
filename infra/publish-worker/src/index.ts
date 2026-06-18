@@ -76,6 +76,7 @@ export default {
 
 async function publishProject(request: Request, env: Env): Promise<Response> {
     const { token, credential } = await requireCredential(request, env)
+    validateTenantHeaders(request, credential)
     await enforceRateLimit(token, env)
     const plan = validateProjectPlan(await request.json())
     const target = readPublishTarget(request)
@@ -99,6 +100,7 @@ async function publishProject(request: Request, env: Env): Promise<Response> {
 
 async function publish(request: Request, env: Env): Promise<Response> {
     const { token, credential } = await requireCredential(request, env)
+    validateTenantHeaders(request, credential)
     await enforceRateLimit(token, env)
     const body = await request.arrayBuffer()
     if (body.byteLength === 0) throw new HttpError(400, "Bundle body is required.")
@@ -189,6 +191,15 @@ async function requireCredential(request: Request, env: Env): Promise<{ token: s
     const raw = await env.CREDENTIALS.get(token)
     if (!raw) throw new HttpError(403, "Publish credential is not recognized.")
     return { token, credential: JSON.parse(raw) as Credential }
+}
+
+function validateTenantHeaders(request: Request, credential: Credential): void {
+    const orgId = request.headers.get("X-LC-Org")
+    const campusId = request.headers.get("X-LC-Campus")
+    if (!orgId) throw new HttpError(400, "X-LC-Org is required.")
+    if (!campusId) throw new HttpError(400, "X-LC-Campus is required.")
+    if (orgId !== credential.orgId) throw new HttpError(403, "Publish credential does not match X-LC-Org.")
+    if (campusId !== credential.campusId) throw new HttpError(403, "Publish credential does not match X-LC-Campus.")
 }
 
 async function enforceRateLimit(token: string, env: Env): Promise<void> {
