@@ -40,6 +40,8 @@ const OPERATOR_IDENTITY_SAVE_CHANNEL = "lyricue:operator:identity:save"
 const OPERATOR_LIBRARY_CONFIG_GET_CHANNEL = "lyricue:operator:library-config:get"
 const OPERATOR_LIBRARY_CONFIG_SAVE_CHANNEL = "lyricue:operator:library-config:save"
 const OPERATOR_LIBRARY_PUBLISH_CHANNEL = "lyricue:operator:library:publish"
+const OPERATOR_LIBRARY_CREDENTIAL_CONFIGURE_CHANNEL = "lyricue:operator:library-credential:configure"
+const OPERATOR_LIBRARY_CREDENTIAL_CLEAR_CHANNEL = "lyricue:operator:library-credential:clear"
 const OPERATOR_PROJECT_SOURCES_CHANNEL = "lyricue:operator:project:sources"
 const OPERATOR_PROJECT_SELECT_LOCAL_CHANNEL = "lyricue:operator:project:select-local"
 const OPERATOR_PROJECT_LOAD_CENTRAL_CHANNEL = "lyricue:operator:project:load-central"
@@ -149,6 +151,14 @@ contextBridge.exposeInMainWorld("lyricueOperator", {
         return ipcRenderer.invoke(OPERATOR_LIBRARY_PUBLISH_CHANNEL, payload)
     },
 
+    configurePublishCredential(payload: unknown): Promise<unknown> {
+        return ipcRenderer.invoke(OPERATOR_LIBRARY_CREDENTIAL_CONFIGURE_CHANNEL, payload)
+    },
+
+    clearPublishCredential(): Promise<unknown> {
+        return ipcRenderer.invoke(OPERATOR_LIBRARY_CREDENTIAL_CLEAR_CHANNEL)
+    },
+
     getProjectSources(): Promise<unknown> {
         return ipcRenderer.invoke(OPERATOR_PROJECT_SOURCES_CHANNEL)
     },
@@ -189,6 +199,8 @@ declare global {
             getLibraryConfig: () => Promise<unknown>
             saveLibraryConfig: (config: unknown) => Promise<void>
             publishToLibrary: (payload: unknown) => Promise<unknown>
+            configurePublishCredential: (payload: unknown) => Promise<unknown>
+            clearPublishCredential: () => Promise<unknown>
             getProjectSources: () => Promise<unknown>
             selectLocalProject: (project: unknown) => Promise<unknown>
             loadCentralProjectPlan: (plan: unknown) => Promise<unknown>

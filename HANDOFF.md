@@ -8,7 +8,7 @@ epic matrix and release gates.
 
 Current `main` has moved beyond the original snapshot:
 
-- Full local gate passes with 82 TypeScript/Vitest files and 789 tests, Worker 11/11,
+- Full local gate passes with 82 TypeScript/Vitest files and 790 tests, Worker 11/11,
   UI diagnostics 0 errors / 0 warnings, both Python sidecar suites 88 passed / 1 skipped,
   and sister renderer/main/preload builds passing.
 - EP-10 operator defects D13-D18 are closed locally.
@@ -16,6 +16,9 @@ Current `main` has moved beyond the original snapshot:
   sister host now exports the active learned song into a valid ZIP `.lcbundle` before calling
   the Worker publish API. The raw publish credential remains main-process only through
   Electron `safeStorage`.
+- EP-15 Settings Library credential management now reaches main-process safeStorage through
+  validated configure/clear IPC. Smoke configures a dummy credential, verifies the raw secret
+  is absent from returned/saved config JSON, then clears it.
 - EP-16 Setlist Source is mounted in the sister operator. The host can list local/central
   project sources, select local projects, and load central project plans through
   `fetchCatalog()` + `loadProjectPlanBundles()` when a library URL is configured.
@@ -28,8 +31,9 @@ Recent commits after the original handoff include:
 
 - `680eb94 fix:(#EP-15): mount operator publish bridge`
 - `bcdddbd feat:(#EP-16): mount operator project source picker`
-- Current in-flight slice after those commits: EP-15 song publish exporter, documented in
-  `docs/qa-reports/qa-report-ep15-song-publish-exporter-2026-06-18.md`.
+- `6a71498 feat:(#EP-15): export active song bundles for publish`
+- Current in-flight slice after those commits: EP-15 publish credential bridge, documented in
+  `docs/qa-reports/qa-report-ep15-publish-credential-bridge-2026-06-18.md`.
 
 Remaining production blockers are still external proof gates, not local walking-skeleton defects:
 real Cloudflare R2/KV/Worker + GitHub mirror token, packaged safe-storage credential proof,

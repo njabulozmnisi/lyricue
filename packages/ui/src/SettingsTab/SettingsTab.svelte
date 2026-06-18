@@ -16,6 +16,7 @@
       - Renders nothing that depends on FreeShow types.
 -->
 <script lang="ts">
+    import { createEventDispatcher } from "svelte"
     import {
         DEFAULT_LYRICUE_SETTINGS,
         type LyriCueSettings,
@@ -53,6 +54,11 @@
     export let onRehearsalStorageRefresh: (() => Promise<void> | void) | undefined = undefined
     export let onRehearsalRecordingDelete: ((fileName: string) => Promise<void> | void) | undefined = undefined
     export let onRehearsalRecordingDeleteOlderThan: ((olderThanDays: number) => Promise<void> | void) | undefined = undefined
+    const dispatch = createEventDispatcher<{
+        "credential-manage": void
+        "signing-enable": void
+        "library-browse": void
+    }>()
 
     let settings: LyriCueSettings = settingsStore.get()
     let identity: InstallIdentity = identityStore.get()
@@ -158,7 +164,13 @@
                 onReset={() => resetSection("shortcuts")}
             />
         {:else if active === "library"}
-            <LibrarySection {libraryConfig} onChange={onLibraryChange} />
+            <LibrarySection
+                {libraryConfig}
+                onChange={onLibraryChange}
+                on:credentialManage={() => dispatch("credential-manage")}
+                on:signingEnable={() => dispatch("signing-enable")}
+                on:libraryBrowse={() => dispatch("library-browse")}
+            />
         {:else if active === "identity"}
             <IdentitySection {identity} onChange={onIdentityChange} onCampusChange={onCatalogRefresh} />
         {:else if active === "sidecar"}

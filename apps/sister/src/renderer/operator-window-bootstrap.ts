@@ -164,6 +164,8 @@ const bridgeCandidate = (
             getLibraryConfig: () => Promise<unknown>
             saveLibraryConfig: (config: unknown) => Promise<void>
             publishToLibrary: (payload: unknown) => Promise<unknown>
+            configurePublishCredential: (payload: unknown) => Promise<unknown>
+            clearPublishCredential: () => Promise<unknown>
             getProjectSources: () => Promise<unknown>
             selectLocalProject: (project: unknown) => Promise<unknown>
             loadCentralProjectPlan: (plan: unknown) => Promise<unknown>
@@ -282,18 +284,38 @@ async function openSettingsPanel(): Promise<void> {
             bridge.getIdentity() as Promise<InstallIdentity>,
             bridge.getLibraryConfig() as Promise<LibraryConfig>
         ])
+        const libraryConfigStore = createBridgeStore(libraryConfig, bridge.saveLibraryConfig)
         body.textContent = ""
         settingsTab = new SettingsTab({
             target: body,
             props: {
                 settingsStore: createBridgeStore(settings, bridge.saveSettings),
                 identityStore: createBridgeStore(identity, bridge.saveIdentity),
-                libraryConfigStore: createBridgeStore(libraryConfig, bridge.saveLibraryConfig)
+                libraryConfigStore
             }
         })
+        settingsTab.$on("credential-manage", () => void managePublishCredential(libraryConfigStore))
     } catch (err) {
         body.textContent = (err as Error).message || "Settings failed to load."
     }
+}
+
+async function managePublishCredential(libraryConfigStore: ReturnType<typeof createBridgeStore<LibraryConfig>>): Promise<void> {
+    const current = libraryConfigStore.get()
+    if (current.publishCredential) {
+        const label = current.publishCredential.keyId ?? current.publishCredential.secretRef.keyId
+        if (!window.confirm(`Remove publish credential "${label}"?`)) return
+        const next = await bridge.clearPublishCredential() as LibraryConfig
+        await libraryConfigStore.save(next)
+        return
+    }
+
+    const keyId = window.prompt("Publish credential label", "central-1")
+    if (!keyId?.trim()) return
+    const credential = window.prompt("Publish credential")
+    if (!credential?.trim()) return
+    const next = await bridge.configurePublishCredential({ keyId: keyId.trim(), credential }) as LibraryConfig
+    await libraryConfigStore.save(next)
 }
 
 async function openProjectSourcePicker(): Promise<void> {

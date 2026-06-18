@@ -40,7 +40,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { basename, dirname, resolve, join } from "node:path"
 import { DEFAULT_LYRICUE_SETTINGS, DEPLOYMENT_MODE, validateTimingMap, type Arrangement, type InstallIdentity, type LibraryConfig, type LyriCueSettings, type TimingMap } from "@lyricue/core/types"
-import { createElectronSafeStorageSecretStorage, IdentityStore, LibraryConfigStore, resolveLyriCuePaths, revealPublishCredential, SettingsStore } from "@lyricue/core/settings"
+import { clearPublishCredential, configurePublishCredential, createElectronSafeStorageSecretStorage, IdentityStore, LibraryConfigStore, resolveLyriCuePaths, revealPublishCredential, SettingsStore } from "@lyricue/core/settings"
 import { TimingMapStorage, type TimingMapStorageVariant } from "@lyricue/core/timing"
 import { DEMO_TIMING_MAP, DemoSyncEngine, generateFrameSequence } from "@lyricue/core/output/test-utils"
 import {
@@ -176,6 +176,8 @@ const OPERATOR_IDENTITY_SAVE_CHANNEL = "lyricue:operator:identity:save"
 const OPERATOR_LIBRARY_CONFIG_GET_CHANNEL = "lyricue:operator:library-config:get"
 const OPERATOR_LIBRARY_CONFIG_SAVE_CHANNEL = "lyricue:operator:library-config:save"
 const OPERATOR_LIBRARY_PUBLISH_CHANNEL = "lyricue:operator:library:publish"
+const OPERATOR_LIBRARY_CREDENTIAL_CONFIGURE_CHANNEL = "lyricue:operator:library-credential:configure"
+const OPERATOR_LIBRARY_CREDENTIAL_CLEAR_CHANNEL = "lyricue:operator:library-credential:clear"
 const OPERATOR_PROJECT_SOURCES_CHANNEL = "lyricue:operator:project:sources"
 const OPERATOR_PROJECT_SELECT_LOCAL_CHANNEL = "lyricue:operator:project:select-local"
 const OPERATOR_PROJECT_LOAD_CENTRAL_CHANNEL = "lyricue:operator:project:load-central"
@@ -686,6 +688,20 @@ async function startOperatorWindow(): Promise<void> {
         }
         return handleOperatorLibraryPublish(payload)
     })
+    ipcMain.removeHandler(OPERATOR_LIBRARY_CREDENTIAL_CONFIGURE_CHANNEL)
+    ipcMain.handle(OPERATOR_LIBRARY_CREDENTIAL_CONFIGURE_CHANNEL, async (event, payload: unknown) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected publish credential configure request from unknown sender.")
+        }
+        return handlePublishCredentialConfigure(payload)
+    })
+    ipcMain.removeHandler(OPERATOR_LIBRARY_CREDENTIAL_CLEAR_CHANNEL)
+    ipcMain.handle(OPERATOR_LIBRARY_CREDENTIAL_CLEAR_CHANNEL, async (event) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected publish credential clear request from unknown sender.")
+        }
+        return handlePublishCredentialClear()
+    })
     ipcMain.removeHandler(OPERATOR_PROJECT_SOURCES_CHANNEL)
     ipcMain.handle(OPERATOR_PROJECT_SOURCES_CHANNEL, async (event) => {
         if (event.sender !== operatorWindow?.webContents) {
@@ -921,6 +937,35 @@ async function saveOperatorLibraryConfig(config: LibraryConfig): Promise<void> {
     const store = getLibraryConfigStore()
     if (!store.isLoaded) await store.load()
     await store.save(config)
+}
+
+async function handlePublishCredentialConfigure(payload: unknown): Promise<LibraryConfig> {
+    if (!payload || typeof payload !== "object") {
+        throw new Error("publish credential configure request must be an object.")
+    }
+    const raw = payload as Record<string, unknown>
+    if (typeof raw.keyId !== "string" || raw.keyId.trim() === "") {
+        throw new Error("Publish credential key id is required.")
+    }
+    if (typeof raw.credential !== "string" || raw.credential.trim() === "") {
+        throw new Error("Publish credential value is required.")
+    }
+    const config = await loadOperatorLibraryConfig()
+    const next = await configurePublishCredential(
+        config,
+        createElectronSafeStorageSecretStorage(safeStorage),
+        raw.credential,
+        raw.keyId.trim()
+    )
+    await saveOperatorLibraryConfig(next)
+    return next
+}
+
+async function handlePublishCredentialClear(): Promise<LibraryConfig> {
+    const config = await loadOperatorLibraryConfig()
+    const next = await clearPublishCredential(config, createElectronSafeStorageSecretStorage(safeStorage))
+    await saveOperatorLibraryConfig(next)
+    return next
 }
 
 async function handleOperatorLibraryPublish(payload: unknown): Promise<{ bundleUrl?: string; projectUrl?: string }> {
@@ -1419,6 +1464,8 @@ function removeOperatorIpcHandlers(): void {
     ipcMain.removeHandler(OPERATOR_LIBRARY_CONFIG_GET_CHANNEL)
     ipcMain.removeHandler(OPERATOR_LIBRARY_CONFIG_SAVE_CHANNEL)
     ipcMain.removeHandler(OPERATOR_LIBRARY_PUBLISH_CHANNEL)
+    ipcMain.removeHandler(OPERATOR_LIBRARY_CREDENTIAL_CONFIGURE_CHANNEL)
+    ipcMain.removeHandler(OPERATOR_LIBRARY_CREDENTIAL_CLEAR_CHANNEL)
     ipcMain.removeHandler(OPERATOR_PROJECT_SOURCES_CHANNEL)
     ipcMain.removeHandler(OPERATOR_PROJECT_SELECT_LOCAL_CHANNEL)
     ipcMain.removeHandler(OPERATOR_PROJECT_LOAD_CENTRAL_CHANNEL)
@@ -1767,6 +1814,7 @@ async function captureEp06Evidence(): Promise<void> {
             }
             if (SMOKE_TEST_MODE) {
                 await exerciseOperatorSettingsBridge(opWindow)
+                await exerciseOperatorCredentialBridge(opWindow)
                 await exerciseStaleOperatorPayloadGuards(opWindow)
             }
             if (process.env.LC_CAPTURE_REHEARSAL_CAPTURE === "1" || SMOKE_TEST_MODE) {
@@ -1977,6 +2025,36 @@ async function exerciseOperatorSettingsBridge(opWindow: BrowserWindow): Promise<
     } catch (err) {
         log(`[capture] operator settings bridge failed: ${(err as Error).message}`)
         recordSmokeFailure("operator settings bridge", err)
+    }
+}
+
+async function exerciseOperatorCredentialBridge(opWindow: BrowserWindow): Promise<void> {
+    try {
+        const result = await opWindow.webContents.executeJavaScript(`
+            (async () => {
+                const api = window.lyricueOperator;
+                if (!api) return { status: "missing-bridge" };
+                const secret = "lyricue-smoke-secret";
+                const configured = await api.configurePublishCredential({ keyId: "smoke-key", credential: secret });
+                const saved = await api.getLibraryConfig();
+                const leaked = JSON.stringify(configured).includes(secret) || JSON.stringify(saved).includes(secret);
+                const hasRef = Boolean(saved?.publishCredential?.secretRef?.handle);
+                const keyMatches = saved?.publishCredential?.keyId === "smoke-key";
+                const cleared = await api.clearPublishCredential();
+                const clearedSaved = await api.getLibraryConfig();
+                const removed = !cleared?.publishCredential && !clearedSaved?.publishCredential;
+                return !leaked && hasRef && keyMatches && removed
+                    ? { status: "credential-bridge-secure" }
+                    : { status: "credential-bridge-unverified", leaked, hasRef, keyMatches, removed, configured, saved, cleared, clearedSaved };
+            })()
+        `)
+        log(`[capture] operator credential bridge result=${JSON.stringify(result)}`)
+        if (result?.status !== "credential-bridge-secure") {
+            recordSmokeFailure("operator credential bridge", JSON.stringify(result))
+        }
+    } catch (err) {
+        log(`[capture] operator credential bridge failed: ${(err as Error).message}`)
+        recordSmokeFailure("operator credential bridge", err)
     }
 }
 
