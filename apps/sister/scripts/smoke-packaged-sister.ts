@@ -36,7 +36,7 @@ function parseArgs(argv: string[]): Args {
             appExecutable = resolve(next)
             i += 1
         } else if (arg === "--output-dir" && next) {
-            outputDir = resolve(next)
+            outputDir = resolve(repoRoot, next)
             i += 1
         } else if (arg === "--timeout-ms" && next) {
             timeoutMs = Number(next)
