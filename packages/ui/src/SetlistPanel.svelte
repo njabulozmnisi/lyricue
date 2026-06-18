@@ -98,6 +98,7 @@
         "translate-song": { songId: string }
         "publish-song": { songId: string }
         "toggle-rehearsal": void
+        "open-project-source": void
         "select-timing-map-variant": { variant: TimingMapVariant }
         "open-settings": void
     }>()
@@ -128,6 +129,10 @@
 
     function handleToggleRehearsal(): void {
         dispatch("toggle-rehearsal")
+    }
+
+    function handleOpenProjectSource(): void {
+        dispatch("open-project-source")
     }
 
     function handleOpenSettings(): void {
@@ -222,6 +227,15 @@
                 aria-label="Toggle rehearsal mode"
             >
                 Rehearsal
+            </button>
+            <button
+                type="button"
+                class="secondary-action-btn"
+                on:click={handleOpenProjectSource}
+                data-testid="open-project-source"
+                aria-label="Open setlist source"
+            >
+                Setlist
             </button>
             <button
                 type="button"

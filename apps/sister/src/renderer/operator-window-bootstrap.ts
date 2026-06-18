@@ -26,9 +26,11 @@ import RehearsalModePanel from "@lyricue/ui/RehearsalModePanel.svelte"
 import RehearsalSummary from "@lyricue/ui/RehearsalSummary.svelte"
 import RehearsalReviewPanel from "@lyricue/ui/RehearsalReviewPanel.svelte"
 import LibraryPublishDialog from "@lyricue/ui/LibraryPublishDialog.svelte"
+import ProjectSourcePicker from "@lyricue/ui/ProjectSourcePicker.svelte"
 import SettingsTab from "@lyricue/ui/SettingsTab/SettingsTab.svelte"
 import { createShortcutHandler } from "@lyricue/core/sync"
 import type { Arrangement, InstallIdentity, LibraryConfig, LyriCueSettings, TimingMap } from "@lyricue/core/types"
+import type { Project, ProjectPlan } from "@lyricue/core/setlist"
 import { learnSongProgressLabel } from "./learn-song-progress.js"
 import { shouldBypassOperatorShortcutTarget } from "./operator-shortcuts.js"
 import { normalizeRehearsalSegments, type RehearsalSegmentForUi } from "./rehearsal-segments.js"
@@ -103,6 +105,11 @@ interface PublishDialogPayload {
     anonymous: boolean
 }
 
+interface ProjectSourcesPayload {
+    centralProjects: ProjectPlan[]
+    localProjects: Project[]
+}
+
 const DEFAULT_STATE: OperatorState = {
     projectTitle: "Walking-Skeleton Demo",
     tier: "auto",
@@ -157,6 +164,9 @@ const bridgeCandidate = (
             getLibraryConfig: () => Promise<unknown>
             saveLibraryConfig: (config: unknown) => Promise<void>
             publishToLibrary: (payload: unknown) => Promise<unknown>
+            getProjectSources: () => Promise<unknown>
+            selectLocalProject: (project: unknown) => Promise<unknown>
+            loadCentralProjectPlan: (plan: unknown) => Promise<unknown>
             signalReady: () => void
         }
     }
@@ -198,6 +208,8 @@ let settingsTab: SettingsTab | null = null
 let settingsOverlay: HTMLElement | null = null
 let publishDialog: LibraryPublishDialog | null = null
 let publishOverlay: HTMLElement | null = null
+let projectSourcePicker: ProjectSourcePicker | null = null
+let projectSourceOverlay: HTMLElement | null = null
 let pendingRehearsalReview: { segment: RehearsalSegmentForUi; target: HTMLElement } | null = null
 let rehearsalTimer: number | null = null
 let rehearsalStartedAt = 0
@@ -251,6 +263,7 @@ function mountPanel(): SetlistPanel {
     panel.$on("translate-song", () => openTranslationEditor())
     panel.$on("publish-song", (e: CustomEvent<{ songId: string }>) => void openPublishDialog(e.detail.songId))
     panel.$on("toggle-rehearsal", () => openRehearsalPanel())
+    panel.$on("open-project-source", () => void openProjectSourcePicker())
     panel.$on("open-settings", () => void openSettingsPanel())
     panel.$on("select-timing-map-variant", (e: CustomEvent<{ variant: "studio" | "rehearsal" }>) =>
         bridge.sendCommand({ kind: "selectTimingMapVariant", variant: e.detail.variant })
@@ -280,6 +293,53 @@ async function openSettingsPanel(): Promise<void> {
         })
     } catch (err) {
         body.textContent = (err as Error).message || "Settings failed to load."
+    }
+}
+
+async function openProjectSourcePicker(): Promise<void> {
+    if (projectSourcePicker) return
+    const { overlay, body } = openToolOverlay("Setlist Source")
+    projectSourceOverlay = overlay
+    body.textContent = "Loading project sources..."
+    try {
+        const sources = await bridge.getProjectSources() as ProjectSourcesPayload
+        body.textContent = ""
+        const status = document.createElement("p")
+        status.style.marginTop = "1rem"
+        status.style.color = "#475569"
+        projectSourcePicker = new ProjectSourcePicker({
+            target: body,
+            props: {
+                centralProjects: Array.isArray(sources.centralProjects) ? sources.centralProjects : [],
+                localProjects: Array.isArray(sources.localProjects) ? sources.localProjects : [],
+                onSelectCentral: (plan: ProjectPlan) => {
+                    status.textContent = `Loading ${plan.name}...`
+                    void bridge.loadCentralProjectPlan(plan)
+                        .then(() => {
+                            status.textContent = `Loaded ${plan.name}.`
+                        })
+                        .catch((err) => {
+                            status.textContent = (err as Error).message
+                        })
+                },
+                onSelectLocal: (project: Project) => {
+                    status.textContent = `Loading ${project.title}...`
+                    void bridge.selectLocalProject(project)
+                        .then(() => {
+                            status.textContent = `Loaded ${project.title}.`
+                        })
+                        .catch((err) => {
+                            status.textContent = (err as Error).message
+                        })
+                },
+                onBuildNew: () => {
+                    status.textContent = "Project builder is not wired in the sister host yet."
+                }
+            }
+        })
+        body.appendChild(status)
+    } catch (err) {
+        body.textContent = (err as Error).message || "Project sources failed to load."
     }
 }
 
@@ -675,6 +735,15 @@ function closeToolOverlays(): void {
     publishDialog = null
     publishOverlay?.remove()
     publishOverlay = null
+
+    try {
+        projectSourcePicker?.$destroy()
+    } catch {
+        // already destroyed
+    }
+    projectSourcePicker = null
+    projectSourceOverlay?.remove()
+    projectSourceOverlay = null
 }
 
 function createBridgeStore<T>(initial: T, saveToHost: (value: unknown) => Promise<void>): {

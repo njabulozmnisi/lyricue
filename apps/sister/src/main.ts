@@ -58,14 +58,15 @@ import {
 } from "@lyricue/core/sync"
 import {
     createSetlistController,
+    normalizeProject,
     ProjectStorage,
     type Project,
+    type ProjectPlan,
     type SetlistController,
     type TimingMapVariant
 } from "@lyricue/core/setlist"
 import { buildRehearsalTimingMapVariant, createRehearsalCaptureSession, createWavChunkWriter, type RehearsalCaptureSession } from "@lyricue/core/rehearsal"
-import { publishProjectPlan } from "@lyricue/core/library"
-import type { ProjectPlan } from "@lyricue/core/setlist"
+import { fetchCatalog, listProjects, loadProjectPlanBundles, publishProjectPlan } from "@lyricue/core/library"
 import {
     SidecarController,
     loadModelManifestFile,
@@ -174,6 +175,9 @@ const OPERATOR_IDENTITY_SAVE_CHANNEL = "lyricue:operator:identity:save"
 const OPERATOR_LIBRARY_CONFIG_GET_CHANNEL = "lyricue:operator:library-config:get"
 const OPERATOR_LIBRARY_CONFIG_SAVE_CHANNEL = "lyricue:operator:library-config:save"
 const OPERATOR_LIBRARY_PUBLISH_CHANNEL = "lyricue:operator:library:publish"
+const OPERATOR_PROJECT_SOURCES_CHANNEL = "lyricue:operator:project:sources"
+const OPERATOR_PROJECT_SELECT_LOCAL_CHANNEL = "lyricue:operator:project:select-local"
+const OPERATOR_PROJECT_LOAD_CENTRAL_CHANNEL = "lyricue:operator:project:load-central"
 const OPERATOR_STATE_BROADCAST_INTERVAL_MS = 200
 
 const DEMO_REPRISE_TIMING_MAP = {
@@ -681,6 +685,27 @@ async function startOperatorWindow(): Promise<void> {
         }
         return handleOperatorLibraryPublish(payload)
     })
+    ipcMain.removeHandler(OPERATOR_PROJECT_SOURCES_CHANNEL)
+    ipcMain.handle(OPERATOR_PROJECT_SOURCES_CHANNEL, async (event) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected project sources request from unknown sender.")
+        }
+        return loadOperatorProjectSources()
+    })
+    ipcMain.removeHandler(OPERATOR_PROJECT_SELECT_LOCAL_CHANNEL)
+    ipcMain.handle(OPERATOR_PROJECT_SELECT_LOCAL_CHANNEL, async (event, project: unknown) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected local project selection from unknown sender.")
+        }
+        return selectOperatorProject(project)
+    })
+    ipcMain.removeHandler(OPERATOR_PROJECT_LOAD_CENTRAL_CHANNEL)
+    ipcMain.handle(OPERATOR_PROJECT_LOAD_CENTRAL_CHANNEL, async (event, plan: unknown) => {
+        if (event.sender !== operatorWindow?.webContents) {
+            throw new Error("Rejected central project load from unknown sender.")
+        }
+        return loadCentralOperatorProject(plan)
+    })
 
     try {
         await operatorWindow.loadFile(OPERATOR_HTML_PATH)
@@ -1028,6 +1053,60 @@ async function saveOperatorProject(project: Project): Promise<void> {
     }
 }
 
+async function loadOperatorProjectSources(): Promise<{ centralProjects: ProjectPlan[]; localProjects: Project[] }> {
+    const localProject = await loadOperatorProject()
+    const config = await loadOperatorLibraryConfig()
+    let centralProjects: ProjectPlan[] = []
+    if (config.enabled && config.primaryUrl) {
+        try {
+            centralProjects = await listProjects(config.primaryUrl, { scope: "central" })
+        } catch (err) {
+            log(`central project list failed: ${(err as Error).message}`)
+        }
+    }
+    return { centralProjects, localProjects: [localProject] }
+}
+
+async function selectOperatorProject(input: unknown): Promise<{ ok: true; projectId: string }> {
+    const project = normalizeProject(input)
+    await saveOperatorProject(project)
+    await setlistController?.loadProject(project)
+    const firstShowId = project.shows[0]?.id
+    if (firstShowId) await setlistController?.jumpToSong(firstShowId)
+    broadcastOperatorState()
+    return { ok: true, projectId: project.id }
+}
+
+async function loadCentralOperatorProject(input: unknown): Promise<{ ok: true; projectId: string; imported: number; skipped: number }> {
+    const plan = input as ProjectPlan
+    const config = await loadOperatorLibraryConfig()
+    if (!config.enabled || !config.primaryUrl) {
+        throw new Error("Central project loading requires a configured library URL.")
+    }
+    const { catalog } = await fetchCatalog(config.primaryUrl, config.mirrorUrl ? { mirrorUrl: config.mirrorUrl } : {})
+    const currentProject = setlistController?.snapshot().project ?? (await loadOperatorProject())
+    const result = await loadProjectPlanBundles(plan, {
+        catalog,
+        fetchImpl: fetch,
+        resolveLocalShow: (song) =>
+            currentProject.shows.find((show) => show.songId === song.songId && show.bundleVersion === song.bundleVersion) ?? null,
+        saveTimingMap: async (showId, map) => {
+            DEMO_TIMING_MAPS.set(showId, map)
+            await getTimingMapStorage().save(showId, map)
+        },
+        saveArrangements: async (showId, arrangements) => {
+            DEMO_ARRANGEMENTS.set(showId, arrangements)
+            await getTimingMapStorage().saveArrangements(showId, arrangements)
+        }
+    })
+    await saveOperatorProject(result.project)
+    await setlistController?.loadProject(result.project)
+    const firstShowId = result.project.shows[0]?.id
+    if (firstShowId) await setlistController?.jumpToSong(firstShowId)
+    broadcastOperatorState()
+    return { ok: true, projectId: result.project.id, imported: result.imported.length, skipped: result.skipped.length }
+}
+
 async function saveDemoArrangement(input: unknown): Promise<void> {
     const result = prepareOperatorArrangementSave(input, (showId) => DEMO_TIMING_MAPS.get(showId) ?? null)
     if (!result.ok) {
@@ -1301,6 +1380,9 @@ function removeOperatorIpcHandlers(): void {
     ipcMain.removeHandler(OPERATOR_LIBRARY_CONFIG_GET_CHANNEL)
     ipcMain.removeHandler(OPERATOR_LIBRARY_CONFIG_SAVE_CHANNEL)
     ipcMain.removeHandler(OPERATOR_LIBRARY_PUBLISH_CHANNEL)
+    ipcMain.removeHandler(OPERATOR_PROJECT_SOURCES_CHANNEL)
+    ipcMain.removeHandler(OPERATOR_PROJECT_SELECT_LOCAL_CHANNEL)
+    ipcMain.removeHandler(OPERATOR_PROJECT_LOAD_CENTRAL_CHANNEL)
 }
 
 async function handleOperatorCancelLearnSong(request: unknown): Promise<unknown> {
@@ -1637,6 +1719,7 @@ async function captureEp06Evidence(): Promise<void> {
             await captureOperatorTool(opWindow, operatorDir, "07-rehearsal-mode-operator", "[data-testid=\"toggle-rehearsal\"]")
             await captureOperatorTool(opWindow, operatorDir, "08-settings-overlay-operator", "[data-testid=\"open-settings\"]")
             await captureOperatorTool(opWindow, operatorDir, "09-publish-dialog-operator", "[data-testid=\"publish-song\"]")
+            await captureOperatorTool(opWindow, operatorDir, "10-project-source-picker-operator", "[data-testid=\"open-project-source\"]")
             if (SMOKE_TEST_MODE) {
                 await exerciseLearnSongWizard(opWindow)
             }

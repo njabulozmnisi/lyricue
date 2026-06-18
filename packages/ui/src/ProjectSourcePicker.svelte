@@ -19,15 +19,19 @@
     <h2>Setlist Source</h2>
     <label><input type="radio" bind:group={source} value="central" /> From central library</label>
     {#if source === "central"}
-        <ul>
-            {#each centralProjects as project}
-                <li>
-                    <button on:click={() => onSelectCentral(project)}>
-                        {project.date ? `${project.date} - ` : ""}{project.name}
-                    </button>
-                </li>
-            {/each}
-        </ul>
+        {#if centralProjects.length > 0}
+            <ul>
+                {#each centralProjects as project}
+                    <li>
+                        <button on:click={() => onSelectCentral(project)}>
+                            {project.date ? `${project.date} - ` : ""}{project.name}
+                        </button>
+                    </li>
+                {/each}
+            </ul>
+        {:else}
+            <p class="empty">No central projects available.</p>
+        {/if}
     {/if}
 
     <label><input type="radio" bind:group={source} value="local" /> My local project</label>
@@ -38,6 +42,9 @@
                 <option value={project.id}>{project.date ? `${project.date} - ` : ""}{project.title}</option>
             {/each}
         </select>
+        {#if localProjects.length === 0}
+            <p class="empty">No local projects saved.</p>
+        {/if}
     {/if}
 
     <label><input type="radio" bind:group={source} value="new" /> Build a new one</label>
@@ -60,6 +67,10 @@
     ul {
         margin: 0;
         padding-left: 1.5rem;
+    }
+    .empty {
+        margin: 0;
+        color: #64748b;
     }
     button,
     select {

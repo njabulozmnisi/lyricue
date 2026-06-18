@@ -62,6 +62,7 @@ describe("SetlistPanel — layout (AC1)", () => {
         expect(target.querySelector('[data-testid="translate-song"]')?.textContent).toContain("Translate")
         expect(target.querySelector('[data-testid="publish-song"]')?.textContent).toContain("Publish")
         expect(target.querySelector('[data-testid="toggle-rehearsal"]')?.textContent).toContain("Rehearsal")
+        expect(target.querySelector('[data-testid="open-project-source"]')?.textContent).toContain("Setlist")
         expect(target.querySelector('[data-testid="open-settings"]')?.textContent).toContain("Settings")
         cmp.$destroy()
     })

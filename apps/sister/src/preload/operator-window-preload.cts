@@ -40,6 +40,9 @@ const OPERATOR_IDENTITY_SAVE_CHANNEL = "lyricue:operator:identity:save"
 const OPERATOR_LIBRARY_CONFIG_GET_CHANNEL = "lyricue:operator:library-config:get"
 const OPERATOR_LIBRARY_CONFIG_SAVE_CHANNEL = "lyricue:operator:library-config:save"
 const OPERATOR_LIBRARY_PUBLISH_CHANNEL = "lyricue:operator:library:publish"
+const OPERATOR_PROJECT_SOURCES_CHANNEL = "lyricue:operator:project:sources"
+const OPERATOR_PROJECT_SELECT_LOCAL_CHANNEL = "lyricue:operator:project:select-local"
+const OPERATOR_PROJECT_LOAD_CENTRAL_CHANNEL = "lyricue:operator:project:load-central"
 
 type StateHandler = (payload: unknown) => void
 
@@ -146,6 +149,18 @@ contextBridge.exposeInMainWorld("lyricueOperator", {
         return ipcRenderer.invoke(OPERATOR_LIBRARY_PUBLISH_CHANNEL, payload)
     },
 
+    getProjectSources(): Promise<unknown> {
+        return ipcRenderer.invoke(OPERATOR_PROJECT_SOURCES_CHANNEL)
+    },
+
+    selectLocalProject(project: unknown): Promise<unknown> {
+        return ipcRenderer.invoke(OPERATOR_PROJECT_SELECT_LOCAL_CHANNEL, project)
+    },
+
+    loadCentralProjectPlan(plan: unknown): Promise<unknown> {
+        return ipcRenderer.invoke(OPERATOR_PROJECT_LOAD_CENTRAL_CHANNEL, plan)
+    },
+
     /**
      * Tell main the renderer has mounted. The main process uses this to flush any
      * buffered state envelopes (states emitted before the renderer was ready).
@@ -174,6 +189,9 @@ declare global {
             getLibraryConfig: () => Promise<unknown>
             saveLibraryConfig: (config: unknown) => Promise<void>
             publishToLibrary: (payload: unknown) => Promise<unknown>
+            getProjectSources: () => Promise<unknown>
+            selectLocalProject: (project: unknown) => Promise<unknown>
+            loadCentralProjectPlan: (plan: unknown) => Promise<unknown>
             signalReady: () => void
         }
     }
