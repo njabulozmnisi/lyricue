@@ -12,6 +12,7 @@ import TierChangeBanner from "./TierChangeBanner.svelte"
 import SetlistPanel from "./SetlistPanel.svelte"
 import LearnSongWizard from "./LearnSongWizard.svelte"
 import LibraryPublishDialog from "./LibraryPublishDialog.svelte"
+import PublishCredentialDialog from "./PublishCredentialDialog.svelte"
 import LibraryBrowser from "./LibraryBrowser.svelte"
 import ProjectSourcePicker from "./ProjectSourcePicker.svelte"
 import RehearsalModePanel from "./RehearsalModePanel.svelte"
@@ -20,4 +21,4 @@ import RehearsalReviewPanel from "./RehearsalReviewPanel.svelte"
 import ArrangementBuilder from "./ArrangementBuilder.svelte"
 import TranslationEditor from "./TranslationEditor.svelte"
 
-export { FirstRunWizard, SettingsTab, KaraokeOutput, DiagnosticsPanel, AudioDevicePicker, ModeIndicator, TierChangeBanner, SetlistPanel, LearnSongWizard, LibraryPublishDialog, LibraryBrowser, ProjectSourcePicker, RehearsalModePanel, RehearsalSummary, RehearsalReviewPanel, ArrangementBuilder, TranslationEditor }
+export { FirstRunWizard, SettingsTab, KaraokeOutput, DiagnosticsPanel, AudioDevicePicker, ModeIndicator, TierChangeBanner, SetlistPanel, LearnSongWizard, LibraryPublishDialog, PublishCredentialDialog, LibraryBrowser, ProjectSourcePicker, RehearsalModePanel, RehearsalSummary, RehearsalReviewPanel, ArrangementBuilder, TranslationEditor }

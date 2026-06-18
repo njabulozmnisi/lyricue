@@ -26,6 +26,7 @@ import RehearsalModePanel from "@lyricue/ui/RehearsalModePanel.svelte"
 import RehearsalSummary from "@lyricue/ui/RehearsalSummary.svelte"
 import RehearsalReviewPanel from "@lyricue/ui/RehearsalReviewPanel.svelte"
 import LibraryPublishDialog from "@lyricue/ui/LibraryPublishDialog.svelte"
+import PublishCredentialDialog from "@lyricue/ui/PublishCredentialDialog.svelte"
 import ProjectSourcePicker from "@lyricue/ui/ProjectSourcePicker.svelte"
 import SettingsTab from "@lyricue/ui/SettingsTab/SettingsTab.svelte"
 import { createShortcutHandler } from "@lyricue/core/sync"
@@ -208,6 +209,8 @@ let rehearsalReviewPanel: RehearsalReviewPanel | null = null
 let rehearsalOverlay: HTMLElement | null = null
 let settingsTab: SettingsTab | null = null
 let settingsOverlay: HTMLElement | null = null
+let credentialDialog: PublishCredentialDialog | null = null
+let credentialOverlay: HTMLElement | null = null
 let publishDialog: LibraryPublishDialog | null = null
 let publishOverlay: HTMLElement | null = null
 let projectSourcePicker: ProjectSourcePicker | null = null
@@ -301,21 +304,26 @@ async function openSettingsPanel(): Promise<void> {
 }
 
 async function managePublishCredential(libraryConfigStore: ReturnType<typeof createBridgeStore<LibraryConfig>>): Promise<void> {
+    if (credentialDialog) return
     const current = libraryConfigStore.get()
-    if (current.publishCredential) {
-        const label = current.publishCredential.keyId ?? current.publishCredential.secretRef.keyId
-        if (!window.confirm(`Remove publish credential "${label}"?`)) return
-        const next = await bridge.clearPublishCredential() as LibraryConfig
-        await libraryConfigStore.save(next)
-        return
-    }
-
-    const keyId = window.prompt("Publish credential label", "central-1")
-    if (!keyId?.trim()) return
-    const credential = window.prompt("Publish credential")
-    if (!credential?.trim()) return
-    const next = await bridge.configurePublishCredential({ keyId: keyId.trim(), credential }) as LibraryConfig
-    await libraryConfigStore.save(next)
+    const { overlay, body } = openToolOverlay("Publish Credential")
+    credentialOverlay = overlay
+    credentialDialog = new PublishCredentialDialog({
+        target: body,
+        props: {
+            currentKeyId: current.publishCredential?.keyId ?? current.publishCredential?.secretRef.keyId ?? null,
+            onSave: async ({ keyId, credential }: { keyId: string; credential: string }) => {
+                const next = await bridge.configurePublishCredential({ keyId, credential }) as LibraryConfig
+                await libraryConfigStore.save(next)
+            },
+            onClear: current.publishCredential
+                ? async () => {
+                      const next = await bridge.clearPublishCredential() as LibraryConfig
+                      await libraryConfigStore.save(next)
+                  }
+                : undefined
+        }
+    })
 }
 
 async function openProjectSourcePicker(): Promise<void> {
@@ -748,6 +756,15 @@ function closeToolOverlays(): void {
     settingsTab = null
     settingsOverlay?.remove()
     settingsOverlay = null
+
+    try {
+        credentialDialog?.$destroy()
+    } catch {
+        // already destroyed
+    }
+    credentialDialog = null
+    credentialOverlay?.remove()
+    credentialOverlay = null
 
     try {
         publishDialog?.$destroy()
