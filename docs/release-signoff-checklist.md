@@ -5,7 +5,7 @@ This checklist defines the evidence required before LyriCue can be called produc
 ## Current Local Baseline
 
 - TypeScript/Vitest: 793 tests passing across 83 files.
-- Publish Worker Vitest: 12 tests passing.
+- Publish Worker Vitest: 14 tests passing.
 - Python sidecar: 88 passing, 1 skipped in the regular venv.
 - Python sidecar with ML dependencies: 88 passing, 1 skipped, 1 known third-party `librosa` deprecation warning.
 - `svelte-check`: 0 errors, 0 warnings.
@@ -120,6 +120,7 @@ Pass criteria:
 - Mirror fallback works with primary unavailable.
 - Publish credential persists through Electron safe storage in the packaged host.
 - Worker rejects publish writes where `X-LC-Org` or `X-LC-Campus` does not match the resolved credential.
+- Worker rejects malformed or invalid KV credential metadata with a controlled authorization failure.
 
 ## Gate D — Packaged Release Sign-Off
 

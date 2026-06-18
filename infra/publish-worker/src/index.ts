@@ -190,7 +190,27 @@ async function requireCredential(request: Request, env: Env): Promise<{ token: s
     if (!token) throw new HttpError(401, "X-LC-Credential is required.")
     const raw = await env.CREDENTIALS.get(token)
     if (!raw) throw new HttpError(403, "Publish credential is not recognized.")
-    return { token, credential: JSON.parse(raw) as Credential }
+    return { token, credential: validateCredentialRecord(parseCredentialRecord(raw)) }
+}
+
+function parseCredentialRecord(raw: string): unknown {
+    try {
+        return JSON.parse(raw)
+    } catch {
+        throw new HttpError(403, "Publish credential metadata is invalid.")
+    }
+}
+
+function validateCredentialRecord(input: unknown): Credential {
+    if (!input || typeof input !== "object") throw new HttpError(403, "Publish credential metadata is invalid.")
+    const credential = input as Credential
+    if (!credential.orgId || !credential.campusId || (credential.role !== "central" && credential.role !== "campus")) {
+        throw new HttpError(403, "Publish credential metadata is invalid.")
+    }
+    if (credential.keyId !== undefined && typeof credential.keyId !== "string") {
+        throw new HttpError(403, "Publish credential metadata is invalid.")
+    }
+    return credential
 }
 
 function validateTenantHeaders(request: Request, credential: Credential): void {

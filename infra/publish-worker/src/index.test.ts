@@ -13,7 +13,7 @@ class MemoryObject implements R2ObjectBody {
     }
 }
 
-function makeEnv(): Env & { objects: Map<string, Uint8Array>; rateLimits: Map<string, string> } {
+function makeEnv(credentialRecord = JSON.stringify({ orgId: "hillside", campusId: "central", role: "central", keyId: "central-1" })): Env & { objects: Map<string, Uint8Array>; rateLimits: Map<string, string> } {
     const objects = new Map<string, Uint8Array>()
     const rateLimits = new Map<string, string>()
     return {
@@ -23,7 +23,7 @@ function makeEnv(): Env & { objects: Map<string, Uint8Array>; rateLimits: Map<st
         CREDENTIALS: {
             async get(key: string) {
                 if (key !== "central-token") return null
-                return JSON.stringify({ orgId: "hillside", campusId: "central", role: "central", keyId: "central-1" })
+                return credentialRecord
             }
         },
         RATE_LIMITS: {
@@ -246,6 +246,28 @@ describe("publish worker", () => {
         )
 
         expect(response.status).toBe(403)
+    })
+
+    it("rejects malformed credential metadata without returning a 500", async () => {
+        const env = makeEnv("{not-json")
+        const response = await worker.fetch(
+            new Request("https://worker.test/publish/whoami", { headers: { "X-LC-Credential": "central-token" } }),
+            env
+        )
+
+        expect(response.status).toBe(403)
+        await expect(response.json()).resolves.toMatchObject({ message: "Publish credential metadata is invalid." })
+    })
+
+    it("rejects credential metadata with an invalid role", async () => {
+        const env = makeEnv(JSON.stringify({ orgId: "hillside", campusId: "central", role: "superuser" }))
+        const response = await worker.fetch(
+            new Request("https://worker.test/publish/whoami", { headers: { "X-LC-Credential": "central-token" } }),
+            env
+        )
+
+        expect(response.status).toBe(403)
+        await expect(response.json()).resolves.toMatchObject({ message: "Publish credential metadata is invalid." })
     })
 
     it("publishes a campus project plan and regenerates its project index", async () => {
