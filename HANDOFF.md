@@ -73,6 +73,82 @@ durable context; then read this to understand what's open right now and what's n
 
 ---
 
+## 0. Working directory + branch state
+
+**The canonical working tree on the operator's machine is at:**
+
+```
+/Users/njabulomnisi/Projects/Dojo/worshipsync
+```
+
+Every command in this document (and in `AGENTS.md`) assumes the current directory is that
+path. If you've cloned the project elsewhere, substitute your local path.
+
+**The repository is published as a public GitHub repo at:**
+
+```
+https://github.com/njabulozmnisi/lyricue
+```
+
+Any agent (Codex, Claude, human) can clone it cold:
+
+```bash
+git clone https://github.com/njabulozmnisi/lyricue.git
+cd lyricue
+cat AGENTS.md                                                  # durable context
+cat HANDOFF.md                                                 # this file
+cat docs/qa-reports/production-ready-handoff-2026-06-18.md     # up-to-date status report
+```
+
+**Branch state:**
+- `main` is the canonical branch. HEAD moves forward as work lands; the authoritative tip
+  is whatever `git log -1` reports. Do not rely on a hard-coded commit hash.
+- All implementation work (EP-01 through EP-20 in-scope) is reachable from `main`.
+- A sibling Git worktree at `.claude/worktrees/upbeat-dijkstra-86e3bd` is a Claude Code
+  artifact. Ignore `.claude/`. All real work happens on `main`.
+- `package-lock.json` shows as dirty because `apps/fork/freeshow` is an unpopulated git
+  submodule on this machine. Do not stage or revert it unless explicitly asked.
+
+**First commands you should run as a new agent:**
+
+```bash
+cd /Users/njabulomnisi/Projects/Dojo/worshipsync    # (or wherever you cloned to)
+git checkout main
+git pull origin main                                # fetch the latest
+git log --oneline -5                                # see what's at the tip
+ls AGENTS.md HANDOFF.md                             # confirm handoff docs are present
+```
+
+### Cloudflare publish infrastructure (Gate C closed, live)
+
+Gate C is closed against a real Cloudflare account. The publish Worker is deployed at:
+
+```
+https://lyricue-publish-dojo.njabulozmnisi.workers.dev
+```
+
+The Worker fronts an R2 bucket (`lyricue-dojo`), two KV namespaces (CREDENTIALS +
+RATE_LIMITS), and mirrors every publish to a public GitHub mirror at
+[github.com/njabulozmnisi/lyricue-library-dojo](https://github.com/njabulozmnisi/lyricue-library-dojo).
+
+End-to-end smoke (run from the repo root with env vars set):
+
+```bash
+WORKER_URL=https://lyricue-publish-dojo.njabulozmnisi.workers.dev \
+LC_CREDENTIAL=<the-publish-credential> \
+LC_ORG_ID=dojo LC_CAMPUS_ID=central \
+env -i HOME="$HOME" PWD="$PWD" PATH="/opt/homebrew/opt/node@25/bin:$PWD/node_modules/.bin:/usr/bin:/bin" \
+  node infra/publish-worker/smoke-publish.mjs
+```
+
+Credentials live in:
+- **Cloudflare KV** for credential metadata (managed via `wrangler kv key put`)
+- **Cloudflare Worker secrets** for the GitHub mirror token (managed via `wrangler secret put`)
+- **A password manager** for the publish credential token itself (NEVER committed)
+
+---
+
+
 ## 1. What's landed
 
 ### Epic progress matrix

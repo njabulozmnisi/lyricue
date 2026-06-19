@@ -1,154 +1,126 @@
 # LyriCue
 
-**AI-powered live lyric synchronization tool. Built on [FreeShow](https://freeshow.app/). Domain-neutral.**
+**AI-powered live lyric synchronization. Domain-neutral; built for live performance.**
 
-> "Learn once, sync every time." Feed the system a song recording and lyrics → it learns word-level timing → during live performance, it highlights each word in tempo and advances lyrics predictively, adapting to the lead vocalist's actual pace.
+> Learn a song once from a reference recording. During live performance, LyriCue listens to the room and highlights each word in tempo, advancing lyrics predictively at the lead vocalist's actual pace.
 
-## What This Is
+Primary launch market is **worship in multi-campus churches**. Architecture is deliberately domain-neutral — the same capability serves karaoke venues, theater, touring live music, sing-along educational content, conference teleprompting, and real-time accessibility captioning.
 
-LyriCue learns songs from reference recordings and delivers real-time, word-by-word karaoke-style highlighting during live performance. It is **domain-neutral**: usable for worship, karaoke, theater, live music, language-learning, school sing-alongs, conference teleprompting, or any context where lyrics must follow a lead vocalist.
+## Current state — 2026-06-19
 
-Primary launch market: worship in multi-campus churches. Architecture deliberately avoids coupling to any one domain.
+**Locally feature-complete. Externally pending signed installers + venue hardware drills.**
+
+| Suite | Tests | Status |
+|---|---:|---|
+| TypeScript (Vitest) | 879 | passing |
+| Publish Worker | 21 | passing |
+| Python sidecar (regular venv) | 88 + 1 skipped | passing |
+| Python sidecar (ML venv) | 97 + 1 skipped | passing |
+| svelte-check | 0/0 | clean |
+
+Full status: [docs/qa-reports/production-ready-handoff-2026-06-18.md](docs/qa-reports/production-ready-handoff-2026-06-18.md).
+
+### Release gate status
+
+| Gate | What | Status |
+|---|---|---|
+| A | Local MVP | ✅ Closed 2026-06-05 |
+| B | Production ML certification | Local proven; per-platform packaged smoke pending |
+| **C** | **Multi-campus library publishing** | ✅ **Closed live 2026-06-18** against real Cloudflare |
+| D | Signed installers + fork-mode SDKs | External: Apple Developer ID + Windows EV cert + FreeShow vendor SDKs |
+| E | Hardware/live-worship drills | External: physical mic + projector + operator drills at venue |
 
 ## Capabilities
 
-- **Word-level karaoke highlighting** — each word sweeps in tempo, with held-note pulse and predictive next-section preview
-- **AI song learning** — feed in a recording + lyrics; local Demucs + WhisperX produce word-level timing (~2–5 min per 5-min song)
-- **Live tempo sync** — beat detection adapts to the lead vocalist's pace in real time
-- **STT position correction** — local Whisper.cpp detects unplanned section jumps and resyncs (no internet)
-- **Rehearsal learning** — capture a rehearsal once; the system splits it into per-song timing maps
-- **Arrangement builder** — define section order ("V1 C V2 C C B C") without re-learning the song
-- **Multilingual parallel lyrics** — synchronized second-language display, auto-sized for 2–3 languages
-- **Multi-tenant library** — share learned songs across an organization (e.g., 60-campus church) via Cloudflare R2; mirrored to GitHub for disaster recovery
-- **Three-tier graceful degradation** — full AI sync → timer-based → manual; system never crashes during a live performance
+- **Word-level karaoke highlighting.** Each word sweeps in tempo, with tempo-adaptive easing (staccato → snappy, held → soft) and predictive next-section preview.
+- **AI song learning.** Feed in a recording + structured lyrics; local Demucs (vocal isolation) + WhisperX (forced alignment) produce word-level timing maps. ~2–5 min per 5-min song. Fully offline.
+- **Live tempo sync.** Real-time beat detection (Meyda) drives a cursor through the timing map at the singer's actual pace.
+- **STT position correction.** Local Whisper-class binding detects unplanned section jumps and resyncs the cursor. No internet required.
+- **Three-tier graceful degradation.** Full AI sync → timer-based → manual. Audio loss, low confidence, or a bumped mic never freezes the display. The operator always has a one-key override.
+- **Multilingual lyrics.** Display lyrics in any combination of primary + parallel languages. Operator can promote a translation to primary mid-service (section-granular sweep for projected languages).
+- **Rehearsal capture.** Record an entire rehearsal once; the system segments it per song and writes per-song timing-map variants.
+- **Arrangement builder.** Define section order ("V1 C V2 C C B C") without re-learning the song.
+- **Multi-campus library.** Cloudflare R2 + Worker fronts signed `.lcbundle` files; campuses subscribe to a central library, fallback-mirrored to GitHub for disaster recovery.
+- **Crash-safe persistence.** Every persisted artifact uses atomic writes; concurrent writes serialise without data loss; failed writes leave prior state intact.
 
-## Status
+## Architecture in one paragraph
 
-🚧 **Phase 4 — Implementation in progress.**
+LyriCue is a TypeScript monorepo (npm workspaces) running on Electron in two modes: **sister-mode** (own BrowserWindows, current default) and **fork-mode** (embedded inside a FreeShow fork, deferred until vendor SDKs ship). Audio processing happens in TypeScript (Meyda for beat detection, custom Schmitt-trigger VAD). ML-heavy work (vocal isolation, forced alignment) runs in a Python 3.11 sidecar over JSON-RPC stdin/stdout. The **Sync Engine** is a pure-function state machine that ingests tempo/VAD events, advances a cursor, and emits per-frame envelopes consumed by an `OutputAdapter` — either an own-window karaoke renderer or a FreeShow caption-injection adapter. Persistence is all atomic-write (crash-safe). Library publishing fronts Cloudflare R2 through a Worker; bundles mirror automatically to a GitHub repo.
 
-Planning artifacts produced via the [BMAD Method](https://docs.bmad-method.org/):
+For the full design, read [_bmad-output/architecture.md](_bmad-output/architecture.md). For the release model, [docs/release-signoff-checklist.md](docs/release-signoff-checklist.md).
 
-| Phase | Status | Artifact |
-|---|---|---|
-| Phase 1: Analysis | ✅ Complete | [_bmad-output/product-brief.md](_bmad-output/product-brief.md) |
-| Phase 2: Planning — PRD | ✅ Complete | [_bmad-output/PRD.md](_bmad-output/PRD.md) |
-| Phase 3: Solutioning — Architecture | ✅ Complete (rev. 3 + ADR-17) | [_bmad-output/architecture.md](_bmad-output/architecture.md) |
-| Phase 3: Solutioning — Epics & Stories | ✅ Complete (20 epics, ~133 stories) | [_bmad-output/epics.md](_bmad-output/epics.md) |
-| Phase 4: Implementation | 🚧 EP-01 in progress | — |
-
-## Repository Layout
-
-Single monorepo per [ADR-17](_bmad-output/architecture.md). Build-time flag `LC_DEPLOYMENT_MODE=fork|sister` selects which Electron app is packaged.
+## Repo layout
 
 ```
-lyricue/
-├── apps/
-│   ├── fork/              # Fork-mode Electron app — vendors FreeShow as a submodule
-│   └── sister/            # Sister-mode standalone Electron app — drives FreeShow via its public APIs
-├── packages/
-│   ├── core/              # Mode-agnostic TS modules (sync engine, audio, STT, storage, sidecar, library, settings)
-│   └── ui/                # Shared Svelte components
-├── python-sidecar/        # ML pipeline (Demucs + WhisperX), PyInstaller-bundled per-platform
-├── infra/
-│   └── publish-worker/    # Cloudflare Worker fronting R2 for library publish writes
-├── docs/
-└── _bmad-output/          # BMAD planning artifacts (brief, PRD, architecture, epics)
+apps/
+  sister/          Electron app, sister-service mode (current default)
+  fork/            Embeds inside a FreeShow fork (vendor SDKs gate fork-mode runtime)
+packages/
+  core/            Mode-agnostic TS: sync engine, audio, STT, storage, sidecar, library, settings
+  ui/              Shared Svelte 3 components
+python-sidecar/    Python 3.11 sidecar for vocal isolation, forced alignment, BPM
+infra/
+  publish-worker/  Cloudflare Worker fronting R2 for multi-campus library publishing
+docs/              Architecture, release checklist, QA reports
+_bmad-output/      BMAD planning artifacts (brief, PRD, architecture, 20 epics, ~133 stories)
 ```
 
-## Dual-Mode Deployment
+## Running it locally
 
-Per [ADR-16](_bmad-output/architecture.md):
+Requirements: macOS or Linux (Windows works for the app but not for ML packaging yet), Node 25+, Python 3.11.
 
-- **Fork mode** — LyriCue code lives inside a FreeShow fork; the operator runs one combined Electron app. Maximum rendering fidelity. Requires periodic merges from upstream FreeShow.
-- **Sister-service mode** — LyriCue runs as a standalone Electron app and drives FreeShow externally via its public APIs (REST + WebSocket). Cleaner separation, lower maintenance, but rendering quality depends on whether the [Captions word-highlight extension PR](_bmad-output/freeshow-upstream-discussion-draft.md) lands upstream.
+```bash
+git clone https://github.com/njabulozmnisi/lyricue.git
+cd lyricue
+npm install
+npm run build
 
-Both modes are first-class. Most code is shared via `packages/core/` and `packages/ui/`; only the `OutputAdapter` (the per-frame rendering surface) differs.
+# Full local quality gate (TS build + tests + svelte-check + Worker + Python)
+npm run verify:local
 
-## ML Stack
+# Launch the dual-window walking-skeleton (sister mode + synthetic audio + demo song)
+env -i HOME="$HOME" PWD="$PWD" PATH="/opt/homebrew/opt/node@25/bin:$PWD/node_modules/.bin:/usr/bin:/bin" \
+  LC_DEPLOYMENT_MODE=sister LC_E2E_MODE=1 LC_VERBOSE=1 \
+  electron apps/sister/dist-electron/main.js
+```
 
-All local, fully offline-capable. **No general-purpose LLMs** — only specialized audio models:
+The `env -i` wrapper is mandatory on the canonical dev machine because of a stale `NODE_PATH` from a legacy NVM install. On other machines, plain `electron …` works fine. See [AGENTS.md](AGENTS.md) §5 for full environment notes.
+
+## ML stack
+
+All local, fully offline-capable. **No general-purpose LLMs** — only specialised audio models:
 
 | Component | Tool | License | Purpose |
 |---|---|---|---|
 | Vocal isolation | Demucs (Meta) | MIT | Separate vocals from instruments |
 | Forced alignment | WhisperX (faster-whisper + wav2vec2) | BSD-2 | Word-level timestamps from vocals + lyrics |
 | Live beat detection | Meyda | MIT | Real-time BPM tracking |
-| Live STT | Whisper.cpp via Node native addon | MIT | Position correction without internet |
+| Live STT (pending binding selection) | whisper-rs / faster-whisper | MIT / BSD | Position correction without internet |
 
-See [architecture.md §2.1](_bmad-output/architecture.md) for the full offline guarantee + hardware requirements.
+See [docs/ep08-stt-binding-contract.md](docs/ep08-stt-binding-contract.md) for the STT binding contract; bindings can be swapped via a one-line construction-time injection.
 
-Production song learning can preload required model artifacts from a per-install manifest before Demucs/WhisperX run. Set `LC_MODEL_MANIFEST_PATH=/path/to/model-manifest.json`; optionally set `LC_MODEL_MIRROR_URL=https://.../models/` to override the manifest mirror, and `LC_REQUIRE_MODEL_MANIFEST=1` to fail production learning when no manifest is configured. The manifest schema is `lyricue-model-manifest-v1` and each entry must carry a SHA256 checksum.
+## Hardware requirements
 
-## Hardware Requirements
+- **Live performance machine:** 4-core CPU, 8 GB RAM, no GPU required. Apple M1+ is a first-class target.
+- **Song learning machine (pre-service):** Same baseline; faster with GPU.
+- **Network:** Not required during live performance. Only for the one-time ~875 MB model download and optional library sync.
 
-**Live performance machine:** 4-core CPU, 8 GB RAM, no GPU. Apple M1+ is a first-class target.
-**Song learning machine (pre-service):** Same baseline; faster with GPU (NVIDIA or Apple Silicon).
-**Network:** Not required during live performance. One-time model downloads (~875 MB) and optional library sync only.
+## Contributing
 
-## Development
+Read [AGENTS.md](AGENTS.md) for durable context — repo layout, build commands, conventions, the 11 critical design constraints, operator working style. Read [HANDOFF.md](HANDOFF.md) §0 for current state at clone time.
 
-Prerequisites:
-
-- Node.js ≥ 20
-- npm ≥ 10
-- Python ≥ 3.10 (for sidecar development; bundled into the installer at release time per [ADR-14](_bmad-output/architecture.md))
-
-```bash
-# Install workspace dependencies
-npm install
-
-# Build the shared packages
-npm run build:core
-npm run build:ui
-
-# Sister-mode app (no FreeShow submodule needed)
-npm run dev:sister
-
-# Fork-mode app (requires the FreeShow submodule)
-npm -w @lyricue/fork run freeshow:init
-npm run dev:fork
-
-# Run all TypeScript tests
-npm run test:ts
-
-# Run Python sidecar tests
-npm run test:py
-
-# Format check + lint
-npm run format:check
-npm run lint
-
-# Walking-skeleton demo (proves dual-mode end-to-end; EP-02 STORY-02.4)
-npm run demo:walking-skeleton:sister
-npm run demo:walking-skeleton:fork  # requires FreeShow native deps (see below)
+**Conventional commits with ticket numbers:**
 ```
+<type>:(#<ticket>): <description>
+```
+Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `build`, `ci`, `security`.
 
-## Verifying the architecture works (STORY-02.4)
-
-The walking-skeleton demos prove that LyriCue's `OutputAdapter` abstraction (ADR-16) actually composes — same `KaraokeOutput.svelte` component, same `DemoSyncEngine`, same `DEMO_TIMING_MAP`, same SyncFrame stream — through two different rendering backends.
-
-**Sister-mode demo** (`npm run demo:walking-skeleton:sister`):
-- Launches a standalone Electron app
-- Opens a karaoke output BrowserWindow (transparent + frameless + alwaysOnTop)
-- Walks the demo timing map at 60fps via `DemoSyncEngine`
-- Renders the karaoke sweep via `OwnWindowOutputAdapter`
-- No FreeShow native deps required — runs on a fresh checkout after `npm install + npm -w @lyricue/sister run build`
-
-**Fork-mode demo** (`npm run demo:walking-skeleton:fork`):
-- Launches the FreeShow fork (`apps/fork/freeshow/`) with the LyriCue extension surface patches
-- Same `DemoSyncEngine` + `DEMO_TIMING_MAP`, frames driven through `ForkOutputAdapter` and FreeShow's `OUTPUT` IPC channel
-- **Prerequisite:** FreeShow's native deps (NDI SDK, Blackmagic SDK, libltc-wrapper) must be installed via FreeShow's own developer setup at <https://freeshow.app/docs>. These are vendor SDKs the LyriCue build does not (and cannot) provide. If they're not installed, this demo fails at FreeShow's `electron-builder install-app-deps` step with native-module errors — use the sister-mode demo instead for architecture verification.
-
-The two demos consume identical `SyncFrame` streams. If the karaoke sweep effect looks visually identical in both windows, the OutputAdapter abstraction is proven sound.
-
-## Architecture Documents
-
-- [Product Brief](_bmad-output/product-brief.md) — vision, problem, positioning
-- [PRD](_bmad-output/PRD.md) — 11 functional requirement groups, 6 NFR groups, 8 user journeys
-- [Architecture](_bmad-output/architecture.md) — system decomposition, dual-mode design, ADRs, multi-tenant infrastructure
-- [Epics & Stories](_bmad-output/epics.md) — 20 epics, ~133 stories, walking-skeleton release plan
-- [FreeShow Upstream Discussion Draft](_bmad-output/freeshow-upstream-discussion-draft.md) — proposed Captions extension conversation
+**No AI attribution in commits, PRs, or any project artifact.** Global git hooks enforce this.
 
 ## License
 
 GPL-3.0 — required by FreeShow's copyleft license. See [LICENSE](LICENSE).
+
+## Acknowledgements
+
+LyriCue's fork-mode plugs into [FreeShow](https://github.com/ChurchApps/FreeShow), an open-source presentation tool by ChurchApps. Vocal isolation uses [Demucs](https://github.com/facebookresearch/demucs); forced alignment uses [WhisperX](https://github.com/m-bain/whisperX). Beat detection uses [Meyda](https://github.com/meyda/meyda). The architecture follows the [BMAD methodology](https://docs.bmad-method.org/) for AI-driven software development.
