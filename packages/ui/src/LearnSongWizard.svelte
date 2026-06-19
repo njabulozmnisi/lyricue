@@ -580,7 +580,7 @@
                     bind:value={draft.lyricsText}
                     placeholder="[Verse 1]&#10;Amazing grace..."
                     on:input={parseCurrentLyrics}
-                />
+                ></textarea>
             </label>
             {#each draft.warnings as warning}
                 <p class="warning">{warning}</p>
@@ -612,7 +612,7 @@
                                 <button type="button" disabled={section.lines.length < 2} on:click={() => splitSection(i)}>Split</button>
                             </div>
                         </div>
-                        <textarea value={section.text} on:input={(e) => onSectionTextInput(i, e)} />
+                        <textarea value={section.text} on:input={(e) => onSectionTextInput(i, e)}></textarea>
                     </article>
                 {/each}
             </div>
@@ -690,7 +690,7 @@
                 <div class="timing-review">
                     <div class="preview-controls">
                         {#if audioPreviewUrl}
-                            <audio bind:this={previewAudio} src={audioPreviewUrl} preload="metadata" on:timeupdate={onPreviewTimeUpdate} />
+                            <audio bind:this={previewAudio} src={audioPreviewUrl} preload="metadata" on:timeupdate={onPreviewTimeUpdate}></audio>
                             <button type="button" on:click={playPreview}>Play reference</button>
                         {:else}
                             <p class="hint">Reference playback is available immediately after choosing audio in this wizard session.</p>
@@ -715,14 +715,14 @@
                                     style={`left:${pct(word.startMs, totalDurationMs)}%`}
                                     aria-label={`Start ${word.text}`}
                                     on:pointerdown={(e) => startBoundaryDrag(sectionIndex, wordIndex, "start", e)}
-                                />
+                                ></button>
                                 <button
                                     type="button"
                                     class="word-marker end"
                                     style={`left:${pct(word.endMs, totalDurationMs)}%`}
                                     aria-label={`End ${word.text}`}
                                     on:pointerdown={(e) => startBoundaryDrag(sectionIndex, wordIndex, "end", e)}
-                                />
+                                ></button>
                             {/each}
                         {/each}
                     </div>

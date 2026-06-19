@@ -13,8 +13,7 @@
  */
 
 import { defineConfig } from "vite"
-import { svelte } from "@sveltejs/vite-plugin-svelte"
-import sveltePreprocess from "svelte-preprocess"
+import { svelte, vitePreprocess } from "@sveltejs/vite-plugin-svelte"
 import { resolve } from "node:path"
 
 const production = process.env.NODE_ENV === "production"
@@ -22,10 +21,13 @@ const production = process.env.NODE_ENV === "production"
 export default defineConfig({
     plugins: [
         svelte({
-            preprocess: sveltePreprocess({
-                typescript: { compilerOptions: { verbatimModuleSyntax: false } }
-            }),
-            compilerOptions: { dev: !production }
+            preprocess: vitePreprocess(),
+            compilerOptions: {
+                dev: !production,
+                // Keep Svelte 3/4 `new Component({target})` API working under Svelte 5
+                // so the operator-window-bootstrap doesn't need migrating to `mount()`.
+                compatibility: { componentApi: 4 }
+            }
         })
     ],
     publicDir: false,

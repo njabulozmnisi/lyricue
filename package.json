@@ -30,7 +30,7 @@
     "format": "prettier --config .prettierrc.yaml --write \"{apps,packages,infra}/**/*.{ts,tsx,svelte,json,md}\"",
     "format:check": "prettier --config .prettierrc.yaml --check \"{apps,packages,infra}/**/*.{ts,tsx,svelte,json,md}\"",
     "test": "npm run test:ts && npm run test:py",
-    "test:ts": "vitest run --workspace=vitest.workspace.ts",
+    "test:ts": "vitest run",
     "test:py": "cd python-sidecar && .venv/bin/pytest -q",
     "test:py:ml": "cd python-sidecar && .venv-ml/bin/pytest -q",
     "test:worker": "cd infra/publish-worker && vitest run --config vitest.config.ts",
@@ -46,11 +46,11 @@
     "@typescript-eslint/parser": "^7.0.0",
     "eslint": "^8.57.0",
     "eslint-plugin-svelte": "^2.35.0",
-    "prettier": "^3.2.0",
-    "prettier-plugin-svelte": "^3.1.0",
-    "svelte-check": "^3.6.0",
-    "typescript": "^5.3.0",
-    "vitest": "^1.2.0",
+    "prettier": "^3.6.2",
+    "prettier-plugin-svelte": "^3.4.0",
+    "svelte-check": "^4.6.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9",
     "wrangler": "^4.102.0"
   }
 }

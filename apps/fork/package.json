@@ -9,19 +9,23 @@
     "exports": {
         ".": {
             "types": "./dist-electron/electron-main.d.ts",
-            "import": "./dist-electron/electron-main.js"
+            "import": "./dist-electron/electron-main.js",
+            "default": "./dist-electron/electron-main.js"
         },
         "./main": {
             "types": "./dist-electron/main/index.d.ts",
-            "import": "./dist-electron/main/index.js"
+            "import": "./dist-electron/main/index.js",
+            "default": "./dist-electron/main/index.js"
         },
         "./frontend": {
             "types": "./dist-electron/frontend/index.d.ts",
-            "import": "./dist-electron/frontend/index.js"
+            "import": "./dist-electron/frontend/index.js",
+            "default": "./dist-electron/frontend/index.js"
         },
         "./output/*": {
             "types": "./dist-electron/output/*.d.ts",
-            "import": "./dist-electron/output/*.js"
+            "import": "./dist-electron/output/*.js",
+            "default": "./dist-electron/output/*.js"
         }
     },
     "scripts": {
@@ -35,10 +39,10 @@
         "@lyricue/core": "*",
         "@lyricue/ui": "*",
         "electron": "*",
-        "svelte": "^3.59.2"
+        "svelte": "^5.56.3"
     },
     "devDependencies": {
-        "typescript": "^5.3.0",
-        "vitest": "^1.2.0"
+        "typescript": "^5.9.3",
+        "vitest": "^4.1.9"
     }
 }

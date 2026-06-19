@@ -356,7 +356,9 @@ describe("LearnSongWizard", () => {
         input(endInputs[0] ?? null, "1250")
         await settle()
         click(buttonByText(target, "Save timing edits"))
-        await settle()
+        // Svelte 5 reactivity needs an extra tick after the async saveTimingMap()
+        // promise resolves before the "Timing edits saved." string reaches the DOM.
+        await waitForText(target, "Timing edits saved.")
 
         expect(saveTimingMap).toHaveBeenCalledOnce()
         const saved = saveTimingMap.mock.calls[0]?.[0] as TimingMap
